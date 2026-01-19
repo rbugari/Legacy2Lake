@@ -30,7 +30,7 @@ class MigrationOrchestrator:
         # resolving absolute paths robustly
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # apps/api/services -> apps/api
         self.base_path = PersistenceService.ensure_solution_dir(project_id)
-        self.output_path = os.path.join(self.base_path, "Output")
+        self.output_path = os.path.join(self.base_path, PersistenceService.STAGE_DRAFTING)
         
         # Load Platform Spec (Robust Path)
         self.spec_path = os.path.join(base_dir, "config", "platform_spec.json")

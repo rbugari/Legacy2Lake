@@ -23,7 +23,7 @@ class GovernanceService:
         Generates a modernization certificate with project metrics.
         """
         project_path = PersistenceService.ensure_solution_dir(project_id)
-        refined_dir = Path(project_path) / "Refined"
+        refined_dir = Path(project_path) / PersistenceService.STAGE_REFINEMENT
         
         # 1. Calculate Stats
         stats = {
@@ -59,7 +59,7 @@ class GovernanceService:
 
     def _generate_lineage(self, project_id: str) -> list:
         project_path = PersistenceService.ensure_solution_dir(project_id)
-        input_dir = Path(project_path) / "Output"
+        input_dir = Path(project_path) / PersistenceService.STAGE_DRAFTING
         lineage = []
 
         if input_dir.exists():

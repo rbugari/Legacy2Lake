@@ -1,6 +1,7 @@
 
 import os
 import yaml
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -25,7 +26,7 @@ class OpsAuditorService:
 
         refined_files = architect_output.get("refined_files", {})
         project_path = PersistenceService.ensure_solution_dir(project_id)
-        refined_dir = os.path.join(project_path, "Refined")
+        refined_dir = os.path.join(project_path, PersistenceService.STAGE_REFINEMENT)
 
         # 1. Validation Engine
         validation_results = self._perform_validation(refined_files, log)
@@ -69,17 +70,40 @@ class OpsAuditorService:
             results["issues"].append(msg)
             results["passed"] = False
         
-        # Semantic Check (SCD2/Stable Keys) - Heuristic
+        # Semantic Check (SCD2/Stable Keys / Dynamic PK) - Heuristic
         silver_files = refined_files.get("silver", [])
         for sf in silver_files:
             try:
+                filename = os.path.basename(sf).replace("_silver.py", ".py")
+                # Look for PK in profile metadata
+                project_dir = os.path.dirname(os.path.dirname(os.path.dirname(sf)))
+                profile_path = os.path.join(project_dir, PersistenceService.STAGE_REFINEMENT, "profile_metadata.json")
+                
+                pk_expected = "id"
+                if os.path.exists(profile_path):
+                    with open(profile_path, "r") as pf:
+                        meta = json.load(pf)
+                        pk_expected = meta.get("primary_keys", {}).get(filename, ["id"])
+                        if isinstance(pk_expected, str): pk_expected = [pk_expected]
+
                 with open(sf, "r", encoding="utf-8") as f:
                     content = f.read()
-                    if "merge(" not in content or "whenMatchedUpdateAll" not in content:
+                    
+                    # Build expected merge condition: "target.k1 = source.k1 AND target.k2 = source.k2"
+                    merge_cond = " AND ".join([f"target.{k} = source.{k}" for k in pk_expected])
+                    
+                    if ".merge(" in content and merge_cond in content:
+                        log.append(f"[OpsAuditor] OK: {os.path.basename(sf)} uses PK '{pk_expected}' for MERGE.")
+                    elif ".merge(" in content:
+                        msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} has MERGE logic but might use wrong keys. Expected: {merge_cond}"
+                        log.append(f"[OpsAuditor] WARNING: {msg}")
+                        results["issues"].append(msg)
+                    else:
                         msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} missing explicit MERGE logic."
                         log.append(f"[OpsAuditor] WARNING: {msg}")
                         # We don't fail for warnings, but we log them
-            except: pass
+            except Exception as e: 
+                log.append(f"[OpsAuditor] Error validating {sf}: {e}")
 
         return results
 

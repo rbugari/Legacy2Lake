@@ -44,6 +44,9 @@ We have recently enhanced the Discovery phase to provide a premium architecture 
 Detailed guides are available in the `/docs` folder:
 -   [Fase 1: Triage & Discovery](docs/PHASE_1_TRIAGE.md)
 -   [Fase 2: Drafting & Code Generation](docs/PHASE_2_DRAFTING.md)
+-   [Fase 3: Refinement & Medallion Architecture](docs/PHASE_3_REFINEMENT.md)
+-   [Fase 4: Governance & Compliance](docs/PHASE_4_GOVERNANCE.md)
+-   [Technical Specification](docs/SPECIFICATION.md)
 
 ---
 *Shift-T: Automating de-complexification.*

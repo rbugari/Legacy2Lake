@@ -21,10 +21,13 @@ En esta etapa final, el sistema genera la "Partida de Nacimiento" y el "Pasaport
 La fase de gobernanza es principalmente un servicio de agregación y empaquetado de metadatos persistidos durante todo el workflow.
 
 ### 1. Certification Engine (`get_certification_report`)
-Este servicio escanea el directorio `Refined/` para extraer métricas reales:
+Este servicio escanea el directorio `Refinement/` para extraer métricas reales:
 *   **Recuento de Activos:** Cuántos scripts se generaron para cada capa Medallion.
 *   **Volumetría de Código:** Tamaño total de la nueva base de código.
-*   **Compliance Score:** Un puntaje dinámico basado en la existencia de la capa de valor (Gold) y la validación de los agentes críticos.
+*   **Compliance Score:** Un puntaje dinámico que valida:
+    *   Existencia de la capa Gold.
+    *   Validación de idempotencia (`MERGE` vs claves primarias detectadas).
+    *   Ausencia de credenciales hardcodeadas.
 
 ### 2. Lineage Mapper (`_generate_lineage`)
 Utiliza una heurística basada en los metadatos de los assets originales para mapear el flujo de datos:

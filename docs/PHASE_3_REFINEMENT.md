@@ -35,29 +35,35 @@ El "pulidor" de código. Aplica transformaciones de bajo nivel:
 *   **Security Injection:** Reemplaza cualquier rastro de configuración manual por llamadas seguras a *Secret Scopes*.
 *   **Data Quality:** Añade bloques de validación de esquemas (`.cast()`) obligatorios.
 
-### 4. Ops Auditor (Agent O)
-Valida la "Disponibilidad Operativa". Genera archivos de configuración de infraestructura (como YAMLs para orquestadores) y realiza un check final de que el proyecto puede ejecutarse en un entorno productivo.
+## 4. Ops Auditor: Gobernanza y Calidad
+
+El auditor garantiza que el código cumpla con las "Golden Rules" de Shift-T antes de pasar a producción:
+
+### ✅ Reglas de Oro (The Golden Rules)
+1.  **Seguridad**: Credenciales reemplazadas por `dbutils.secrets.get()`.
+2.  **Idempotencia**: Implementación estricta de `MERGE` (Upsert) en Silver/Gold.
+3.  **Dynamic Key Detection**:
+    *   El sistema detecta automáticamente claves compuestas analizando `dropDuplicates(['A','B'])` o `Window.partitionBy`.
+    *   Esto genera condiciones `MERGE` precisas: `tgt.A=src.A AND tgt.B=src.B`.
+4.  **Optimización**: Inyección de `OPTIMIZE` y `ZORDER` en claves de alta cardinalidad.
 
 ---
 
 ## 🚀 Resultados del Proceso
-Al finalizar el pipeline de refinamiento, el directorio de tu proyecto incluirá una carpeta `Refined/` con la siguiente estructura:
+Al finalizar el pipeline de refinamiento, el directorio `Refinement` (Stage 3) contendrá:
 
 ```text
 Project_Name/
-├── Refined/
-│   ├── Bronze/       # Ingesta Cruda
-│   ├── Silver/       # Datos Limpios y Curados
-│   └── Gold/         # Vistas de Negocio
-├── refinement.log    # Historial detallado del proceso
-└── profile_metadata  # Estadísticas de la arquitectura
+├── Refinement/
+│   ├── Bronze/       # Ingesta Cruda (+metadata)
+│   ├── Silver/       # Limpieza, Deduplicación y MERGE
+│   └── Gold/         # Agregaciones de Negocio
+├── refinement.log    # Trazabilidad completa
+└── profile_metadata  # Estadísticas y claves detectadas
 ```
 
----
-
 ## ⏭️ Próximos Pasos: Certificación y Entrega
-
-Una vez que el refinamiento ha terminado con éxito, el sistema habilita el botón de transición final hacia la **Fase 4: Governance**, donde se generará el certificado de modernización y el paquete de exportación definitivo.
+Una vez validado por el Ops Auditor (verificando que la lógica MERGE coincida con las claves primarias detectadas), el proyecto está listo para la **Fase 4: Governance**.
 
 ---
 *Shift-T Documentation Framework v1.0 - Stage 3*

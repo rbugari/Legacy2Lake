@@ -191,6 +191,18 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                     </div>
                 </div>
 
+                {/* Visual Lineage Section */}
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
+                    <h3 className="text-xl font-bold mb-8 flex items-center gap-2">
+                        <TrendingUp size={20} className="text-indigo-500" /> Medallion Lineage Mapping
+                    </h3>
+                    <div className="space-y-12 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                        {report?.lineage?.map((item: any, idx: number) => (
+                            <LineageRow key={idx} item={item} />
+                        ))}
+                    </div>
+                </div>
+
                 {/* Final Footer CTA */}
                 <div className="flex flex-col items-center justify-center py-10 text-center space-y-4 border-t border-gray-100 dark:border-gray-800">
                     <div className="w-16 h-1 w-16 bg-gray-200 dark:bg-gray-800 rounded-full mb-4" />
@@ -250,6 +262,49 @@ function ArtifactLink({ label, size }: any) {
                 </div>
             </div>
             <ArrowRight size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+        </div>
+    );
+}
+function LineageRow({ item }: any) {
+    return (
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800">
+            <LineageNode label="Source File" name={item.source} icon={<FileText size={14} />} color="gray" />
+            <LineageConnector />
+            <LineageNode label="Bronze Delta" name={item.targets.bronze} icon={<Database size={14} />} color="blue" />
+            <LineageConnector />
+            <LineageNode label="Silver Clean" name={item.targets.silver} icon={<ShieldCheck size={14} />} color="indigo" />
+            <LineageConnector />
+            <LineageNode label="Gold Semantic" name={item.targets.gold} icon={<TrendingUp size={14} />} color="green" />
+        </div>
+    );
+}
+
+function LineageNode({ label, name, icon, color }: any) {
+    const colors: any = {
+        gray: "bg-gray-500",
+        blue: "bg-blue-500",
+        indigo: "bg-indigo-500",
+        green: "bg-green-500"
+    };
+
+    return (
+        <div className="flex flex-col items-center gap-2 min-w-[140px]">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{label}</span>
+            <div className={`p-3 rounded-2xl ${colors[color]} text-white shadow-lg flex items-center gap-2 w-full justify-center`}>
+                {icon}
+                <span className="text-[11px] font-bold truncate max-w-[120px]">{name.split('.').pop()}</span>
+            </div>
+            <span className="text-[9px] text-gray-500 font-mono truncate max-w-[140px] opacity-60">{name}</span>
+        </div>
+    );
+}
+
+function LineageConnector() {
+    return (
+        <div className="hidden md:flex flex-1 items-center justify-center">
+            <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-700 to-transparent relative">
+                <ArrowRight size={12} className="absolute right-0 -top-[5px] text-gray-300 dark:text-gray-700" />
+            </div>
         </div>
     );
 }

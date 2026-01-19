@@ -1,0 +1,92 @@
+{
+    "analyzed_files": [
+        "DimCategory.py",
+        "DimCustomers.py",
+        "DimEmployee.py",
+        "DimProduct.py",
+        "DimShipper.py",
+        "DimSupplier.py",
+        "FactSales.py",
+        "MockComplexTable.py"
+    ],
+    "shared_connections": {},
+    "table_metadata": {
+        "DimCategory.py": {
+            "pk": [
+                "categoryid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimCustomers.py": {
+            "pk": [
+                "custid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimEmployee.py": {
+            "pk": [
+                "empid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimProduct.py": {
+            "pk": [
+                "ProductID"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimShipper.py": {
+            "pk": [
+                "shipperid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimSupplier.py": {
+            "pk": [
+                "supplierid"
+            ],
+            "type": "DIMENSION"
+        },
+        "FactSales.py": {
+            "pk": [
+                "id"
+            ],
+            "type": "FACT"
+        },
+        "MockComplexTable.py": {
+            "pk": [
+                "Region",
+                "EmpID"
+            ],
+            "type": "DIMENSION"
+        }
+    },
+    "primary_keys": {
+        "DimCategory.py": [
+            "categoryid"
+        ],
+        "DimCustomers.py": [
+            "custid"
+        ],
+        "DimEmployee.py": [
+            "empid"
+        ],
+        "DimProduct.py": [
+            "ProductID"
+        ],
+        "DimShipper.py": [
+            "shipperid"
+        ],
+        "DimSupplier.py": [
+            "supplierid"
+        ],
+        "FactSales.py": [
+            "id"
+        ],
+        "MockComplexTable.py": [
+            "Region",
+            "EmpID"
+        ]
+    },
+    "total_files": 8
+}

@@ -15,8 +15,9 @@ Shift-T orquesta la modernización a través de cuatro etapas críticas. Haz cli
 4.  **[Fase 4: Governance & Compliance](PHASE_4_GOVERNANCE.md)**
     *   Generación de certificados de modernización, mapeo de linaje de datos y entrega del Bundle final de solución.
 
-## 🛠 Backlog y Futuro
-*   **[Backlog Post-Triage](BACKLOG_POST_TRIAGE.md):** Mejoras identificadas y pospuestas para futuras versiones.
+## 🛠 Technical Specs & Backlog
+*   **[Technical Specification (Estadio 3)](SPECIFICATION.md):** Especificación maestra y "Golden Rules".
+*   **[Backlog Post-Triage](BACKLOG_POST_TRIAGE.md):** Mejoras identificadas y pospuestas.
 
 ---
 *Shift-T Documentation Framework v1.0*

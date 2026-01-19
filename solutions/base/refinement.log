@@ -1,21 +1,33 @@
 [Profiler] Starting analysis...
 [Profiler] Target Project Directory: C:\proyectos_dev\ShifT\solutions\base
-[Profiler] Found 7 Python files in Output.
+[Profiler] Found 8 Python files in Drafting.
 [Profiler] Analyzing file: DimCategory.py...
+[Profiler]   > Detected PK candidates for DimCategory.py (DIMENSION): ['categoryid']
 [Profiler] Analyzing file: DimCustomers.py...
+[Profiler]   > Detected PK candidates for DimCustomers.py (DIMENSION): ['custid']
 [Profiler] Analyzing file: DimEmployee.py...
+[Profiler]   > Detected PK candidates for DimEmployee.py (DIMENSION): ['empid']
 [Profiler] Analyzing file: DimProduct.py...
+[Profiler]   > Detected PK candidates for DimProduct.py (DIMENSION): ['ProductID']
 [Profiler] Analyzing file: DimShipper.py...
+[Profiler]   > Detected PK candidates for DimShipper.py (DIMENSION): ['shipperid']
 [Profiler] Analyzing file: DimSupplier.py...
+[Profiler]   > Detected PK candidates for DimSupplier.py (DIMENSION): ['supplierid']
 [Profiler] Analyzing file: FactSales.py...
-[Profiler] Profile metadata saved to C:\proyectos_dev\ShifT\solutions\base\Refined\profile_metadata.json
-[Profiler] Complete. Analyzed 7 files.
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[Profiler]   > Detected PK candidates for FactSales.py (FACT): ['id']
+[Profiler] Analyzing file: MockComplexTable.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[Profiler DEBUG] dropDuplicates MATCH: "Region", "EmpID"
+[Profiler]   > Detected PK candidates for MockComplexTable.py (DIMENSION): ['Region', 'EmpID']
+[Profiler] Profile metadata saved to C:\proyectos_dev\ShifT\solutions\base\Refinement\profile_metadata.json
+[Profiler] Complete. Analyzed 8 files.
 [Architect] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...
 [Architect] Solutions Directory: C:\proyectos_dev\ShifT\solutions\base
 [Architect] Ensuring Medallion folder structure (Bronze/Silver/Gold)...
 [Architect] Generated: config.py
 [Architect] Generated: utils.py
-[Architect] Processing 7 source files for Medallion segmentation...
+[Architect] Processing 8 source files for Medallion segmentation...
 [Architect] Transforming DimCategory.py -> Bronze & Silver layers
 [Architect] Transforming DimCustomers.py -> Bronze & Silver layers
 [Architect] Transforming DimEmployee.py -> Bronze & Silver layers
@@ -23,10 +35,11 @@
 [Architect] Transforming DimShipper.py -> Bronze & Silver layers
 [Architect] Transforming DimSupplier.py -> Bronze & Silver layers
 [Architect] Transforming FactSales.py -> Bronze & Silver layers
+[Architect] Transforming MockComplexTable.py -> Bronze & Silver layers
 [Architect] Medallion structure created.
 [Refactoring] Applying Spark Optimizations and Security Controls...
 [Refactoring] Scanning generated files for optimization candidates...
-[Refactoring] Optimizing BRONZE layer (7 files)...
+[Refactoring] Optimizing BRONZE layer (8 files)...
 [Refactoring]   > DimCategory_bronze.py: Added Z-Order hint
 [Refactoring]   > DimCategory_bronze.py: Validated Secret Scope usage
 [Refactoring]   > DimCustomers_bronze.py: Added Z-Order hint
@@ -41,7 +54,9 @@
 [Refactoring]   > DimSupplier_bronze.py: Validated Secret Scope usage
 [Refactoring]   > FactSales_bronze.py: Added Z-Order hint
 [Refactoring]   > FactSales_bronze.py: Validated Secret Scope usage
-[Refactoring] Optimizing SILVER layer (7 files)...
+[Refactoring]   > MockComplexTable_bronze.py: Added Z-Order hint
+[Refactoring]   > MockComplexTable_bronze.py: Validated Secret Scope usage
+[Refactoring] Optimizing SILVER layer (8 files)...
 [Refactoring]   > DimCategory_silver.py: Added Z-Order hint
 [Refactoring]   > DimCategory_silver.py: Validated Secret Scope usage
 [Refactoring]   > DimCustomers_silver.py: Added Z-Order hint
@@ -56,7 +71,9 @@
 [Refactoring]   > DimSupplier_silver.py: Validated Secret Scope usage
 [Refactoring]   > FactSales_silver.py: Added Z-Order hint
 [Refactoring]   > FactSales_silver.py: Validated Secret Scope usage
-[Refactoring] Optimizing GOLD layer (7 files)...
+[Refactoring]   > MockComplexTable_silver.py: Added Z-Order hint
+[Refactoring]   > MockComplexTable_silver.py: Validated Secret Scope usage
+[Refactoring] Optimizing GOLD layer (8 files)...
 [Refactoring]   > DimCategory_gold.py: Added Z-Order hint
 [Refactoring]   > DimCategory_gold.py: Validated Secret Scope usage
 [Refactoring]   > DimCustomers_gold.py: Added Z-Order hint
@@ -71,12 +88,22 @@
 [Refactoring]   > DimSupplier_gold.py: Validated Secret Scope usage
 [Refactoring]   > FactSales_gold.py: Added Z-Order hint
 [Refactoring]   > FactSales_gold.py: Validated Secret Scope usage
-[Refactoring] Optimized 21 files.
+[Refactoring]   > MockComplexTable_gold.py: Added Z-Order hint
+[Refactoring]   > MockComplexTable_gold.py: Validated Secret Scope usage
+[Refactoring] Optimized 24 files.
 [OpsAuditor] Validating operational readiness and generating DevOps assets...
 [OpsAuditor] Starting Operational Audit...
-[OpsAuditor] OK: BRONZE layer contains 7 files.
-[OpsAuditor] OK: SILVER layer contains 7 files.
-[OpsAuditor] OK: GOLD layer contains 7 files.
+[OpsAuditor] OK: BRONZE layer contains 8 files.
+[OpsAuditor] OK: SILVER layer contains 8 files.
+[OpsAuditor] OK: GOLD layer contains 8 files.
+[OpsAuditor] OK: DimCategory_silver.py uses PK '['categoryid']' for MERGE.
+[OpsAuditor] OK: DimCustomers_silver.py uses PK '['custid']' for MERGE.
+[OpsAuditor] OK: DimEmployee_silver.py uses PK '['empid']' for MERGE.
+[OpsAuditor] OK: DimProduct_silver.py uses PK '['ProductID']' for MERGE.
+[OpsAuditor] OK: DimShipper_silver.py uses PK '['shipperid']' for MERGE.
+[OpsAuditor] OK: DimSupplier_silver.py uses PK '['supplierid']' for MERGE.
+[OpsAuditor] OK: FactSales_silver.py uses PK '['id']' for MERGE.
+[OpsAuditor] OK: MockComplexTable_silver.py uses PK '['Region', 'EmpID']' for MERGE.
 [OpsAuditor] Generating Infrastructure-as-Code (IaC) manifests...
 [OpsAuditor] Generating Operational Handbook (README_DEVOPS.md)...
 [OpsAuditor] Audit Complete.

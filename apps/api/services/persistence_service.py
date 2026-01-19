@@ -9,6 +9,11 @@ class PersistenceService:
     # Calculated relative to this file to be robust against CWD changes
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "solutions"))
 
+    # Stage-aligned Directory Constants
+    STAGE_TRIAGE = "Triage"     # Was Input/Source
+    STAGE_DRAFTING = "Drafting"   # Was Output
+    STAGE_REFINEMENT = "Refinement" # Was Refined
+
     @classmethod
     def ensure_solution_dir(cls, solution_name: str) -> str:
         """Creates a directory for the specific solution if it doesn't exist."""
@@ -103,19 +108,23 @@ class PersistenceService:
                 # Re-create the empty dir
                 project_dir = cls.ensure_solution_dir(project_id)
 
+            # Ensure Triage directory exists for source files
+            triage_dir = os.path.join(project_dir, cls.STAGE_TRIAGE)
+            os.makedirs(triage_dir, exist_ok=True)
+
             if source_type == "zip" and file_path:
-                # Extract ZIP
+                # Extract ZIP into Triage
                 with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    zip_ref.extractall(project_dir)
+                    zip_ref.extractall(triage_dir)
                 # Cleanup temporary ZIP
                 if os.path.exists(file_path):
                     os.remove(file_path)
-                print(f"Project {project_id} initialized from ZIP.")
+                print(f"Project {project_id} initialized from ZIP into {cls.STAGE_TRIAGE}.")
                 
             elif source_type == "github" and github_url:
-                # Git Clone
-                subprocess.run(["git", "clone", github_url, project_dir], check=True)
-                print(f"Project {project_id} initialized from GitHub.")
+                # Git Clone into Triage
+                subprocess.run(["git", "clone", github_url, triage_dir], check=True)
+                print(f"Project {project_id} initialized from GitHub into {cls.STAGE_TRIAGE}.")
                 
             return True
         except Exception as e:
