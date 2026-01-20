@@ -1,0 +1,7 @@
+bundle:
+  name: shift_t_c522d48a-0329-4264-85ac-58bd0c8c316c
+resources:
+  jobs:
+    medallion_pipeline:
+      name: 'Shift-T: c522d48a-0329-4264-85ac-58bd0c8c316c Pipeline'
+      tasks: []

@@ -1,66 +1,48 @@
-# Fase 1: Triage & Discovery (Guía Completa)
+# Phase 1: Triage & Discovery (Complete Guide)
 
-## 📌 Introducción
-La fase de **Triage** es el primer paso crítico en el proceso de modernización de Shift-T. Su objetivo es transformar un repositorio de código fuente "ruidoso" y complejo (como un conjunto de paquetes SSIS antiguos) en una arquitectura funcional clara, priorizando los activos que realmente generan valor de negocio.
-
----
-
-## 👨‍💻 Para el Usuario: ¿Qué sucede aquí?
-
-En esta etapa, el sistema realiza un "escaneo inteligente" de tu proyecto para ayudarte a decidir qué migrar y cómo está todo conectado.
-
-### Conceptos Clave
-*   **CORE:** Procesos vitales que contienen lógica de negocio y deben ser migrados a PySpark.
-*   **SUPPORT:** Dependencias, tablas de configuración o procesos auxiliares.
-*   **IGNORED:** Archivos de log, configuraciones locales o código redundante que no debe ensuciar la nueva arquitectura.
-
-### Herramientas a tu Disposición
-1.  **Vista de Gráfico:** Una visualización interactiva de tu arquitectura. Puedes arrastrar activos, borrar nodos y auto-ordenar la malla (Vertical/Horizontal) para entender el flujo de datos.
-2.  **Inventario (Grilla):** Una lista detallada donde puedes editar masivamente las categorías de cada archivo.
-3.  **Refinado de Prompt:** Para usuarios avanzados, puedes darle "instrucciones" a la IA (ej: "Ignora todo lo que esté en la carpeta /logs") y volver a procesar el triaje.
-4.  **Modo Maximizador:** Oculta toda la interfaz para centrarte exclusivamente en el diseño de la malla técnica.
+## 📌 Introduction
+The **Triage** phase is the first critical step in the Legacy2Lake modernization process. Its goal is to transform a "noisy" and complex source repository (like a set of old SSIS packages) into a clear functional architecture, prioritizing assets that generate business value.
 
 ---
 
-## ⚙️ Para el Equipo Técnico: Arquitectura y Lógica
+## 👨‍💻 For the User: What happens here?
+In this stage, the system performs an "intelligent scan" of your project to help you decide what to migrate and how everything is connected.
 
-El proceso de Triage es una orquestación entre una capa de escaneo determinista y un modelo de razonamiento agentic.
+### Key Concepts
+*   **CORE:** Vital processes that contain business logic and must be migrated to the target technology.
+*   **SUPPORT:** Dependencies, configuration tables, or auxiliary processes.
+*   **IGNORED:** Log files, local configs, or redundant code that should not clutter the new architecture.
 
-### 1. El Scanner (Discovery Engine)
-Ubicado en `DiscoveryService`, este componente escrito en Python realiza un análisis estático del sistema de archivos local o del repositorio clonado.
-*   **Extracción de Firmas:** No solo lee nombres; analiza el contenido XML/SQL para identificar "firmas" (ej: Tareas de SQL, Transformaciones de Datos, Scripts).
-*   **Generación de Manifiesto:** Crea un JSON estructurado que resume el inventario técnico sin enviar todo el código fuente masivo a la LLM, optimizando costos y contexto.
-
-### 2. El Agente A (Mesh Architect)
-Es el "cerebro" de esta fase. Recibe el manifiesto y utiliza un **System Prompt** especializado para:
-*   **Clasificar:** Decide si un archivo es `CORE`, `SUPPORT` o `IGNORED`.
-*   **Relacionar:** Infiere dependencias (`READS_FROM`, `WRITES_TO`, `SEQUENTIAL`) basándose en los metadatos y nombres de los activos.
-*   **Observar:** Genera "Triage Observations", que son insights sobre deudas técnicas o riesgos detectados en el código fuente.
-
-### 3. Orquestación del Gráfico y Layout
-La visualización utiliza **React Flow** en el frontend, pero la inteligencia del ordenado reside en **Dagre**:
-*   **Dagre Algorithm:** Implementa un layout de gráfico jerárquico (Directed Acyclic Graph) para asegurar que las dependencias fluyan de manera lógica y sin solapamientos.
-*   **Sincronización:** Cualquier cambio manual en el gráfico (como borrar un nodo) actualiza automáticamente el estado del activo a `IGNORED` en la base de datos (Supabase).
-
-### 4. Persistencia y Reinicio
-*   **PROYECTO_RESET:** Hemos implementado un endpoint `POST /projects/{id}/reset` que realiza una purga selectiva: elimina los activos (`assets`) y las transformaciones (`transformations`) asociadas, devolviendo el proyecto al estado "Discovery".
-*   **Layout Saving:** Las coordenadas de cada nodo se guardan en un registro de tipo `LAYOUT` en Supabase para que tu trabajo de diseño no se pierda al recargar.
+### Tools at your disposal
+1.  **Graph View:** An interactive visualization of your architecture. You can drag assets, delete nodes, and auto-order the mesh (Vertical/Horizontal).
+2.  **Inventory (Grid):** A detailed list where you can batch-edit categories for every file.
+3.  **Prompt Refinement:** For advanced users, you can give "instructions" to the AI and re-process the triage.
+4.  **Maximize Mode:** Hides the interface to focus exclusively on technical mesh design.
 
 ---
 
-## 🎨 Diseño y UX
-Shift-T utiliza un sistema de diseño basado en **Glassmorphism** y **Atomic Design**:
-*   **Toolbars Dinámicas:** Las barras de herramientas son icon-only y se activan al hover para maximizar el "espacio de pensamiento".
-*   **Modo Fullscreen:** Un estado de React que altera el Z-Index y las dimensiones del contenedor principal para cubrir el viewport (`fixed inset-0`), permitiendo una inmersión total en la arquitectura.
+## ⚙️ For the Technical Team: Architecture and Logic
+The Triage process is an orchestration between a deterministic scanning layer and an agentic reasoning model.
 
+### 1. The Scanner (Discovery Engine)
+Located in `DiscoveryService`, this component performs static analysis of the local or cloned repository.
+*   **Signature Extraction:** It identifies component "signatures" (SQL tasks, Data Flow transforms) within XML/SQL content.
+*   **Manifest Generation:** Creates a structured JSON summary of the technical inventory without sending massive source code to the LLM.
 
-## ⏭️ Próximos Pasos: Hacia la Generación
+### 2. Detective Agent (Mesh Architect)
+The "brain" of this phase. It receives the manifest and uses a specialized **System Prompt** to classify files and infer dependencies (`READS_FROM`, `WRITES_TO`, `SEQUENTIAL`).
 
-Una vez que has validado tu inventario y diseñado tu malla en esta Fase 1, estás listo para "aprobar" el plan.
+### 3. Graph Orchestration & Layout
+The visualization uses **React Flow**, while the layout intelligence resides in the **Dagre** algorithm, ensuring dependencies flow logically without overlaps.
 
-1.  **Lock Scope:** Al hacer clic en "Approve Triage", el sistema bloquea el inventario.
-2.  **Transition:** El proyecto avanza al estado `DRAFTING` (Stage 2).
-3.  **Generación:** Se habilita el motor de **Code Generation** descrito en detalle en [Fase 2: Drafting & Code Generation](PHASE_2_DRAFTING.md).
+### 4. Persistence & Reset
+*   **Project Reset**: Selective purge via `POST /projects/{id}/reset` to return the project to the Discovery state.
+*   **Layout Saving**: Node coordinates are saved in the Metadata Store.
 
 ---
-*Shift-T Documentation Framework v1.1*
+
+## 🎨 Design and UX
+Legacy2Lake uses a design system based on **Glassmorphism** and **Atomic Design**, maximizing the user's focus through dynamic toolbars and immersion modes.
+
+## ⏭️ Next Steps: Moving to Synthesis
+Once your inventory is validated and your mesh is designed, you are ready to "Approve" the plan and transition to **Stage 2: Drafting**.

@@ -1,0 +1,11 @@
+# Reading from {{ params.source_object }}
+# Discovery: {{ params.schema_discovery }}
+{% if params.query %}
+{{ source_alias }} = spark.sql("""
+{{ params.query }}
+""")
+{% else %}
+{{ source_alias }} = spark.read.format("delta").table("{{ params.source_object }}")
+{% endif %}
+
+display({{ source_alias }})

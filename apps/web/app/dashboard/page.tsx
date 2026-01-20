@@ -2,11 +2,12 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import TranspilationView from "../components/stages/TranspilationView";
+import { API_BASE_URL } from "../lib/config";
+// import TranspilationView from "../components/stages/TranspilationView";
 import DraftingView from "../components/stages/DraftingView";
 import RefinementView from "../components/stages/RefinementView";
 import WorkflowToolbar from "../components/WorkflowToolbar";
-import { Upload, Github, FolderPlus, X, Trash2, RefreshCw } from "lucide-react";
+import { Upload, Github, FolderPlus, X, Trash2, RefreshCw, Settings } from "lucide-react";
 
 export default function Dashboard() {
     const [projects, setProjects] = useState<any[]>([]);
@@ -26,7 +27,7 @@ export default function Dashboard() {
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const response = await fetch("http://localhost:8000/projects");
+                const response = await fetch(`${API_BASE_URL}/projects`);
                 if (response.ok) {
                     const data = await response.json();
                     // Basic mapping if needed, otherwise rely on matching shape
@@ -71,7 +72,7 @@ export default function Dashboard() {
         }
 
         try {
-            const response = await fetch("http://localhost:8000/projects/create", {
+            const response = await fetch(`${API_BASE_URL}/projects/create`, {
                 method: "POST",
                 body: formData,
             });
@@ -103,7 +104,7 @@ export default function Dashboard() {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/projects/${projectId}`, {
+            const response = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
                 method: 'DELETE'
             });
 
@@ -183,7 +184,7 @@ export default function Dashboard() {
                                                     onClick={async (e) => {
                                                         e.preventDefault();
                                                         if (!confirm("¿Resetear proyecto a etapa TRIAGE? Se perderá el progreso.")) return;
-                                                        await fetch(`http://localhost:8000/projects/${p.id}/reset`, { method: "POST" });
+                                                        await fetch(`${API_BASE_URL}/projects/${p.id}/reset`, { method: "POST" });
                                                         window.location.reload(); // Simple reload to refresh state
                                                     }}
                                                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors z-10"
@@ -193,6 +194,13 @@ export default function Dashboard() {
                                                 </button>
                                             )}
 
+                                            <Link
+                                                href={`/workspace/${p.id}/settings`}
+                                                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors z-10"
+                                                title="Configuración"
+                                            >
+                                                <Settings size={16} />
+                                            </Link>
                                             <button
                                                 onClick={(e) => handleDeleteProject(e, p.id)}
                                                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors z-10"

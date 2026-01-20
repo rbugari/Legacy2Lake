@@ -153,20 +153,20 @@ class PersistenceService:
                         node = {
                             "name": entry.name,
                             "path": entry.path, # Absolute path, maybe dangerous to expose but needed for read
-                            "type": "directory" if entry.is_dir() else "file",
+                            "type": "folder" if entry.is_dir() else "file",
                             "last_modified": entry.stat().st_mtime
                         }
                         if entry.is_dir():
                             node["children"] = _scan_dir(entry.path)
                             # Sort: folders first, then files
-                            node["children"].sort(key=lambda x: (x["type"] != "directory", x["name"]))
+                            node["children"].sort(key=lambda x: (x["type"] != "folder", x["name"]))
                             
                         children.append(node)
             except Exception as e:
                 print(f"Error scanning {path}: {e}")
                 
             # Sort: folders first, then files
-            children.sort(key=lambda x: (x["type"] != "directory", x["name"]))
+            children.sort(key=lambda x: (x["type"] != "folder", x["name"]))
             return children
 
         return _scan_dir(solution_path)
@@ -235,16 +235,22 @@ class SupabasePersistence:
 
     async def get_project_name_by_id(self, project_id: str) -> Optional[str]:
         """Resolves a project UUID to its name."""
-        res = self.client.table("projects").select("name").eq("id", project_id).execute()
-        if res.data:
-            return res.data[0]["name"]
+        try:
+            res = self.client.table("projects").select("name").eq("id", project_id).execute()
+            if res.data:
+                return res.data[0]["name"]
+        except Exception:
+            pass
         return None
 
     async def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
         """Returns project metadata (name, repo_url, status, stage)."""
-        res = self.client.table("projects").select("name, repo_url, status, stage").eq("id", project_id).execute()
-        if res.data:
-            return res.data[0]
+        try:
+            res = self.client.table("projects").select("name, repo_url, status, stage").eq("id", project_id).execute()
+            if res.data:
+                return res.data[0]
+        except Exception:
+            pass
         return None
 
     async def save_asset(self, project_id: str, filename: str, content: str, asset_type: str, file_hash: str, source_path: str = None) -> str:
@@ -280,13 +286,22 @@ class SupabasePersistence:
     async def batch_save_assets(self, project_id: str, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Upserts multiple assets in a single call. Blocks if project is in DRAFTING mode."""
         
+        if not project_id or project_id == "undefined":
+            print(f"Error: batch_save_assets called with invalid project_id: {project_id}")
+            return []
+
         # 1. State Check
         # Check if project is in DRAFTING mode (Read-Only Inventory)
-        proj_res = self.client.table("projects").select("status").eq("id", project_id).execute()
-        if proj_res.data:
-            current_status = proj_res.data[0].get("status", "TRIAGE")
-            if current_status == "DRAFTING":
-                raise ValueError("Project is in DRAFTING mode. Asset Inventory is locked. Unlock Triege first.")
+        try:
+             proj_res = self.client.table("projects").select("status").eq("id", project_id).execute()
+             if proj_res.data:
+                 current_status = proj_res.data[0].get("status", "TRIAGE")
+                 if current_status == "DRAFTING":
+                     raise ValueError("Project is in DRAFTING mode. Asset Inventory is locked. Unlock Triege first.")
+        except Exception as e:
+             # If ID is invalid UUID, this will catch it too
+             print(f"Error checking status for {project_id}: {e}")
+             return []
 
         if not assets:
             return []
@@ -440,4 +455,19 @@ class SupabasePersistence:
          except:
              pass
          return "TRIAGE"
+
+    async def update_project_settings(self, project_id: str, settings: Dict[str, Any]) -> bool:
+        """Updates the project settings JSONB column."""
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await self.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+
+        try:
+            self.client.table("projects").update({"settings": settings}).eq("id", project_uuid).execute()
+            return True
+        except Exception as e:
+            print(f"Error updating settings for {project_id}: {e}")
+            return False
 

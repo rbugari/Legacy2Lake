@@ -4,7 +4,7 @@ import json
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
 from .persistence_service import PersistenceService
-from .ssis_parser import SSISParser
+from apps.utm.cartridges.ssis.parser import SSISCartridge
 
 class DiscoveryService:
     @staticmethod
@@ -87,9 +87,16 @@ class DiscoveryService:
                 # SSIS (DTSX)
                 if ext == 'dtsx':
                     try:
-                        parser = SSISParser(content_str)
-                        summary = parser.get_summary()
-                        medulla = parser.get_logical_medulla()
+                    try:
+                        parser = SSISCartridge()
+                        meta_obj = parser.parse(file_path)
+                        
+                        summary = meta_obj.metadata.get("summary", {})
+                        medulla = {
+                            "data_flow_logic": meta_obj.components,
+                            "control_flow_topology": meta_obj.metadata.get("control_flow_topology"),
+                            "constraints": meta_obj.metadata.get("constraints")
+                        }
                         
                         signatures.append("SSIS Package (Optimized Scan)")
                         if summary.get("executable_count", 0) > 0:
@@ -100,7 +107,7 @@ class DiscoveryService:
                         metadata["connections"] = summary.get("connection_managers", [])
                         
                         # Invocations (semantic detection)
-                        for comp in medulla.get("data_flow_logic", []):
+                        for comp in meta_obj.components:
                             if comp.get("intent") == "SOURCE":
                                 invocations.append(f"Reads from: {comp.get('name')}")
                             if comp.get("intent") == "DESTINATION":

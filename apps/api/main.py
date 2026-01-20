@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import shutil
 from typing import Dict, Any, List, Optional
-from services.ssis_parser import SSISParser
+
 from services.agent_a_service import AgentAService
 from services.graph_service import GraphService
 from services.agent_c_service import AgentCService
@@ -19,12 +20,16 @@ from supabase import create_client, Client
 
 load_dotenv()
 
-app = FastAPI(title="Shift-T API")
+from apps.api.routers import config
+
+app = FastAPI(title="Legacy2Lake API")
+
+app.include_router(config.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=["http://localhost:3005", "http://localhost:3000", "*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,7 +68,7 @@ supabase: Client = create_client(url, key)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Shift-T API"}
+    return {"message": "Welcome to Legacy2Lake API"}
 
 @app.post("/ingest/dtsx")
 async def ingest_dtsx(file: UploadFile = File(...)):
@@ -232,6 +237,13 @@ async def generate_governance(project_name: str, mesh: Dict[str, Any], context: 
 async def update_stage(project_id: str, payload: Dict[str, str]):
     db = SupabasePersistence()
     success = await db.update_project_stage(project_id, payload.get("stage"))
+    return {"success": success}
+
+@app.patch("/projects/{project_id}/settings")
+async def update_project_settings(project_id: str, settings: Dict[str, Any]):
+    """Updates project-level settings (e.g. Source/Target Tech)."""
+    db = SupabasePersistence()
+    success = await db.update_project_settings(project_id, settings)
     return {"success": success}
 
 @app.post("/projects/{project_id}/layout")
@@ -569,7 +581,13 @@ async def list_project_files(project_id: str):
         if n: project_name = n
         
     tree = PersistenceService.get_project_files(project_name)
-    return tree
+    # Wrap in a root node for the frontend FileExplorer
+    return {
+        "name": project_name,
+        "type": "folder",
+        "path": project_name,
+        "children": tree
+    }
 
 @app.get("/projects/{project_id}/files/content")
 async def get_file_content(project_id: str, path: str):
@@ -616,6 +634,21 @@ async def trigger_orchestration(payload: Dict[str, Any]):
     result = await orchestrator.run_full_migration(limit=limit)
     print("DEBUG: Migration complete.")
     return result
+
+@app.get("/projects/{project_id}/logs")
+async def get_project_logs(project_id: str):
+    """Returns the orchestration logs for the project."""
+    db = SupabasePersistence()
+    project_name = project_id
+    if "-" in project_id:
+        n = await db.get_project_name_by_id(project_id)
+        if n: project_name = n
+        
+    try:
+        content = PersistenceService.read_file_content(project_name, "migration.log")
+        return {"logs": content}
+    except Exception:
+        return {"logs": ""}
 
 @app.post("/projects/{project_id}/reset")
 async def reset_project(project_id: str):
@@ -687,13 +720,17 @@ async def start_refinement(payload: dict):
     db = SupabasePersistence()
     project_name = project_id
     if "-" in project_id:
+        # Resolve UUID to Name (e.g. "c522..." -> "base")
         n = await db.get_project_name_by_id(project_id)
         if n: project_name = n
 
-    # In a real async system, this would be a background task. 
-    # For MVP, we run synchronously to show immediate results.
+    print(f"DEBUG: Starting Refinement for {project_id} (Resolved Folder: {project_name})")
+    
+    # Run synchronous orchestrator in threadpool to enforce async non-blocking behavior
     orchestrator = RefinementOrchestrator()
-    result = orchestrator.start_pipeline(project_name)
+    result = await run_in_threadpool(orchestrator.start_pipeline, project_name)
+    
+    print(f"DEBUG: Refinement Complete for {project_id}")
     return result
 
 
@@ -786,4 +823,4 @@ async def export_project(project_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8005)

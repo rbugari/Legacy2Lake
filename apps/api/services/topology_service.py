@@ -1,7 +1,7 @@
 import os
 import json
 from typing import Dict, Any, List
-from services.ssis_parser import SSISParser
+from apps.utm.cartridges.ssis.parser import SSISCartridge
 try:
     from apps.api.utils.logger import logger
 except ImportError:
@@ -47,12 +47,11 @@ class TopologyService:
 
         for p_path in dtsx_files:
             try:
-                with open(p_path, "r", encoding="utf-8") as f:
-                    content = f.read()
+                parser = SSISCartridge()
+                metadata = parser.parse(p_path)
                 
-                parser = SSISParser(content)
-                summary = parser.get_summary()
-                data_flow = parser.get_data_flow_components()
+                summary = metadata.metadata["summary"]
+                data_flow = metadata.components
                 
                 pkg_name = os.path.basename(p_path)
                 

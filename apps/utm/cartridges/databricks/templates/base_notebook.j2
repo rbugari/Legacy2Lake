@@ -1,0 +1,15 @@
+# UTM Generated Notebook (Databricks)
+# Source Tech: {{ metadata.source_tech }}
+# Source Name: {{ metadata.source_name }}
+# Timestamp: {{ generated_at }}
+
+from pyspark.sql import functions as F
+from delta.tables import *
+
+# --- Execution Mesh Logic ---
+
+{% for block in code_blocks %}
+# Step {{ block.step_order }}: {{ block.step_type }}
+{{ block.code }}
+
+{% endfor %}

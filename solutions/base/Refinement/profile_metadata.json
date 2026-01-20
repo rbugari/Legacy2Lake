@@ -4,10 +4,7 @@
         "DimCustomers.py",
         "DimEmployee.py",
         "DimProduct.py",
-        "DimShipper.py",
-        "DimSupplier.py",
-        "FactSales.py",
-        "MockComplexTable.py"
+        "DimShipper.py"
     ],
     "shared_connections": {},
     "table_metadata": {
@@ -40,25 +37,6 @@
                 "shipperid"
             ],
             "type": "DIMENSION"
-        },
-        "DimSupplier.py": {
-            "pk": [
-                "supplierid"
-            ],
-            "type": "DIMENSION"
-        },
-        "FactSales.py": {
-            "pk": [
-                "id"
-            ],
-            "type": "FACT"
-        },
-        "MockComplexTable.py": {
-            "pk": [
-                "Region",
-                "EmpID"
-            ],
-            "type": "DIMENSION"
         }
     },
     "primary_keys": {
@@ -76,17 +54,7 @@
         ],
         "DimShipper.py": [
             "shipperid"
-        ],
-        "DimSupplier.py": [
-            "supplierid"
-        ],
-        "FactSales.py": [
-            "id"
-        ],
-        "MockComplexTable.py": [
-            "Region",
-            "EmpID"
         ]
     },
-    "total_files": 8
+    "total_files": 5
 }

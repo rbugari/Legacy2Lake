@@ -1,0 +1,22 @@
+# Writing to {{ target }}
+# Mode: {{ params.mode }}
+
+{% if params.mode == 'MERGE' %}
+if DeltaTable.isDeltaTable(spark, "{{ target }}"):
+    deltaTable = DeltaTable.forName(spark, "{{ target }}")
+    
+    (deltaTable.alias("target")
+      .merge(
+        {{ source_alias }}.alias("source"),
+        "{% for key in params.primary_keys %}target.{{ key }} = source.{{ key }}{% if not loop.last %} AND {% endif %}{% endfor %}"
+      )
+      .whenMatchedUpdateAll()
+      .whenNotMatchedInsertAll()
+      .execute())
+else:
+    # First load
+    {{ source_alias }}.write.format("delta").saveAsTable("{{ target }}")
+
+{% else %}
+{{ source_alias }}.write.format("delta").mode("{{ params.mode }}").saveAsTable("{{ target }}")
+{% endif %}

@@ -20,7 +20,6 @@ from delta.tables import *
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
-import pyspark.sql.functions as F
 
 # 2. Reading Bronze / Source
 # -- JDBC connection details (replace with your actual values or widgets)
@@ -31,79 +30,69 @@ db_password = dbutils.secrets.get(scope="jdbc-secrets", key="sqlserver-password"
 source_query = "SELECT * FROM Production.Products"
 df_source = spark.read.format("jdbc") \
     .option("url", db_url) \
+    .option("dbtable", f"({source_query}) as src") \
     .option("user", db_user) \
     .option("password", db_password) \
-    .option("dbtable", f"({source_query}) as src") \
     .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver") \
     .load()
 
 # 3. Transformations (Apply Logic)
-# -- No lookups or additional logic specified in task. If business key(s) are known, set below.
+# -- No lookups or additional logic specified in task definition.
+df_staged = df_source
 
 # 3.1 Surrogate Key Generation (STABLE & IDEMPOTENT)
 # SAFE MIGRATION PATTERN: Lookup existing keys, generate new ones only for new members.
+# For DimProduct, assume 'ProductKey' is the surrogate key and 'ProductID' is the business key.
 target_table_name = "dbo.DimProduct"
-bk_cols = ["ProductID"]  # Assuming ProductID is the business key from source
-sk_col = "ProductKey"     # Surrogate key for DimProduct
+bk_cols = ["ProductID"]
+sk_col = "ProductKey"
 
-# 1. Get Existing Keys (Handle if table doesn't exist yet)
 try:
     df_target = spark.read.table(target_table_name).select(*bk_cols, sk_col)
-    max_sk = df_target.agg(F.max(F.col(sk_col))).collect()[0][0] or 0
+    max_sk = df_target.agg(max(col(sk_col))).collect()[0][0] or 0
 except Exception:
     df_target = None
     max_sk = 0
 
-# 2. Join Source with Target to find existing SKs
 if df_target is not None:
-    df_joined = df_source.join(df_target, on=bk_cols, how="left")
+    df_joined = df_staged.join(df_target, on=bk_cols, how="left")
 else:
-    df_joined = df_source.withColumn(sk_col, F.lit(None).cast("integer"))
+    df_joined = df_staged.withColumn(sk_col, lit(None).cast("integer"))
 
-# 3. Generate Keys for New Rows ONLY
 window_spec = Window.orderBy(*bk_cols)
-df_existing = df_joined.filter(F.col(sk_col).isNotNull())
-df_new = df_joined.filter(F.col(sk_col).isNull()).drop(sk_col)  # Drop null SK to regenerate
-df_new = df_new.withColumn(sk_col, F.row_number().over(window_spec) + max_sk)
-
-# 4. Union
-from functools import reduce
+df_existing = df_joined.filter(col(sk_col).isNotNull())
+df_new = df_joined.filter(col(sk_col).isNull()).drop(sk_col)
+df_new = df_new.withColumn(sk_col, row_number().over(window_spec) + max_sk)
 df_with_sk = df_existing.unionByName(df_new)
 
 # 3.2 Unknown Member Handling (For Dimensions)
 def ensure_unknown_member(df):
     # Define the schema for the unknown member
-    unknown_row = {
-        sk_col: -1,
-        bk_cols[0]: -1
-    }
-    # Add all other columns as null
-    for col_name in df.columns:
-        if col_name not in unknown_row:
-            unknown_row[col_name] = None
-    # Check if unknown member exists
-    if df.filter(F.col(sk_col) == -1).count() == 0:
-        df_unknown = spark.createDataFrame([unknown_row], schema=df.schema)
-        df = df.unionByName(df_unknown)
-    return df
+    unknown_dict = {col: -1 if dtype in ["int", "integer"] else None for col, dtype in zip(df.columns, [f.dataType.simpleString() for f in df.schema])}
+    unknown_dict[sk_col] = -1
+    unknown_dict[bk_cols[0]] = -1
+    unknown_row = spark.createDataFrame([unknown_dict], df.schema)
+    if df.filter(col(sk_col) == -1).count() == 0:
+        return df.unionByName(unknown_row)
+    else:
+        return df
 
-df_with_sk = ensure_unknown_member(df_with_sk)
+df_final = ensure_unknown_member(df_with_sk)
 
 # 4. Mandatory Type Casting (STRICT)
-# -- You must provide the target schema for strict casting. Since the schema is not provided, we infer from source and cast ProductKey to Integer.
-# -- In production, replace this with explicit schema mapping from the target schema JSON.
-from pyspark.sql.types import IntegerType
-if sk_col in df_with_sk.columns:
-    df_with_sk = df_with_sk.withColumn(sk_col, F.col(sk_col).cast(IntegerType()))
-if bk_cols[0] in df_with_sk.columns:
-    df_with_sk = df_with_sk.withColumn(bk_cols[0], F.col(bk_cols[0]).cast(IntegerType()))
+# -- You must provide the target schema for strict casting. Since the schema is not provided, we infer types from the source.
+for field in df_final.schema.fields:
+    col_name = field.name
+    target_type = field.dataType.simpleString()
+    df_final = df_final.withColumn(col_name, col(col_name).cast(target_type))
 
 # 5. Writing to Silver/Gold (Apply Platform Pattern)
-# -- Overwrite the target table (idempotent for dimensions)
-# [DISABLED_BY_ARCHITECT] df_with_sk.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table_name)
+# -- Overwrite the target table (idempotent load for dimension)
+# [DISABLED_BY_ARCHITECT] df_final.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table_name)
 
-# 6. Optimization (Z-ORDER on Business Key)
-# [DISABLED_BY_ARCHITECT] spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY ({bk_cols[0]})")
+# 6. Optimization (Z-ORDER)
+# -- Z-ORDER on ProductID for query performance
+# [DISABLED_BY_ARCHITECT] spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY (ProductID)")
 
 
 # Apply Bronze Standard

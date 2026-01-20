@@ -176,5 +176,6 @@ class MigrationOrchestrator:
 
     def _save_artifact(self, filename: str, content: str):
         path = os.path.join(self.output_path, filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)

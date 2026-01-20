@@ -303,6 +303,12 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         const confirmMsg = "Esta acción ejecutará agentes de IA para analizar el repositorio. Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
         if (!window.confirm(confirmMsg)) return;
 
+        if (!projectId || projectId === 'undefined') {
+            alert("Error: ID de proyecto inválido. Volviendo al dashboard...");
+            window.location.href = '/dashboard';
+            return;
+        }
+
         setIsLoading(true);
         try {
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/triage`, {

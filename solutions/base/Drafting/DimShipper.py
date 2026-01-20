@@ -18,31 +18,34 @@ db_user = dbutils.secrets.get(scope="jdbc-secrets", key="sales-db-user")
 db_password = dbutils.secrets.get(scope="jdbc-secrets", key="sales-db-password")
 
 # The parameter for shipperid > ? is assumed to be 0 for full load (adjust as needed)
-source_query = "SELECT * FROM Sales.Shippers WHERE shipperid > 0"
+source_query = """
+SELECT * FROM Sales.Shippers WHERE shipperid > 0
+"""
+
 df_source = spark.read.format("jdbc") \
     .option("url", db_url) \
-    .option("dbtable", f"({source_query}) as src") \
     .option("user", db_user) \
     .option("password", db_password) \
+    .option("dbtable", f"({source_query}) as src") \
     .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver") \
     .load()
 
 # 3. Transformations (Apply Logic)
-# No lookups or additional transformations specified.
+# -- No Lookups or additional transformations specified
 
 # 3.1 Surrogate Key Generation (STABLE & IDEMPOTENT)
 # SAFE MIGRATION PATTERN: Lookup existing keys, generate new ones only for new members.
 import pyspark.sql.functions as F
 
 target_table_name = "DimShipper"
-bk_cols = ["shipperid"]  # Assuming shipperid is the business key
-sk_col = "ShipperKey"    # Surrogate key for dimension
+bk_cols = ["shipperid"]  # Business Key
+sk_col = "ShipperKey"    # Surrogate Key (conventional for dimensions)
 
 # 1. Get Existing Keys (Handle if table doesn't exist yet)
 try:
     df_target = spark.read.table(target_table_name).select(*bk_cols, sk_col)
     max_sk = df_target.agg(F.max(F.col(sk_col))).collect()[0][0] or 0
-except Exception:
+except:
     df_target = None
     max_sk = 0
 
@@ -66,43 +69,38 @@ df_with_sk = df_existing.unionByName(df_new)
 def ensure_unknown_member(df):
     # Define the schema for the unknown member
     unknown_row = {
-        "ShipperKey": -1,
+        sk_col: -1,
         "shipperid": -1,
         "companyname": "Unknown",
-        "phone": None
+        "phone": "Unknown"
     }
-    # Check if unknown member exists
-    if df.filter(col("ShipperKey") == -1).count() == 0:
-        unknown_df = spark.createDataFrame([unknown_row], schema=df.schema)
-        df = df.unionByName(unknown_df)
+    # Check if -1 exists
+    if df.filter(col(sk_col) == -1).count() == 0:
+        df_unknown = spark.createDataFrame([unknown_row], schema=df.schema)
+        df = df.unionByName(df_unknown)
     return df
 
 df_with_sk = ensure_unknown_member(df_with_sk)
 
 # 4. Mandatory Type Casting (STRICT)
 # -- Target schema is not provided, so we infer from source and platform rules
-# -- For demonstration, we assume the following schema:
-#   ShipperKey: INTEGER (Surrogate Key)
-#   shipperid: INTEGER
-#   companyname: STRING
-#   phone: STRING
+# -- shipperid: INTEGER, companyname: STRING, phone: STRING, ShipperKey: INTEGER
+cast_map = {
+    "ShipperKey": "integer",
+    "shipperid": "integer",
+    "companyname": "string",
+    "phone": "string"
+}
 
-target_schema = [
-    {"name": "ShipperKey", "type": "INTEGER"},
-    {"name": "shipperid", "type": "INTEGER"},
-    {"name": "companyname", "type": "STRING"},
-    {"name": "phone", "type": "STRING"}
-]
-
-for field in target_schema:
-    col_name = field["name"]
-    target_type = field["type"]
-    if col_name in df_with_sk.columns:
-        df_with_sk = df_with_sk.withColumn(col_name, col(col_name).cast(target_type))
+df_final = df_with_sk
+for col_name, target_type in cast_map.items():
+    if col_name in df_final.columns:
+        df_final = df_final.withColumn(col_name, col(col_name).cast(target_type))
 
 # 5. Writing to Silver/Gold (Apply Platform Pattern)
-# -- Idempotent overwrite (no SCD logic required for static dimension)
-df_with_sk.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table_name)
+# -- Overwrite for idempotency (no SCD2 required for static dimension)
+df_final.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table_name)
 
-# 6. Optimization (Z-ORDER on business key)
+# 6. Optimization (Platform Rule)
+# -- Z-ORDER on shipperid (business key)
 spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY (shipperid)")

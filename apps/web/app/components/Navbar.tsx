@@ -18,8 +18,8 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           {/* Logo updated to use image */}
           <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/logo.png" alt="Shift-T Logo" className="h-8 w-auto object-contain" />
-            <span className="text-xl font-bold tracking-tighter text-primary dark:text-secondary hidden sm:block">Shift-T</span>
+            {/* <img src="/logo.png" alt="Shift-T Logo" className="h-8 w-auto object-contain" /> */}
+            <span className="text-xl font-bold tracking-tighter text-primary dark:text-secondary hidden sm:block">Legacy2Lake</span>
           </Link>
         </div>
         <div className="flex items-center gap-4">

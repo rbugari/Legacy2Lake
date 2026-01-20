@@ -10,13 +10,13 @@ export default function LandingPage() {
         {/* Header Text */}
         <div className="space-y-6 max-w-3xl">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-            Shift-T
+            Legacy2Lake
           </h1>
           <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 font-medium leading-relaxed">
-            Moderniza tus datos. <span className="text-primary">Sin perder el control.</span>
+            From Monolithic Platforms to <span className="text-primary">Medallion Architecture</span>
             <br className="hidden md:block" />
             <span className="text-base md:text-lg opacity-80 mt-2 block">
-              Transforma paquetes SSIS en arquitecturas PySpark nativas.
+              Modernizing Legacy Data into Lakehouse Architectures.
             </span>
           </p>
         </div>
@@ -53,7 +53,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="mt-16 text-gray-400 text-sm">
-        &copy; {new Date().getFullYear()} Shift-T Platform.
+        &copy; {new Date().getFullYear()} Legacy2Lake Platform.
       </footer>
     </div>
   );

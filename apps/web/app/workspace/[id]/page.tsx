@@ -45,6 +45,13 @@ export default function WorkspacePage() {
     const [stage, setStage] = useState(1); // 1: Triage, 2: Drafting, 3: Refinement, 4: Governance
     const [selectedNode, setSelectedNode] = useState<any>(null);
 
+    useEffect(() => {
+        if (!id || id === 'undefined') {
+            window.location.href = '/dashboard';
+            return;
+        }
+    }, [id]);
+
     // Mock data for Stage 3
     const [originalCode, setOriginalCode] = useState("-- SQL Legacy Code\nSELECT * FROM Sales WHERE Date > '2023-01-01'");
     const [optimizedCode, setOptimizedCode] = useState("# PySpark Cloud Native\ndf = spark.read.table('sales')\ndf.filter(df.Date > '2023-01-01').show()");

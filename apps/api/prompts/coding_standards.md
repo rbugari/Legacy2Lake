@@ -1,4 +1,4 @@
-# Shift-T: High-Quality PySpark Coding Standards
+# Platform Standard: High-Quality Code (Target: PySpark)
 
 ## Environment
 - **Target Platform**: Databricks (Lakehouse Architecture)

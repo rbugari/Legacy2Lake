@@ -1,23 +1,30 @@
-# Shift-T Documentation Index
+# Legacy2Lake Documentation Index
 
-Bienvenido al centro de documentación de **Shift-T**. Aquí encontrarás las guías detalladas para cada fase del proceso de modernización de datos inteligente.
+Welcome to the **Legacy2Lake** Documentation Center. This directory contains detailed guides for every phase of the intelligent data modernization process.
 
-## 🚀 Ciclo de Vida del Proyecto
+## 🚀 Getting Started
+- **[Introduction to Legacy2Lake](INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
 
-Shift-T orquesta la modernización a través de cuatro etapas críticas. Haz clic en cada fase para explorar su documentación técnica y funcional:
+## 🔄 Project Lifecycle (Phase-by-Phase)
+The modernization process is orchestrated through four critical stages:
 
-1.  **[Fase 1: Triage & Discovery](PHASE_1_TRIAGE.md)**
-    *   Escaneo de repositorios, clasificación de activos (CORE/SUPPORT/IGNORED) y diseño de la malla de orquestación.
-2.  **[Fase 2: Drafting & Code Generation](PHASE_2_DRAFTING.md)**
-    *   Generación automática de notebooks PySpark, orquestación de agentes C y F, y auditoría de calidad de código.
-3.  **[Fase 3: Refinement & Medallion Architecture](PHASE_3_REFINEMENT.md)**
-    *   Transformación hacia arquitectura Medallion (Bronze/Silver/Gold), optimizaciones de Spark y saneamiento de seguridad.
-4.  **[Fase 4: Governance & Compliance](PHASE_4_GOVERNANCE.md)**
-    *   Generación de certificados de modernización, mapeo de linaje de datos y entrega del Bundle final de solución.
+1.  **[Phase 1: Triage & Discovery](PHASE_1_TRIAGE.md)**
+    - Repository scanning, asset classification, and orchestration mesh design.
+2.  **[Phase 2: Drafting & Code Generation](PHASE_2_DRAFTING.md)**
+    - Automatic PySpark notebook generation and code quality auditing.
+3.  **[Phase 3: Refinement & Medallion](PHASE_3_REFINEMENT.md)**
+    - Transformation into Medallion architecture (Bronze/Silver/Gold) and security hardening.
+4.  **[Phase 4: Governance & Compliance](PHASE_4_GOVERNANCE.md)**
+    - Modernization certificates, lineage mapping, and solution bundle delivery.
 
-## 🛠 Technical Specs & Backlog
-*   **[Technical Specification (Estadio 3)](SPECIFICATION.md):** Especificación maestra y "Golden Rules".
-*   **[Backlog Post-Triage](BACKLOG_POST_TRIAGE.md):** Mejoras identificadas y pospuestas.
+## 🛠 Technical Reference
+- [Platform Architecture](technical/architecture.md)
+- [Metadata Store (Data Model)](technical/data_model.md)
+- [Universal IR Grammar](technical/universal_ir.md)
+- [Cartridge Development Manual](technical/cartridge_manual.md)
+- [Function Registry](technical/function_registry.md)
+- [Test Scenarios](technical/test_scenarios.md)
+- [AI Infrastructure (Multi-LLM)](technical/ai_infrastructure.md)
 
 ---
-*Shift-T Documentation Framework v1.0*
+*Legacy2Lake Documentation Framework v2.0*

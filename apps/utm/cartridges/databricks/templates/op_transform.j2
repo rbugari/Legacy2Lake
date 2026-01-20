@@ -1,0 +1,14 @@
+{% if subtype == 'SCD_TYPE_2' %}
+# SCD Type 2 Implementation for {{ params.business_key }}
+# History Flag: {{ params.history_flag }}
+
+# 1. Identify updates
+# (This logic would be more complex in full prod, simplified for MVP template)
+deltaTable = DeltaTable.forName(spark, "{{ target }}")
+
+# Merge Logic for SCD2
+# ... (Specific SCD2 boilerplate would go here)
+# For MVP we print the conceptual logic
+print("Applying SCD Type 2 Logic on {{ target }}")
+
+{% endif %}
