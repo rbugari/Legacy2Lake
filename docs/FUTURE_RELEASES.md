@@ -1,8 +1,8 @@
 # Legacy2Lake: Strategic Roadmap & Versioning 🚀
 
-This document defines the architectural evolution of the **Legacy2Lake** engine. The goal is to evolve from a technical "code converter" into an "Autonomous Data Solution Architect."
+This document defines the architectural evolution of the Legacy2Lake engine. The goal is to evolve from a technical "code converter" into an "Autonomous Data Solution Architect."
 
-## 🚀 Release v1.1: The "Conscious Architect" (Human Context)
+## 🧠 Release v1.1: The "Conscious Architect" (Human Context)
 
 **Theme**: Bridging the gap between code logic and business intent ("Tribal Knowledge").
 
@@ -11,10 +11,10 @@ This document defines the architectural evolution of the **Legacy2Lake** engine.
 - AI agents may misinterpret operational "hacks" as structural logic.
 
 ### Technical Implementation
-- [ ] **Context Injection Layer**: Mandatory pre-triage manual input.
+- [ ] **Context Injection Layer**: Dedicated UI for mandatory pre-triage manual input.
 - [ ] **Entity `UTM_Asset_Context`**: Relational storage linking `ObjectID` to user descriptions/rules.
     - *Example*: "Ignore duplicates in Table X, filter by `LastUpdateDate`."
-- [ ] **Context-Aware Triage**: Injecting user notes into Agent A's system prompt.
+- [ ] **Context-Aware Triage**: Injecting user notes into Agent A's system prompt to override or complement XML logic.
 - [ ] **"Virtual Steps"**: Generating IR placeholders for manual logic described by users but missing in source code.
 
 ---
@@ -32,10 +32,10 @@ This document defines the architectural evolution of the **Legacy2Lake** engine.
     - `load_strategy`: {Incremental_Watermark, Full_Overwrite, SCD_Type_2}
     - `criticality`: {P1, P2, P3}
 - [ ] **Adaptive Code Injection**:
-    - **Hourly**: Auto-inject `checkpointLocation` and `Trigger.AvailableNow`.
-    - **Incremental**: Auto-detect watermark columns (e.g., `ModifiedDate`) and inject `WHERE` clauses.
-- [ ] **Pre-Flight Cost Estimation (FinOps)**:
-    - distinct "Dry Run" agent that scans lines of code/complexity and estimates token usage/cost *before* the user commits to the migration.
+    - **Hourly**: Auto-inject `checkpointLocation` and `Trigger.AvailableNow` (Databricks logic).
+    - **Incremental**: Auto-detect watermark columns (e.g., `ModifiedDate`) and inject dynamic `WHERE` clauses.
+- [ ] **Pre-Flight FinOps (Cost Estimation)**:
+    - A distinct agent that scans complexity and estimates token usage and cloud execution costs before starting the migration.
 
 ---
 
@@ -45,50 +45,52 @@ This document defines the architectural evolution of the **Legacy2Lake** engine.
 
 ### Core Problems Solved
 - Inconsistency in naming and patterns across thousands of generated scripts.
-- Users need to tweak cartridge behavior for specific solutions without writing code.
+- Users need to tweak cartridge behavior without touching the core engine.
 
 ### Technical Implementation
-- [ ] **`UTM_Design_Registry`**: Centralized store for design tokens.
+- [ ] **`UTM_Design_Registry`**: Centralized store for design tokens and architectural rules.
 - [ ] **Naming Conventions**: Enforced rules (e.g., `dbo.Table` -> `stg_table_snake_case`).
 - [ ] **Layer Standards**: Standard physical paths (e.g., `/mnt/{layer}/{source}/{table}/`).
-- [ ] **Principle Injection**: Agents consult the strict "Style Guide" before synthesis.
+- [ ] **Security & Privacy Masking**: Auto-detection of PII (Personally Identifiable Information) to suggest `F.sha2()` or masking logic in the Silver layer.
 - [ ] **Solution-Level Cartridge Configuration**:
-    - A dedicated inputs UI (similar to Context Injection) where users define specific parameters for the active cartridge (e.g., "For *this* project, use `abfss://` paths instead of mount points").
+    - UI where users define parameters like "Use `abfss://` paths instead of mount points" or "Force liquid clustering on Date keys."
 
 ---
 
-## 🏗️ Release v3.0: Multi-Paradigm Support (SQL & dbt)
+## 🏗️ Release v3.0: Multi-Paradigm & Governance (SQL & dbt)
 
-**Theme**: Supporting modern stacks beyond Spark/Python.
+**Theme**: Supporting modern stacks and ensuring data trust.
 
 ### Core Problems Solved
 - Serving clients who prefer ELT in Snowflake/Redshift or use dbt for lifecycle management.
+- Lack of built-in validation for the migrated data.
 
 ### Technical Implementation
-- [ ] **Pure SQL Cartridge**: Generating sequential scripts (`001_setup.sql`) or Stored Procedures.
+- [ ] **Pure SQL Cartridge**: Generating sequential scripts (`001_setup.sql`) or modern Stored Procedures (BEGIN/END).
 - [ ] **dbt Architect Cartridge**:
-    - `models/`: Jinja-SQL generation with `{{ config(...) }}`.
-    - `snapshots/`: Auto-generation of SCD logic.
-    - `schema.yml`: Auto-injection of tests (Unique, Not Null).
-- [ ] **Graph Resolution**: Converting physical SSIS references to dynamic dbt `{{ ref('...') }}` DAGs.
+    - `models/`: Jinja-SQL generation with `{{ ref() }}` and `{{ source() }}`.
+    - `snapshots/`: Auto-generation of SCD files.
+    - `schema.yml`: Auto-injection of column documentation and tests (Unique, Not Null).
+- [ ] **Graph Resolution**: Converting physical SSIS references into a dynamic Directed Acyclic Graph (DAG).
+- [ ] **Automated Data Quality (Unit Testing)**: Generation of validation scripts (e.g., Row Count comparison or Null Checks) to run post-migration.
 
 ---
 
-## 🧠 Release v4.0: Multi-Model Orchestrator (AI Efficiency)
+## 🤖 Release v4.0: Multi-Model Orchestrator (AI Efficiency)
 
-**Theme**: Optimizing cost and speed by using the "Right Brain" for the task.
+**Theme**: Optimizing cost and reliability by using the "Right Brain" for the task.
 
 ### Core Problems Solved
 - Using expensive reasoning models (o1/GPT-4o) for simple structural tasks is inefficient.
-- Lack of visibility into Agent performance over time.
+- Lack of visibility into Agent performance and reliability.
 
 ### Technical Implementation
 - [ ] **Intelligent Agent Mapping**:
-    - **Kernel (Analysis)**: Deep Reasoning Models (o1, Claude 3.5 Sonnet).
-    - **Generator (Synthesis)**: High-speed Coding Models (Llama 3 70B via Groq).
-- [ ] **Failover & Recovery**: Automatic provider switching upon latency/quota errors.
-- [ ] **Engine Observability (Metacognition)**:
-    - Dashboard tracking agent performance: "Hallucination Rate", "Correction Loops triggered by Critic", and "Successful Transpilations vs Retries".
+    - **Kernel (Logical Analysis)**: Deep Reasoning Models (o1, Claude 3.5 Sonnet).
+    - **Generator (Code Synthesis)**: High-speed Coding Models (Llama 3.1 70B via Groq).
+- [ ] **Failover & Recovery**: Automatic provider switching (e.g., Azure to OpenRouter) upon latency or quota errors.
+- [ ] **Engine Observability (Metacognition Dashboard)**:
+    - Tracking "Hallucination Rate", "Correction Loops" (how many times the Critic Agent intervened), and "Success vs Retry" metrics.
 
 ---
-*Reference Strategy Document v1.2 - Legacy2Lake Engineering*
+*Reference Strategy Document v1.3 - Legacy2Lake Engineering - Approved for Implementation.*
