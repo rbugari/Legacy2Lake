@@ -25,6 +25,7 @@ The modernization process is orchestrated through four critical stages:
 - [Function Registry](technical/function_registry.md)
 - [Test Scenarios](technical/test_scenarios.md)
 - [AI Infrastructure (Multi-LLM)](technical/ai_infrastructure.md)
+- **[Future Releases & Roadmap](FUTURE_RELEASES.md)**
 
 ---
 *Legacy2Lake Documentation Framework v2.0*
