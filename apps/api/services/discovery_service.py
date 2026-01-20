@@ -87,7 +87,6 @@ class DiscoveryService:
                 # SSIS (DTSX)
                 if ext == 'dtsx':
                     try:
-                    try:
                         parser = SSISCartridge()
                         meta_obj = parser.parse(file_path)
                         
