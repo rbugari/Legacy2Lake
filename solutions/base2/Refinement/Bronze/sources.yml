@@ -1,0 +1,9 @@
+
+version: 2
+
+sources:
+  - name: legacy_source
+    schema: raw_ingested
+    tables:
+      # Tables will be dynamically added or assumed
+      - name: source_table

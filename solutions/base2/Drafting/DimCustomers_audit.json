@@ -1,0 +1,19 @@
+{
+  "status": "REJECTED",
+  "score": 70,
+  "violations": [
+    {
+      "severity": "CRITICAL",
+      "rule": "Identity/Surrogate Keys",
+      "description": "Surrogate key generation uses row_number() over business keys, which is not stable if the source data changes order or is partitioned differently. The platform rule requires resetting the sequence to MAX(id) + 1 and using a stable, deterministic assignment.",
+      "suggestion": "Use a deterministic hash or a sequence generator that guarantees idempotency and stability, or ensure the row_number() is always ordered by a unique, stable key."
+    },
+    {
+      "severity": "CRITICAL",
+      "rule": "Idempotency",
+      "description": "The code uses .mode('overwrite') on the entire table. This is only safe if the table is small and there are no concurrent writers. For large dimensions or production, use Delta MERGE to ensure idempotency and avoid data loss.",
+      "suggestion": "Replace .mode('overwrite') with a Delta MERGE statement keyed on the business key(s)."
+    }
+  ],
+  "fixed_code": null
+}

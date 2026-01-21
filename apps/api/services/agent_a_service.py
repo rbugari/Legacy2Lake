@@ -22,11 +22,31 @@ class AgentAService:
     """Service for Agent A (Detective) using Azure OpenAI."""
     
     def __init__(self):
-        self.llm = AzureChatOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4"),
+        
+        self.prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "agent_a_discovery.md")
+
+    async def _get_llm(self):
+        """Resolves LLM client from Global Config or Env Vars."""
+        db = SupabasePersistence()
+        config = await db.get_global_config("provider_settings")
+        
+        # Default fallback to env
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        key = os.getenv("AZURE_OPENAI_API_KEY")
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
+        
+        # Override from DB if available and enabled
+        azure_config = config.get("azure", {})
+        if azure_config.get("enabled"):
+            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
+            if azure_config.get("api_key"): key = azure_config.get("api_key")
+            if azure_config.get("model"): deployment = azure_config.get("model")
+            
+        return AzureChatOpenAI(
+            azure_endpoint=endpoint,
+            azure_deployment=deployment,
             openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_key=key,
             temperature=0
         )
         
@@ -36,6 +56,12 @@ class AgentAService:
         target_path = path or self.prompt_path
         with open(target_path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def save_prompt(self, content: str):
+        """Updates the system prompt file."""
+        with open(self.prompt_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
 
     async def analyze_manifest(self, manifest: Dict[str, Any], system_prompt_override: str = None) -> Dict[str, Any]:
         """Analyzes the full project manifest to build the Mesh Graph."""
@@ -100,7 +126,9 @@ class AgentAService:
         
         # Using a larger context model might be needed if inventory is huge. 
         # Assuming gpt-4 or 4-turbo window is sufficient for this demo.
-        response = await self.llm.ainvoke(messages)
+        # Assuming gpt-4 or 4-turbo window is sufficient for this demo.
+        llm = await self._get_llm()
+        response = await llm.ainvoke(messages)
         content = response.content
         
         logger.debug(f"=== [Agent A] RAW RESPONSE ===\n{content}\n==============================", "Agent A")
@@ -140,7 +168,8 @@ class AgentAService:
             HumanMessage(content=user_message)
         ]
         
-        response = await self.llm.ainvoke(messages)
+        llm = await self._get_llm()
+        response = await llm.ainvoke(messages)
         content = response.content
         
         if "```json" in content:

@@ -1,0 +1,26 @@
+bundle:
+  name: shift_t_base2
+resources:
+  jobs:
+    medallion_pipeline:
+      name: 'Shift-T: base2 Pipeline'
+      tasks:
+      - description: Executes all BRONZE layer transformations.
+        existing_cluster_id: 0000-000000-cluster1
+        notebook_task:
+          notebook_path: /Repos/Shift-T/base2/Refined/Bronze/Master_Bronze
+        task_key: process_bronze
+      - depends_on:
+        - task_key: process_bronze
+        description: Executes all SILVER layer transformations.
+        existing_cluster_id: 0000-000000-cluster1
+        notebook_task:
+          notebook_path: /Repos/Shift-T/base2/Refined/Silver/Master_Silver
+        task_key: process_silver
+      - depends_on:
+        - task_key: process_silver
+        description: Executes all GOLD layer transformations.
+        existing_cluster_id: 0000-000000-cluster1
+        notebook_task:
+          notebook_path: /Repos/Shift-T/base2/Refined/Gold/Master_Gold
+        task_key: process_gold

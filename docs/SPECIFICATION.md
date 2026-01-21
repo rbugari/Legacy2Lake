@@ -32,6 +32,8 @@ To ensure development success, the system must meet the following design pillars
 * `nodes_edges`: Persistence of the mesh graph for UI reconstruction.
 * `transformations`: Mapping table for original code vs. translated version.
 * `lineage_metadata`: Structured JSON following OpenLineage principles.
+* `utm_global_config`: Centralized configuration for Cartridges, Prompts, and Providers.
+* `utm_execution_logs`: Database-backed execution logs for granular Agent observability.
 
 ## **4. Multi-Agent Workforce (Responsibilities)**
 

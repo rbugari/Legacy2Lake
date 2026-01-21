@@ -61,17 +61,22 @@ class TopologyService:
                 lookups = []
                 
                 for comp in data_flow:
-                    table_ref = comp["logic"].get("OpenRowset") or comp["logic"].get("TableOrViewName")
-                    sql_command = comp["logic"].get("SqlCommand")
+                    # UPDATED: Use 'raw_properties' instead of 'logic'
+                    logic = comp.get("raw_properties", {})
+                    table_ref = logic.get("OpenRowset") or logic.get("TableOrViewName")
+                    sql_command = logic.get("SqlCommand")
                     
                     if not table_ref and sql_command:
                         table_ref = f"QUERY: {sql_command}" # Embed query for now, or use a struct
                         
-                    if comp["intent"] == "SOURCE":
+                    # UPDATED: Use 'original_intent' instead of 'intent'
+                    intent = comp.get("original_intent", "UNKNOWN")
+
+                    if intent == "SOURCE":
                         if table_ref: inputs.append(table_ref)
-                    elif comp["intent"] == "DESTINATION":
+                    elif intent == "DESTINATION":
                         if table_ref: outputs.append(table_ref)
-                    elif comp["intent"] == "LOOKUP":
+                    elif intent == "LOOKUP":
                         if table_ref: lookups.append(table_ref)
 
                 package_metadatas.append({

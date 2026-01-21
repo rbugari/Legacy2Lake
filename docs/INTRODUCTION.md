@@ -29,6 +29,11 @@ To solve the complexity of $N$ source technologies and $M$ target platforms, Leg
 - **Component**: **Output Cartridges** (e.g., `DatabricksCartridge`).
 - **Output**: Executable source code (PySpark Notebooks, SQL Scripts).
 
+### D. Administration Layer (The Control Tower)
+- **Mission**: Centralized management of Agent behavior, Prompts, and Cloud Providers.
+- **Component**: **Admin Panel** & `utm_global_config`.
+- **Output**: Dynamic runtime configuration for the entire fleet.
+
 ---
 
 ## 3. The Agentic Workforce 🤖

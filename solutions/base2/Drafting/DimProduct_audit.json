@@ -1,0 +1,25 @@
+{
+  "status": "REJECTED",
+  "score": 75,
+  "violations": [
+    {
+      "severity": "CRITICAL",
+      "rule": "Identity/Surrogate Keys",
+      "description": "Surrogate key generation for new rows uses 'row_number().over(window_spec) + max_sk', which is not guaranteed to be stable or gapless if the source changes between runs. The platform rule requires resetting the sequence to MAX(id) + 1, but this approach can result in duplicate or skipped keys if the source is not static.",
+      "suggestion": "Use a deterministic mapping from business key to surrogate key, or ensure the sequence is managed in a single place (e.g., via a sequence table or Delta Lake's identity column feature)."
+    },
+    {
+      "severity": "WARNING",
+      "rule": "Idempotency",
+      "description": "The code uses 'overwrite' mode to write the entire dimension table. While this is generally idempotent, it can be risky for large tables and does not support SCD2. If SCD2 is required, a Delta MERGE should be used.",
+      "suggestion": "If SCD2 is required, implement a Delta MERGE with logic to expire old records and insert new ones. For Type 1, 'overwrite' is acceptable but should be documented."
+    },
+    {
+      "severity": "WARNING",
+      "rule": "Type Safety",
+      "description": "The code casts all columns to their target types, but does not handle possible cast failures (e.g., invalid decimals or timestamps).",
+      "suggestion": "Add error handling or validation for type casting, especially for DECIMAL and TIMESTAMP fields."
+    }
+  ],
+  "fixed_code": null
+}

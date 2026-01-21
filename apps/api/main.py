@@ -59,6 +59,149 @@ async def get_agent_g_prompt():
 async def ping():
     return {"status": "ok"}
 
+# --- Prompt Management (Release 3.5 Phase 2) ---
+
+class PromptUpdate(BaseModel):
+    prompt: str
+
+@app.post("/prompts/agent-a")
+async def update_agent_a_prompt(payload: PromptUpdate):
+    agent = AgentAService()
+    agent.save_prompt(payload.prompt)
+    return {"success": True}
+
+@app.post("/prompts/agent-c")
+async def update_agent_c_prompt(payload: PromptUpdate):
+    agent = AgentCService()
+    agent.save_prompt(payload.prompt)
+    return {"success": True}
+
+@app.post("/prompts/agent-f")
+async def update_agent_f_prompt(payload: PromptUpdate):
+    agent = AgentFService()
+    agent.save_prompt(payload.prompt)
+    return {"success": True}
+
+@app.post("/prompts/agent-g")
+async def update_agent_g_prompt(payload: PromptUpdate):
+    agent = AgentGService()
+    agent.save_prompt(payload.prompt)
+    return {"success": True}
+
+# --- Cartridges & Global Config ---
+
+@app.get("/cartridges")
+async def list_cartridges():
+    """Returns available cartridges and their status."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("cartridges")
+    
+    # Defaults
+    defaults = {
+        "pyspark": {"id": "pyspark", "name": "PySpark (Databricks)", "version": "v3.2", "desc": "Generates PySpark code optimized for Databricks Photon engine.", "enabled": True, "beta": False},
+        "dbt": {"id": "dbt", "name": "dbt Core (Snowflake)", "version": "v1.8", "desc": "Generates dbt models, sources.yml, and generic tests.", "enabled": True, "beta": False},
+        "sql": {"id": "sql", "name": "Pure SQL (Postgres/Redshift)", "version": "v1.0", "desc": "Generates Standard SQL scripts for ELT pipelines.", "enabled": False, "beta": True}
+    }
+    
+    if not config:
+        return list(defaults.values())
+        
+    # Merge defaults with config
+    merged = []
+    for key, default in defaults.items():
+        saved = config.get(key, {})
+        # Ensure deep merge for enabled status
+        item = default.copy()
+        if "enabled" in saved: item["enabled"] = saved["enabled"]
+        merged.append(item)
+    
+    return merged
+
+class CartridgeUpdate(BaseModel):
+    id: str
+    enabled: bool
+
+@app.post("/cartridges/update")
+async def update_cartridge_status(payload: CartridgeUpdate):
+    """Updates the enabled status of a cartridge."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("cartridges") or {}
+    
+    if payload.id not in config:
+        config[payload.id] = {}
+        
+    config[payload.id]["enabled"] = payload.enabled
+    await db.set_global_config("cartridges", config)
+    return {"success": True}
+
+# --- Provider Config ---
+
+@app.get("/providers")
+async def list_providers():
+    """Returns available LLM providers and their status."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("provider_settings")
+    
+    defaults = {
+        "azure": {"id": "azure", "name": "Azure OpenAI", "model": "gpt-4", "enabled": True, "connected": False},
+        "anthropic": {"id": "anthropic", "name": "Anthropic (Claude)", "model": "claude-3-5-sonnet", "enabled": False, "connected": False},
+        "groq": {"id": "groq", "name": "Groq (Llama)", "model": "llama-3.1-70b", "enabled": False, "connected": False}
+    }
+    
+    if not config:
+        # Check env for connection status
+        defaults["azure"]["connected"] = bool(os.getenv("AZURE_OPENAI_API_KEY"))
+        return list(defaults.values())
+        
+    merged = []
+    for key, default in defaults.items():
+        saved = config.get(key, {})
+        item = default.copy()
+        item.update(saved)
+        
+        # Determine "Connected" status.
+        # If saved has API key -> Connected.
+        # If not, check Env.
+        # Special case naming for Azure
+        env_key_var = f"{key.upper()}_API_KEY"
+        if key == "azure": env_key_var = "AZURE_OPENAI_API_KEY"
+            
+        has_key = bool(saved.get("api_key")) or bool(os.getenv(env_key_var))
+             
+        item["connected"] = has_key
+        # Don't return API key
+        if "api_key" in item: del item["api_key"]
+            
+        merged.append(item)
+    
+    return merged
+
+class ProviderUpdate(BaseModel):
+    id: str
+    enabled: bool
+    model: str = None
+    api_key: str = None
+    endpoint: str = None
+
+@app.post("/providers/update")
+async def update_provider(payload: ProviderUpdate):
+    """Updates provider configuration."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("provider_settings") or {}
+    
+    if payload.id not in config:
+        config[payload.id] = {}
+        
+    config[payload.id]["enabled"] = payload.enabled
+    if payload.model: config[payload.id]["model"] = payload.model
+    if payload.endpoint: config[payload.id]["endpoint"] = payload.endpoint
+    if payload.api_key: config[payload.id]["api_key"] = payload.api_key 
+    
+    await db.set_global_config("provider_settings", config)
+    return {"success": True}
+
+
+
 
 
 # Supabase Setup
@@ -346,26 +489,46 @@ async def run_triage(project_id: str, params: TriageParams):
     log_lines = []
     log_lines.append(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id} (Folder: {project_folder})")
     
+    # Helper to persist log incrementally
+    def _log(msg: str):
+        log_lines.append(msg)
+        try:
+            path = PersistenceService.ensure_solution_dir(project_folder)
+            with open(os.path.join(path, "triage.log"), "a", encoding="utf-8") as f:
+                f.write(f"{msg}\n")
+        except:
+            pass
+            
+    # Clear previous log
+    try:
+        path = PersistenceService.ensure_solution_dir(project_folder)
+        with open(os.path.join(path, "triage.log"), "w", encoding="utf-8") as f:
+            f.write(f"--- Triage Started for {project_id} ---\n")
+    except:
+        pass
+    
+    _log(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id}")
+
     # 1. Deep Scan (The Scanner / Pre-processing)
-    log_lines.append("[Step 1] Running Deep Scanner (Python Engine)...")
+    _log("[Step 1] Running Deep Scanner (Python Engine)...")
     
     # NEW: Fetch persistent human context
     user_context = await db.get_project_context(project_uuid)
     if user_context:
-        log_lines.append(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
+        _log(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
         
     manifest = DiscoveryService.generate_manifest(project_folder, user_context=user_context)
     manifest["project_id"] = project_uuid # Ensure UUID is used for DB lookups in agents
     
     file_count = len(manifest["file_inventory"])
     tech_stats = manifest["tech_stats"]
-    log_lines.append(f"   > Scanned {file_count} files.")
-    log_lines.append(f"   > Tech Stack Detected: {tech_stats}")
+    _log(f"   > Scanned {file_count} files.")
+    _log(f"   > Tech Stack Detected: {tech_stats}")
     
     # 2. Agent A Analysis (The Detective)
-    log_lines.append("[Step 2] Invoking Agent A (Mesh Architect)...")
+    _log("[Step 2] Invoking Agent A (Mesh Architect)...")
     if params.system_prompt:
-        log_lines.append("   > Applying custom System Prompt override.")
+        _log("   > Applying custom System Prompt override.")
     
     agent_a = AgentAService()
     try:
@@ -378,41 +541,55 @@ async def run_triage(project_id: str, params: TriageParams):
         result = await agent_a.analyze_manifest(manifest, system_prompt_override=prompt)
         
         if "error" in result:
-            log_lines.append(f"   [WARNING] Agent A returned an error: {result['error']}")
-            if "raw_response" in result:
-                 log_lines.append(f"   [DEBUG] Raw Response Snippet: {result['raw_response'][:200]}...")
-
-        mesh_graph = result.get("mesh_graph", {})
-        nodes = mesh_graph.get("nodes", [])
-        edges = mesh_graph.get("edges", [])
+             _log(f"[ERROR] Agent A failed: {result['error']}")
+             return {"log": "\n".join(log_lines), "error": result['error']}
+             
+        rf_nodes = result.get("nodes", [])
+        rf_edges = result.get("edges", [])
         
-        log_lines.append(f"   > Agent Analysis Complete.")
-        log_lines.append(f"   > Identified {len(nodes)} Functional Nodes and {len(edges)} Dependencies.")
+        _log(f"   > Analysis Complete. Discovered {len(rf_nodes)} functional nodes.")
         
-        if len(nodes) == 0:
-            log_lines.append("   [CRITICAL] No functional nodes identified. Check manifest size or LLM constraints.")
-
-        # Log Observations
-        obs = result.get("triage_observations", [])
-        for o in obs:
-            log_lines.append(f"   [OBSERVATION] {o}")
-            
     except Exception as e:
-        log_lines.append(f"[ERROR] Agent A Failed: {str(e)}")
-        return {
-            "assets": [],
-            "log": "\n".join(log_lines),
-            "error": str(e)
-        }
+        _log(f"[CRITICAL] Architecture Analysis Failed: {e}")
+        return {"log": "\n".join(log_lines), "error": str(e)}
 
     # 3. Persistence (Supabase)
-    log_lines.append("[Step 3] Persisting Mesh Graph and Discovered Assets...")
+    _log("[Step 3] Persisting Mesh Graph and Discovered Assets...")
+    
+    # NEW: Persist the scanner inventory to DB
+    db_assets = []
+    for f in manifest["file_inventory"]:
+        # Basic mapping
+        db_assets.append({
+            "name": f["name"],
+            "path": f["path"],
+            "type": "CORE" if f["path"].endswith((".py", ".js", ".ts", ".java")) else "SUPPORT",
+            "metadata": {"size": f["size"], "extension": f["extension"]}
+        })
+    
+    # We should merge agent intelligence (complexity, etc) into these assets
+    # For now, we utilize the layout nodes to update assets if they match?
+    # Or just rely on the 'nodes' being the source of truth for the graph.
+    
+    # Save Layout
+    # Ensure we use UUID
+    if not await db.get_project_name_by_id(project_uuid):
+        # Project might not exist in DB if created mostly offline?
+        # But we resolved ID earlier.
+        _log(f"[Warning] Project UUID {project_uuid} lookup check warned.")
+
+    # Save Assets (Optional, or just nodes)
+    # db.save_assets(project_uuid, db_assets) ...
+        
+    await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
+    _log("[Success] Graph and Assets saved to database.")
+    _log("[Step 3] Persisting Mesh Graph and Discovered Assets...")
     
     # NEW: Persist the scanner inventory to DB
     db_assets = []
     for item in manifest["file_inventory"]:
         # Find agent info for this file
-        agent_node = next((n for n in nodes if n["id"] == item["path"]), None)
+        agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), None) # Changed 'nodes' to 'rf_nodes'
         
         # Determine category (type in DB)
         category = agent_node["category"] if agent_node else "IGNORED" 
@@ -469,7 +646,8 @@ async def run_triage(project_id: str, params: TriageParams):
         })
         
     await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
-    log_lines.append("[Success] Graph and Assets saved to database.")
+    await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
+    _log("[Success] Graph and Assets saved to database.")
     
     # Map back to assets list for the grid view
     # We merge the scanner inventory with agent intelligence
@@ -614,14 +792,19 @@ async def delete_project(project_id: str):
 @app.get("/projects/{project_id}/files")
 async def list_project_files(project_id: str):
     """Returns the file tree for the project's output directory."""
-    # 1. Resolve Project Name if ID is UUID
+    # Release 3.5: DB First Inventory
     db = SupabasePersistence()
+    
+    # get_project_files_from_db checks DB, if empty syncs from Project Name/ID
+    tree = await db.get_project_files_from_db(project_id)
+    
+    # We need to determine the root folder name. 
+    # If project_id is a UUID, we might want the friendly name back for the root node.
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
         if n: project_name = n
         
-    tree = PersistenceService.get_project_files(project_name)
     # Wrap in a root node for the frontend FileExplorer
     return {
         "name": project_name,
@@ -729,23 +912,33 @@ async def unlock_triage(project_id: str):
     return {"success": success, "status": "TRIAGE"}
 
 @app.get("/projects/{project_id}/logs")
-async def get_project_logs(project_id: str):
-    """Returns the content of the migration log file."""
-    # Resolve Project Name
+async def get_project_logs(project_id: str, type: str = "Triage"):
+    """
+    Fetches execution logs from the database.
+    Release 3.5: Moved to 'utm_execution_logs'.
+    """
     db = SupabasePersistence()
-    project_name = project_id
-    if "-" in project_id:
-        n = await db.get_project_name_by_id(project_id)
-        if n: project_name = n
     
-    try:
-        # Use PersistenceService to resolve path securely
-        content = PersistenceService.read_file_content(project_name, "migration.log")
-        return {"logs": content}
-    except ValueError:
-        return {"logs": ""} # File likely doesn't exist yet
-    except Exception as e:
-        return {"logs": f"Error reading logs: {e}"}
+    # Map frontend type to DB phase
+    phase_map = {
+        "triage": "TRIAGE", 
+        "migration": "MIGRATION", 
+        "refinement": "REFINEMENT"
+    }
+    phase = phase_map.get(type.lower(), "TRIAGE")
+    
+    logs = await db.get_execution_logs(project_id, phase)
+    
+    log_lines = []
+    for log in logs:
+        timestamp = log.get("created_at", "")
+        step = log.get("step", "System")
+        msg = log.get("message", "")
+        # Format: [Timestamp] [Step] Message
+        log_lines.append(f"[{timestamp}] [{step}] {msg}")
+        
+    return {"logs": "\n".join(log_lines)}
+
 
 # --- Phase 3: Refinement Endpoints ---
 from services.refinement.refinement_orchestrator import RefinementOrchestrator
@@ -767,9 +960,9 @@ async def start_refinement(payload: dict):
 
     print(f"DEBUG: Starting Refinement for {project_id} (Resolved Folder: {project_name})")
     
-    # Run synchronous orchestrator in threadpool to enforce async non-blocking behavior
+    # Orchestrator is now natively async (Release 2.0)
     orchestrator = RefinementOrchestrator()
-    result = await run_in_threadpool(orchestrator.start_pipeline, project_name)
+    result = await orchestrator.start_pipeline(project_name)
     
     print(f"DEBUG: Refinement Complete for {project_id}")
     return result
@@ -930,3 +1123,72 @@ async def initialize_project_registry(project_id: str):
     if not success:
         raise HTTPException(status_code=500, detail="Failed to initialize registry")
     return {"status": "success"}
+
+# --- Release v1.5: Executable Governance (Design Registry) ---
+from services.knowledge_service import KnowledgeService
+
+@app.get("/projects/{project_id}/registry")
+async def get_project_registry(project_id: str):
+    """Fetches the Design Registry (Governance Rules) for a project."""
+    db = SupabasePersistence()
+    
+    # Resolve Name -> ID if needed (Endpoints usually take ID, but robust handling is good)
+    # The get_design_registry function in DB handles robust lookup if we pass strictly UUID?
+    # Actually DB methods usually handle "ID or Name" if implemented that way, 
+    # but let's check get_design_registry implementation in PersistenceService. 
+    # It seems to handle it.
+    
+    registry = await db.get_design_registry(project_id)
+    
+    # Merge with Defaults (Release 3.0 Migration Logic)
+    # Ensure new keys (e.g. target_stack) appear for existing projects
+    defaults = KnowledgeService.get_default_registry_entries(project_id)
+    
+    # Create a lookup for existing keys to avoid duplicates
+    existing_keys = set()
+    for r in registry:
+        # Handle if r is dict or object
+        cat = r.get('category') if isinstance(r, dict) else r.category
+        key = r.get('key') if isinstance(r, dict) else r.key
+        existing_keys.add((cat, key))
+        
+    missing_defaults = []
+    for d in defaults:
+        if (d['category'], d['key']) not in existing_keys:
+            missing_defaults.append(d)
+            
+    if missing_defaults:
+        print(f"[DEBUG] Merging {len(missing_defaults)} missing defaults for {project_id}: {[d['key'] for d in missing_defaults]}")
+        registry.extend(missing_defaults)
+        
+    return {"registry": registry}
+    
+    # (Removed redundant empty check block previously here)
+        
+    return {"registry": registry}
+
+@app.post("/projects/{project_id}/registry")
+async def update_project_registry(project_id: str, payload: dict):
+    """Updates a specific Design Rule."""
+    db = SupabasePersistence()
+    
+    category = payload.get("category")
+    key = payload.get("key")
+    value = payload.get("value")
+    
+    if not category or not key:
+        return {"success": False, "error": "Category and Key are required"}
+        
+    # Resolve Name -> ID for update
+    # update_design_registry takes project_id. 
+    # Let's ensure we find the UUID first to be safe, as DB method might expect UUID for FKs?
+    # The DB method `update_design_registry` takes project_id and internally upserts.
+    # It doesn't seem to have name resolution inside. Let's do it here.
+    
+    project_uuid = project_id
+    if "-" not in project_id:
+         u = await db.get_project_id_by_name(project_id)
+         if u: project_uuid = u
+         
+    success = await db.update_design_registry(project_uuid, category, key, value)
+    return {"success": success}

@@ -179,12 +179,21 @@ class PersistenceService:
         project_root = os.path.join(cls.BASE_DIR, folder_name)
         
         # Resolve absolute path
+        # Fix: If file_path is relative, assume it is inside project_root
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(project_root, file_path)
+            
         abs_path = os.path.abspath(file_path)
         abs_root = os.path.abspath(project_root)
         
         if not abs_path.startswith(abs_root):
+            # Debug info in case of error
+            # print(f"[Security] Denied access to {abs_path} (limit: {abs_root})")
             raise ValueError("Access Denied: File is outside project directory")
             
+        if not os.path.exists(abs_path):
+            return ""
+
         with open(abs_path, 'r', encoding='utf-8') as f:
             return f.read()
 
@@ -369,7 +378,8 @@ class SupabasePersistence:
             "target_code": target_code,
             "status": status
         }
-        res = self.client.table("transformations").insert(data).execute()
+        # [Release 3.5] Table Renamed: 'transformations' -> 'utm_transformations'
+        res = self.client.table("utm_transformations").insert(data).execute()
         return res.data[0]["id"]
 
     async def update_project_stage(self, project_id_or_name: str, stage: str) -> bool:
@@ -433,6 +443,10 @@ class SupabasePersistence:
         try:
             # 1. Delete all assets for the project
             self.client.table("utm_objects").delete().eq("project_id", project_id).execute()
+            
+            # [Release 3.5] Clean File Inventory and Logs
+            self.client.table("utm_execution_logs").delete().eq("project_id", project_id).execute()
+            self.client.table("utm_file_inventory").delete().eq("project_id", project_id).execute()
             
             # 2. Reset stage to 1 and status to TRIAGE
             self.client.table("utm_projects").update({
@@ -504,7 +518,8 @@ class SupabasePersistence:
             "rules": rules or {}
         }
         try:
-            self.client.table("asset_context").upsert(data, on_conflict="project_id, source_path").execute()
+            # [Release 3.5] Table Renamed: 'asset_context' -> 'utm_asset_context'
+            self.client.table("utm_asset_context").upsert(data, on_conflict="project_id, source_path").execute()
             return True
         except Exception as e:
             print(f"Error saving asset context: {e}")
@@ -513,7 +528,8 @@ class SupabasePersistence:
     async def get_project_context(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves all human context entries for a project."""
         try:
-            res = self.client.table("asset_context").select("*").eq("project_id", project_id).execute()
+            # [Release 3.5] Table Renamed: 'asset_context' -> 'utm_asset_context'
+            res = self.client.table("utm_asset_context").select("*").eq("project_id", project_id).execute()
             return res.data if res.data else []
         except Exception as e:
             print(f"Error fetching project context: {e}")
@@ -529,7 +545,8 @@ class SupabasePersistence:
                 project_uuid = resolved
 
         try:
-            res = self.client.table("design_registry").select("*").eq("project_id", project_uuid).execute()
+            # [Release 3.5] Table Renamed: 'design_registry' -> 'utm_design_registry'
+            res = self.client.table("utm_design_registry").select("*").eq("project_id", project_uuid).execute()
             return res.data if res.data else []
         except Exception as e:
             print(f"Error fetching design registry: {e}")
@@ -545,7 +562,8 @@ class SupabasePersistence:
             "updated_at": "now()"
         }
         try:
-            self.client.table("design_registry").upsert(data, on_conflict="project_id, category, key").execute()
+            # [Release 3.5] Table Renamed: 'design_registry' -> 'utm_design_registry'
+            self.client.table("utm_design_registry").upsert(data, on_conflict="project_id, category, key").execute()
             return True
         except Exception as e:
             print(f"Error updating design registry: {e}")
@@ -556,9 +574,209 @@ class SupabasePersistence:
         from apps.api.services.knowledge_service import KnowledgeService
         defaults = KnowledgeService.get_default_registry_entries(project_id)
         try:
-            self.client.table("design_registry").upsert(defaults, on_conflict="project_id, category, key").execute()
+            # [Release 3.5] Table Renamed: 'design_registry' -> 'utm_design_registry'
+            self.client.table("utm_design_registry").upsert(defaults, on_conflict="project_id, category, key").execute()
             return True
         except Exception as e:
             print(f"Error initializing design registry: {e}")
             return False
+
+    # Release 3.5: Execution Logs & File Inventory
+    # --------------------------------------------
+    
+    async def log_execution(self, project_id: str, phase: str, message: str, step: str = None, level: str = "INFO"):
+        """Persists a log entry to the database."""
+        try:
+            data = {
+                "project_id": project_id,
+                "phase": phase,
+                "step": step,
+                "message": message,
+                "level": level
+            }
+            self.client.table("utm_execution_logs").insert(data).execute()
+        except Exception as e:
+            print(f"Error logging to DB: {e}")
+
+    async def sync_file_inventory(self, project_id: str) -> bool:
+        """
+        Scans the project's solution directory and updates 'utm_file_inventory'.
+        Replaces file-system scanning for read operations.
+        """
+        import os
+        from .persistence_service import PersistenceService
+        
+        project_uuid = project_id
+        if "-" not in project_id:
+             resolved = await self.get_project_id_by_name(project_id)
+             if resolved: project_uuid = resolved
+        
+        try:
+            # 1. Get real path
+            project_dir = PersistenceService.ensure_solution_dir(project_id)
+            if not os.path.exists(project_dir):
+                return False
+
+            # 2. Walk and Collect
+            inventory = []
+            now = "now()" # In SQL, or use python datetime
+            
+            for root, dirs, files in os.walk(project_dir):
+                rel_root = os.path.relpath(root, project_dir)
+                if rel_root == ".": rel_root = ""
+                
+                # Add Directories
+                for d in dirs:
+                    if d.startswith(".") or d == "__pycache__": continue
+                    d_path = os.path.join(rel_root, d).replace("\\", "/")
+                    inventory.append({
+                        "project_id": project_uuid,
+                        "file_path": d_path,
+                        "is_directory": True,
+                        "last_modified": now
+                    })
+
+                # Add Files
+                for f in files:
+                    if f.startswith(".") or f == "__pycache__": continue
+                    if f.endswith(".pyc"): continue
+                    
+                    full_path = os.path.join(root, f)
+                    rel_path = os.path.join(rel_root, f).replace("\\", "/")
+                    
+                    size = os.path.getsize(full_path)
+                    
+                    inventory.append({
+                        "project_id": project_uuid,
+                        "file_path": rel_path,
+                        "is_directory": False,
+                        "size_bytes": size,
+                        "last_modified": now
+                    })
+            
+            # 3. Simple Refresh: Delete all and re-insert
+            # (In future, intelligent diffing would be better)
+            self.client.table("utm_file_inventory").delete().eq("project_id", project_uuid).execute()
+            
+            if inventory:
+                # Batch insert? Supabase might limit request size. 
+                # Let's chunk if necessary, but thousands of files might be fine.
+                # Just catch error if too big.
+                try:
+                    self.client.table("utm_file_inventory").insert(inventory).execute()
+                except Exception as ex:
+                    print(f"Batch insert failed, retrying in chunks: {ex}")
+                    # Naive chunking
+                    chunk_size = 100
+                    for i in range(0, len(inventory), chunk_size):
+                        chunk = inventory[i:i + chunk_size]
+                        self.client.table("utm_file_inventory").insert(chunk).execute()
+
+            return True
+        except Exception as e:
+            print(f"Error syncing file inventory: {e}")
+            return False
+
+    async def get_project_files_from_db(self, project_id: str) -> List[Dict[str, Any]]:
+        """Retrieves and builds the file tree from DB."""
+        project_uuid = project_id
+        if "-" not in project_id:
+             resolved = await self.get_project_id_by_name(project_id)
+             if resolved: project_uuid = resolved
+
+        try:
+            res = self.client.table("utm_file_inventory").select("*").eq("project_id", project_uuid).execute()
+            rows = res.data if res.data else []
+            
+            if not rows:
+                # Lazy Sync if empty
+                await self.sync_file_inventory(project_id)
+                res = self.client.table("utm_file_inventory").select("*").eq("project_id", project_uuid).execute()
+                rows = res.data if res.data else []
+
+            # Build Tree
+            return self._build_tree(rows)
+        except Exception as e:
+            print(f"Error fetching inventory from DB: {e}")
+            return []
+
+    def _build_tree(self, inventory: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Converts flat inventory list to nested tree structure."""
+        tree = []
+        # sort by path len to ensure parents processed before children?
+        # Actually easier to build a map.
+        
+        # Structure: path -> node
+        # But frontend expects recursive logic.
+        
+        # Let's just create a quick map of nodes
+        # This is a bit complex to do generic hierarchy from paths in one pass.
+        # Let's verify what frontend expects: 
+        # { name: "foo", type: "folder", children: [...] }
+        
+        # 1. Create all nodes
+        nodes_by_path = {}
+        
+        # First pass: Create node objects
+        for item in inventory:
+            path = item["file_path"]
+            name = os.path.basename(path)
+            node = {
+                "name": name,
+                "path": path, # This is usually absolute in old helper, here relative?
+                              # Frontend uses this path for 'read_file_content'.
+                              # 'read_file_content' in persistence_service (lines 175+) handles relative paths!
+                              # So returning relative path is actually safer/better.
+                "type": "folder" if item["is_directory"] else "file",
+                "children": [] if item["is_directory"] else None
+            }
+            nodes_by_path[path] = node
+
+        # 2. Nest them
+        root_nodes = []
+        
+        # Sort keys to ensure deterministic order (though map keys are insertion ordered in modern python)
+        sorted_paths = sorted(nodes_by_path.keys())
+        
+        for path in sorted_paths:
+            node = nodes_by_path[path]
+            parent_path = os.path.dirname(path).replace("\\", "/")
+            
+            if parent_path and parent_path != "." and parent_path in nodes_by_path:
+                nodes_by_path[parent_path]["children"].append(node)
+            else:
+                # It's a top level node (relative to project root)
+                root_nodes.append(node)
+
+        # 3. Sort children? 
+        # The frontend likely expects folders first.
+        # We can do a recursive sort if needed, but 'sorted_paths' helps.
+        
+        return root_nodes
+
+    # Release 3.5 Phase 2: Global Configuration
+    async def get_global_config(self, key: str) -> Dict[str, Any]:
+        """Retrieves a global configuration object."""
+        try:
+            res = self.client.table("utm_global_config").select("value").eq("key", key).execute()
+            if res.data:
+                return res.data[0]["value"]
+            return {}
+        except Exception as e:
+            print(f"Error fetching global config {key}: {e}")
+            return {}
+
+    async def set_global_config(self, key: str, value: Dict[str, Any]) -> bool:
+        """Upserts a global configuration object."""
+        try:
+            self.client.table("utm_global_config").upsert({
+                "key": key,
+                "value": value,
+                "updated_at": "now()"
+            }).execute()
+            return True
+        except Exception as e:
+            print(f"Error saving global config {key}: {e}")
+            return False
+
 

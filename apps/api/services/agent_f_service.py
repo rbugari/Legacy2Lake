@@ -14,19 +14,43 @@ except ImportError:
 
 class AgentFService:
     def __init__(self):
-        self.llm = AzureChatOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY")
-        )
         self.prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/agent_f_critic.md")
         self.standards_path = os.path.join(os.path.dirname(__file__), "../prompts/coding_standards.md")
+
+    async def _get_llm(self):
+        """Resolves LLM client from Global Config or Env Vars."""
+        db = SupabasePersistence()
+        config = await db.get_global_config("provider_settings")
+        
+        # Default fallback to env
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        key = os.getenv("AZURE_OPENAI_API_KEY")
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
+        
+        # Override from DB if available and enabled
+        azure_config = config.get("azure", {})
+        if azure_config.get("enabled"):
+            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
+            if azure_config.get("api_key"): key = azure_config.get("api_key")
+            if azure_config.get("model"): deployment = azure_config.get("model")
+            
+        return AzureChatOpenAI(
+            azure_endpoint=endpoint,
+            azure_deployment=deployment,
+            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+            api_key=key,
+            temperature=0
+        )
 
     def _load_prompt(self, path: str = None) -> str:
         target_path = path or self.prompt_path
         with open(target_path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def save_prompt(self, content: str):
+        """Updates the system prompt file."""
+        with open(self.prompt_path, "w", encoding="utf-8") as f:
+            f.write(content)
 
     @logger.llm_debug("Agent-F-Compliance-Review")
     async def review_code(self, task_info: Dict[str, Any], generated_code: str) -> Dict[str, Any]:
@@ -52,7 +76,8 @@ class AgentFService:
             HumanMessage(content=human_content)
         ]
 
-        response = await self.llm.ainvoke(messages)
+        llm = await self._get_llm()
+        response = await llm.ainvoke(messages)
         content = response.content.strip()
 
         if "```json" in content:
@@ -90,7 +115,8 @@ class AgentFService:
             HumanMessage(content=human_content)
         ]
 
-        response = await self.llm.ainvoke(messages)
+        llm = await self._get_llm()
+        response = await llm.ainvoke(messages)
         content = response.content.strip()
 
         if "```json" in content:

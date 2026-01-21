@@ -1,0 +1,74 @@
+[Profiler] Starting analysis...
+[Profiler] Target Project Directory: C:\proyectos_dev\UTM\solutions\base2
+[Profiler] Found 5 Python files in Drafting.
+[Profiler] Analyzing file: DimCategory.py...
+[Profiler]   > Detected PK candidates for DimCategory.py (DIMENSION): ['categoryid']
+[Profiler] Analyzing file: DimCustomers.py...
+[Profiler]   > Detected PK candidates for DimCustomers.py (DIMENSION): ['custid']
+[Profiler] Analyzing file: DimEmployee.py...
+[Profiler]   > Detected PK candidates for DimEmployee.py (DIMENSION): ['empid']
+[Profiler] Analyzing file: DimProduct.py...
+[Profiler]   > Detected PK candidates for DimProduct.py (DIMENSION): ['ProductID']
+[Profiler] Analyzing file: DimShipper.py...
+[Profiler]   > Detected PK candidates for DimShipper.py (DIMENSION): ['ShipperID']
+[Profiler] Profile metadata saved to C:\proyectos_dev\UTM\solutions\base2\Refinement\profile_metadata.json
+[Profiler] Complete. Analyzed 5 files.
+[Architect] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...
+[Architect] Solutions Directory: C:\proyectos_dev\UTM\solutions\base2
+[Architect] Using Cartridge: PySparkCartridge
+[Architect] Ensuring Medallion folder structure (Bronze/Silver/Gold)...
+[Architect] Generated Scaffolding: config.py
+[Architect] Generated Scaffolding: utils.py
+[Architect] Processing 5 source files with .py extension...
+[Architect] Medallion structure created.
+[Refactoring] Applying Spark Optimizations and Security Controls...
+[Refactoring] Scanning generated files for optimization candidates...
+[Refactoring] Optimizing BRONZE layer (5 files)...
+[Refactoring]   > DimCategory_bronze.py: Added Z-Order hint
+[Refactoring]   > DimCategory_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimCustomers_bronze.py: Added Z-Order hint
+[Refactoring]   > DimCustomers_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimEmployee_bronze.py: Added Z-Order hint
+[Refactoring]   > DimEmployee_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimProduct_bronze.py: Added Z-Order hint
+[Refactoring]   > DimProduct_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimShipper_bronze.py: Added Z-Order hint
+[Refactoring]   > DimShipper_bronze.py: Validated Secret Scope usage
+[Refactoring] Optimizing SILVER layer (5 files)...
+[Refactoring]   > stg_DimCategory.py: Added Z-Order hint
+[Refactoring]   > stg_DimCategory.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimCustomers.py: Added Z-Order hint
+[Refactoring]   > stg_DimCustomers.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimEmployee.py: Added Z-Order hint
+[Refactoring]   > stg_DimEmployee.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimProduct.py: Added Z-Order hint
+[Refactoring]   > stg_DimProduct.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimShipper.py: Added Z-Order hint
+[Refactoring]   > stg_DimShipper.py: Validated Secret Scope usage
+[Refactoring] Optimizing GOLD layer (5 files)...
+[Refactoring]   > dim_DimCategory.py: Added Z-Order hint
+[Refactoring]   > dim_DimCategory.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimCustomers.py: Added Z-Order hint
+[Refactoring]   > dim_DimCustomers.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimEmployee.py: Added Z-Order hint
+[Refactoring]   > dim_DimEmployee.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimProduct.py: Added Z-Order hint
+[Refactoring]   > dim_DimProduct.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimShipper.py: Added Z-Order hint
+[Refactoring]   > dim_DimShipper.py: Validated Secret Scope usage
+[Refactoring] Optimized 15 files.
+[OpsAuditor] Validating operational readiness and generating DevOps assets...
+[OpsAuditor] Starting Operational Audit...
+[OpsAuditor] OK: BRONZE layer contains 5 files.
+[OpsAuditor] OK: SILVER layer contains 5 files.
+[OpsAuditor] OK: GOLD layer contains 5 files.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCategory.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCustomers.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimEmployee.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimProduct.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimShipper.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] Generating Infrastructure-as-Code (IaC) manifests...
+[OpsAuditor] Generating Operational Handbook (README_DEVOPS.md)...
+[OpsAuditor] Audit Complete.
+[OpsAuditor] Audit result: COMPLETED
+[Refinement] Pipeline Complete.

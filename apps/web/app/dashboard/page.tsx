@@ -127,12 +127,21 @@ export default function Dashboard() {
                         <h1 className="text-3xl font-bold">Consola de Soluciones</h1>
                         <p className="text-gray-500">Gestiona tus proyectos de modernización.</p>
                     </div>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-primary text-white px-6 py-2 rounded-lg font-bold hover:bg-secondary transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
-                    >
-                        <FolderPlus size={18} /> Nueva Solución
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <Link
+                            href="/settings"
+                            className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                            title="Configuración Global (Admin)"
+                        >
+                            <Settings size={24} />
+                        </Link>
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="bg-primary text-white px-6 py-2 rounded-lg font-bold hover:bg-secondary transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
+                        >
+                            <FolderPlus size={18} /> Nueva Solución
+                        </button>
+                    </div>
                 </header>
 
                 {/* List of Projects */}

@@ -39,7 +39,7 @@ This document defines the architectural evolution of the Legacy2Lake engine. The
 
 ---
 
-## 🏗️ Release v3.0: Multi-Paradigm & Governance (SQL & dbt)
+## ✅ Release v3.0: Multi-Paradigm & Governance (SHIPPED)
 
 **Theme**: Supporting modern stacks and ensuring data trust.
 
@@ -48,17 +48,63 @@ This document defines the architectural evolution of the Legacy2Lake engine. The
 - Lack of built-in validation for the migrated data.
 
 ### Technical Implementation
-- [ ] **Pure SQL Cartridge**: Generating sequential scripts (`001_setup.sql`) or modern Stored Procedures (BEGIN/END).
-- [ ] **dbt Architect Cartridge**:
+- [x] **Pure SQL Cartridge**: Generating sequential scripts (`001_setup.sql`) or modern Stored Procedures (BEGIN/END).
+- [x] **dbt Architect Cartridge**:
     - `models/`: Jinja-SQL generation with `{{ ref() }}` and `{{ source() }}`.
     - `snapshots/`: Auto-generation of SCD files.
     - `schema.yml`: Auto-injection of column documentation and tests (Unique, Not Null).
-- [ ] **Graph Resolution**: Converting physical SSIS references into a dynamic Directed Acyclic Graph (DAG).
-- [ ] **Automated Data Quality (Unit Testing)**: Generation of validation scripts (e.g., Row Count comparison or Null Checks) to run post-migration.
+- [x] **Graph Resolution**: Converting physical SSIS references into a dynamic Directed Acyclic Graph (DAG).
+- [ ] **Automated Data Quality (Unit Testing)**: Generation of validation scripts.
+
+> [!NOTE] 
+> **User Feedback (v3.0)**: The "Design Registry" layout needs improvement. Users find the placement of "Target Stack" selector non-intuitive. Tracking for v3.1 polish.
 
 ---
 
-## 🤖 Release v4.0: Multi-Model Orchestrator (AI Efficiency)
+## ✅ Release v3.5: State Persistence & Admin Panel (SHIPPED)
+
+**Theme**: Moving from "File-System Scan" to "Database-First" architecture.
+
+### Core Problems Solved
+- **Statelessness**: Currently, the engine re-scans files on every load. All state (executions, configurations, logs) must live in the DB.
+- **Global Configuration**: Lack of a centralized area to manage Cartridges, Prompts, and Providers across projects.
+
+### Technical Implementation
+- [ ] **Database-First State**: 
+    - Stop scanning `solutions/` folder on every request.
+    - Persist `FileInventory`, `ExecutionLogs`, and `AgentState` in Supabase.
+- [ ] **Admin Panel (Design-Time Scope)**:
+    - **Cartridge Manager**: Enable/Disable available cartridges (PySpark, dbt).
+    - **Prompt Studio**: Global prompt configuration for Agents A, P, R, O.
+    - **Provider Settings**: Configure Azure/OpenAI keys globally.
+- [ ] **Project Scope vs Platform Scope**: Clear UI separation between "Building a Solution" and "Configuring the Platform".
+
+---
+
+## 🔌 Release v4.0: The Universal Connector (Configurable Sources & Destinations)
+
+**Theme**: Full modularity for both Ingestion (Sources) and Generation (Destinations).
+
+### Core Problems Solved
+- **Rigid Extraction**: Current extractor is hardcoded. Users need to configure SQL dialects, versions, and specific connection strings for diverse sources.
+- **Fixed Destinations**: Cartridges are currently "enabled/disabled" but lack granular configuration (e.g., Spark version, dbt adapter type).
+
+### Technical Implementation
+- [ ] **Configurable Source Cartridges (Extractors)**:
+    - **SQL Server**: Configurable version (2012, 2016, 2019) and specific LLM extraction rules.
+    - **MySQL & Oracle**: Dedicated extractors with dialect-specific parsing logic.
+    - **DataStage**: Specialized XML parser for legacy ETL extraction.
+- [ ] **Configurable Destination Cartridges (Generators)**:
+    - **Databricks**: Toggle for Photon engine, Unity Catalog integration, and Runtime version.
+    - **Cloudera / Impala**: PySpark generation optimized for on-prem Hadoop clusters.
+    - **Snowflake**: dbt Core adapter configuration and SQL dialect tuning.
+- [ ] **Unified Configuration UI**:
+    - Extend "Cartridge Manager" to support "Source Extractors" tab.
+    - JSON-schema based configuration forms for each cartridge (Source or Destination).
+
+---
+
+## 🤖 Release v5.0: Multi-Model Orchestrator (AI Efficiency)
 
 **Theme**: Optimizing cost and reliability by using the "Right Brain" for the task.
 
@@ -75,4 +121,4 @@ This document defines the architectural evolution of the Legacy2Lake engine. The
     - Tracking "Hallucination Rate", "Correction Loops" (how many times the Critic Agent intervened), and "Success vs Retry" metrics.
 
 ---
-*Reference Strategy Document v1.3 - Legacy2Lake Engineering - Approved for Implementation.*
+*Reference Strategy Document v1.4 - Legacy2Lake Engineering - Approved for Implementation.*

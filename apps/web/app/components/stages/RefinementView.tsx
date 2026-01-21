@@ -51,7 +51,38 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         fetchState();
     }, [projectId]);
 
+    const fetchRefinementLogs = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs?type=refinement`);
+            const data = await res.json();
+            if (data.logs) {
+                const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
+                setLogs(logLines);
+            }
+        } catch (e) {
+            console.error("Failed to load logs", e);
+        }
+    };
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isRunning) {
+            interval = setInterval(fetchRefinementLogs, 2000);
+        }
+        return () => clearInterval(interval);
+    }, [isRunning, projectId]);
+
+    // Initial load of logs if we are restoring state
+    useEffect(() => {
+        // If we restored logs from state, that's good, but we can also fetch latest file content
+        fetchRefinementLogs();
+    }, [projectId]);
+
+
     const handleRunRefinement = async () => {
+        const confirmMsg = "Esta acción ejecutará la fase de Refinamiento (Agentes P, A, R, O). Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
+        if (!confirm(confirmMsg)) return;
+
         setIsRunning(true);
         setLogs(["Starting Refinement Phase...", "Initializing Agents..."]);
         try {
@@ -63,6 +94,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
             const data = await res.json();
 
             if (data.log) {
+                // Final sync
                 setLogs(data.log);
             }
             if (data.profile) {
@@ -72,6 +104,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
             setLogs(prev => [...prev, `[Network Error] ${e}`]);
         } finally {
             setIsRunning(false);
+            fetchRefinementLogs(); // Final check
         }
     };
 
@@ -148,6 +181,11 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
     };
 
     const renderFileTree = (nodes: any[], filterDir?: string) => {
+        // Validation check
+        if (!nodes || !Array.isArray(nodes)) {
+            return <div className="p-4 text-xs text-gray-400 italic">No files available</div>;
+        }
+
         // Option to filter tree to a specific root directory (e.g. "Refined")
         const visibleNodes = filterDir ? nodes.filter(n => n.name === filterDir) : nodes;
 
@@ -186,20 +224,58 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-            {/* Header Tabs */}
-            <div className="flex items-center px-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-                {TABS.map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                            ? 'border-primary text-primary bg-primary/5'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                            }`}
-                    >
-                        {tab.icon} {tab.label}
-                    </button>
-                ))}
+            {/* Top Operational Bar (Toolbar) */}
+            <div className="flex items-center justify-between px-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 shadow-sm z-10 transition-all">
+                {/* Left: Tabs */}
+                <div className="flex">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+                                ? 'border-primary text-primary bg-primary/5'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                }`}
+                        >
+                            {tab.icon} <span>{tab.label}</span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Right: Operational Controls */}
+                <div className="flex items-center gap-4">
+                    {/* Group A: View/State Controls (Placeholder for consistency or Reset) */}
+                    {/* We can add a Reset Log button here if we want, for now just keeping structure consistent */}
+                    <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
+                        <span className="text-[10px] uppercase font-bold text-gray-400 px-2 select-none">Refinement Ops</span>
+                    </div>
+
+                    <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
+
+                    {/* Group B: Actions */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleRunRefinement}
+                            disabled={isRunning}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning
+                                ? "bg-gray-400 cursor-not-allowed"
+                                : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200 dark:shadow-none"
+                                }`}
+                        >
+                            <Play size={14} className={isRunning ? "animate-spin" : ""} />
+                            {isRunning ? "Refining..." : "Refine & Modernize"}
+                        </button>
+
+                        {isComplete && (
+                            <button
+                                onClick={handleApprove}
+                                className="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none"
+                            >
+                                <CheckCircle size={14} /> Approve Phase 3
+                            </button>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Content Area */}
@@ -212,23 +288,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
                                 <h2 className="text-xl font-bold flex items-center gap-2"><Layers className="text-primary" /> Phase 3: Refinement</h2>
                                 <p className="text-gray-500 text-sm mt-1">Transform Draft Code into Medallion Architecture (Bronze/Silver/Gold).</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                                {isComplete && (
-                                    <button
-                                        onClick={handleApprove}
-                                        className="px-6 py-3 rounded-lg font-bold text-green-600 border border-green-600 hover:bg-green-50 transition-all flex items-center gap-2"
-                                    >
-                                        <CheckCircle size={18} /> Approve Phase 3
-                                    </button>
-                                )}
-                                <button
-                                    onClick={handleRunRefinement}
-                                    disabled={isRunning}
-                                    className={`px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all flex items-center gap-2 ${isRunning ? "bg-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"}`}
-                                >
-                                    <Play size={18} fill="currentColor" /> {isRunning ? "Refining..." : "Refine & Modernize"}
-                                </button>
-                            </div>
+                            {/* Actions moved to Top Toolbar */}
                         </div>
 
                         {/* Console Output */}

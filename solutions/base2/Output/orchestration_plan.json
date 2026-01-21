@@ -1,0 +1,27 @@
+{
+  "project_id": "base2",
+  "dag_execution": [
+    {
+      "phase": "Bronze_Ingestion",
+      "description": "Independent Dimensions & Raw Loads",
+      "packages": [
+        "DimCategory.dtsx",
+        "DimCustomers.dtsx",
+        "DimEmployee.dtsx",
+        "DimProduct.dtsx",
+        "DimShipper.dtsx",
+        "DimSupplier.dtsx"
+      ]
+    },
+    {
+      "phase": "Gold_Delivery",
+      "dependencies": [
+        "Silver_Refinement"
+      ],
+      "description": "Fact Tables & Aggregations",
+      "packages": [
+        "FactSales.dtsx"
+      ]
+    }
+  ]
+}

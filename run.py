@@ -31,7 +31,7 @@ def main():
         # Command Construction:
         # set PYTHONPATH=... && python -m uvicorn ...
         
-        backend_cmd = f'start "Legacy2Lake API (Port 8085)" cmd /k "set PYTHONPATH={api_path};%PYTHONPATH% && {sys.executable} -m uvicorn apps.api.main:app --port 8085 --reload --reload-exclude solutions"'
+        backend_cmd = f'start "Legacy2Lake API (Port 8085)" cmd /k "set PYTHONPATH={api_path};%PYTHONPATH% && {sys.executable} -m uvicorn apps.api.main:app --port 8085 --reload --reload-dir apps"'
         
         subprocess.Popen(
             backend_cmd,

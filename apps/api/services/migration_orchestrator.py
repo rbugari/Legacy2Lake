@@ -53,11 +53,21 @@ class MigrationOrchestrator:
         # Log Persistence
         self.log_file = os.path.join(self.base_path, "migration.log")
 
-    def _log_persistence(self, message: str):
-        """Appends a message to the persistent log file."""
+    async def _log_persistence(self, message: str, step: str = None):
+        """Persists a message to the database log."""
+        if not step:
+            # Simple heuristic for step based on message content
+            if "Librarian" in message: step = "Librarian"
+            elif "Topology" in message: step = "Topology"
+            elif "Developer" in message: step = "Developer"
+            elif "Compliance" in message: step = "Compliance"
+            else: step = "Orchestrator"
+            
+        await self.persistence.log_execution(self.project_id, "MIGRATION", message, step=step)
+        
+        # [Deprecated] File Persistence (Keeping for safety for now in migration.log)
         import datetime
         now = datetime.datetime.utcnow().isoformat()
-        
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(f"[{now}] {message}\n")
 
@@ -76,7 +86,7 @@ class MigrationOrchestrator:
         status = await self.persistence.get_project_status(self.project_id)
         if status != "DRAFTING":
             logger.error(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.", "Orchestrator")
-            self._log_persistence(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.")
+            await self._log_persistence(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.")
             return {
                 "project_id": self.project_id,
                 "error": f"Project is in {status} mode. Approve Triage first.",
@@ -86,26 +96,26 @@ class MigrationOrchestrator:
 
         # 1. THE LIBRARIAN (Context)
         logger.info("Step 1: Librarian - Scanning Schema Context...", "Orchestrator")
-        self._log_persistence("Step 1: Librarian - Scanning Schema Context...")
+        await self._log_persistence("Step 1: Librarian - Scanning Schema Context...")
         schema_ref = self.librarian.scan_project()
         logger.info(f"Found {len(schema_ref['tables'])} tables.", "Librarian")
-        self._log_persistence(f"Librarian: Found {len(schema_ref['tables'])} tables.")
+        await self._log_persistence(f"Librarian: Found {len(schema_ref['tables'])} tables.")
         logger.debug("Schema Reference", "Librarian", schema_ref)
 
         # 2. THE TOPOLOGY ARCHITECT (Plan)
         logger.info("Step 2: Topology - Building Orchestration Plan...", "Orchestrator")
-        self._log_persistence("Step 2: Topology - Building Orchestration Plan...")
+        await self._log_persistence("Step 2: Topology - Building Orchestration Plan...")
         topology_result = self.topology.build_orchestration_plan()
         orchestration = topology_result["orchestration"]
         package_metadatas = topology_result["package_metadatas"]
         
         logger.info(f"Generated DAG with {len(orchestration['dag_execution'])} phases.", "Topology")
-        self._log_persistence(f"Topology: Generated DAG with {len(orchestration['dag_execution'])} phases.")
+        await self._log_persistence(f"Topology: Generated DAG with {len(orchestration['dag_execution'])} phases.")
         logger.debug("Orchestration Plan", "Topology", orchestration)
 
         # 3. EXECUTION LOOP (Developer + Compliance)
         logger.info("Step 3: Execution - Generating & Auditing Code...", "Orchestrator")
-        self._log_persistence("Step 3: Execution - Generating & Auditing Code...")
+        await self._log_persistence("Step 3: Execution - Generating & Auditing Code...")
         
         results = {
             "project_id": self.project_id,
@@ -118,16 +128,16 @@ class MigrationOrchestrator:
 
         for phase in orchestration["dag_execution"]:
             logger.info(f"Entering Phase: {phase['phase']}", "Orchestrator")
-            self._log_persistence(f"Entering Phase: {phase['phase']}")
+            await self._log_persistence(f"Entering Phase: {phase['phase']}")
             
             for pkg_name in phase["packages"]:
                 if limit > 0 and len(results["succeeded"]) + len(results["failed"]) >= limit:
                     logger.warning(f"Limit Reached: Stopping after {limit} packages.", "Orchestrator")
-                    self._log_persistence(f"Limit Reached: Stopping after {limit} packages.")
+                    await self._log_persistence(f"Limit Reached: Stopping after {limit} packages.")
                     break
                 
                 logger.info(f"Processing: {pkg_name}", "Orchestrator")
-                self._log_persistence(f"Processing: {pkg_name}...")
+                await self._log_persistence(f"Processing: {pkg_name}...")
                 
                 # A. Prepare Task Context
                 pm = metadata_map.get(pkg_name, {})
@@ -144,7 +154,7 @@ class MigrationOrchestrator:
                 
                 if not notebook_content:
                     logger.error(f"Developer failed to generate code for {pkg_name}", "Orchestrator")
-                    self._log_persistence(f"Developer: Failed to generate code for {pkg_name}")
+                    await self._log_persistence(f"Developer: Failed to generate code for {pkg_name}")
                     results["failed"].append({"package": pkg_name, "reason": "Empty code response"})
                     continue
 
@@ -161,9 +171,9 @@ class MigrationOrchestrator:
                 
                 if status == "APPROVED":
                     results["succeeded"].append(pkg_name)
-                    self._log_persistence(f"Developer: Generated {pkg_name}... APPROVED (Score: {audit_report.get('score')})")
+                    await self._log_persistence(f"Developer: Generated {pkg_name}... APPROVED (Score: {audit_report.get('score')})")
                 else:
-                    self._log_persistence(f"Compliance: REJECTED {pkg_name} (Score: {audit_report.get('score')})")
+                    await self._log_persistence(f"Compliance: REJECTED {pkg_name} (Score: {audit_report.get('score')})")
                     results["failed"].append({
                         "package": pkg_name, 
                         "reason": "Audit Rejected", 
@@ -171,7 +181,7 @@ class MigrationOrchestrator:
                     })
 
         logger.info(f"Migration Complete. Succeeded: {len(results['succeeded'])}, Failed: {len(results['failed'])}", "Orchestrator")
-        self._log_persistence("Migration Complete.")
+        await self._log_persistence("Migration Complete.")
         return results
 
     def _save_artifact(self, filename: str, content: str):

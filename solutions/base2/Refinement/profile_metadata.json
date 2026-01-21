@@ -1,0 +1,60 @@
+{
+    "analyzed_files": [
+        "DimCategory.py",
+        "DimCustomers.py",
+        "DimEmployee.py",
+        "DimProduct.py",
+        "DimShipper.py"
+    ],
+    "shared_connections": {},
+    "table_metadata": {
+        "DimCategory.py": {
+            "pk": [
+                "categoryid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimCustomers.py": {
+            "pk": [
+                "custid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimEmployee.py": {
+            "pk": [
+                "empid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimProduct.py": {
+            "pk": [
+                "ProductID"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimShipper.py": {
+            "pk": [
+                "ShipperID"
+            ],
+            "type": "DIMENSION"
+        }
+    },
+    "primary_keys": {
+        "DimCategory.py": [
+            "categoryid"
+        ],
+        "DimCustomers.py": [
+            "custid"
+        ],
+        "DimEmployee.py": [
+            "empid"
+        ],
+        "DimProduct.py": [
+            "ProductID"
+        ],
+        "DimShipper.py": [
+            "ShipperID"
+        ]
+    },
+    "total_files": 5
+}

@@ -44,6 +44,12 @@ class KnowledgeService:
             },
             {
                 "project_id": project_id,
+                "category": "PATHS",
+                "key": "target_stack",
+                "value": "pyspark"
+            },
+            {
+                "project_id": project_id,
                 "category": "PRIVACY",
                 "key": "masking_method",
                 "value": "sha256"

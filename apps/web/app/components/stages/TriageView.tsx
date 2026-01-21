@@ -388,6 +388,28 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         }
     };
 
+    const fetchTriageLogs = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs?type=triage`);
+            const data = await res.json();
+            if (data.logs) {
+                setTriageLog(data.logs);
+            }
+        } catch (e) {
+            console.error("Failed to load logs", e);
+        }
+    }, [projectId]);
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isLoading) {
+            // Poll more frequently during active loading
+            interval = setInterval(fetchTriageLogs, 2000);
+        }
+        return () => clearInterval(interval);
+    }, [isLoading, fetchTriageLogs]);
+
+
     const handleReTriage = async () => {
         // Confirmation for cost
         const confirmMsg = "Esta acción ejecutará agentes de IA para analizar el repositorio. Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
@@ -400,6 +422,9 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         }
 
         setIsLoading(true);
+        setActiveTab('logs'); // Show logs initially to see progress
+        setTriageLog("Initializing Triage Agent..."); // Reset log
+
         try {
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/triage`, {
                 method: 'POST',
@@ -420,10 +445,10 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
             if (data.edges) {
                 setEdges(data.edges);
             }
-            if (data.log) {
-                setTriageLog(data.log);
-                setActiveTab('logs'); // Show logs initially to see progress
-            }
+            // data.log is final summary, but we are polling now.
+            // We can do one final fetch to be sure.
+            await fetchTriageLogs();
+
         } catch (e) {
             console.error("Triage failed", e);
             alert("Error al ejecutar el triaje");
@@ -506,47 +531,64 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                         ))}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsFullscreen(!isFullscreen)}
-                            className="text-gray-500 hover:text-primary p-2 rounded-lg transition-colors"
-                            title={isFullscreen ? "Restaurar" : "Maximizar Espacio"}
-                        >
-                            {isFullscreen ? <Shrink size={18} /> : <Expand size={18} />}
-                        </button>
-                        <button
-                            onClick={handleReset}
-                            disabled={isReadOnly}
-                            className={`text-gray-500 p-2 rounded-lg transition-colors ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'hover:text-red-500'}`}
-                            title="Limpiar Proyecto (Reiniciar)"
-                        >
-                            <RotateCcw size={18} />
-                        </button>
-                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-1" />
-                        <button
-                            onClick={handleReTriage}
-                            disabled={isReadOnly}
-                            className={`bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
-                            title="Reprocesar Triaje"
-                        >
-                            <Play size={14} /> Triaje
-                        </button>
-                        <button
-                            onClick={() => saveLayout(nodes, edges)}
-                            disabled={isReadOnly}
-                            className={`bg-gray-100 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700'}`}
-                            title="Guardar Diseño Actual (Auto-save activo)"
-                        >
-                            <Save size={14} /> Guardar
-                        </button>
-                        <button
-                            onClick={handleApprove}
-                            disabled={isReadOnly} // Already approved if read-only
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-                            title={isReadOnly ? "Diseño Aprobado" : "Aprobar Diseño"}
-                        >
-                            <CheckCircle size={14} /> {isReadOnly ? "Aprobado" : "Aprobar"}
-                        </button>
+                    <div className="flex items-center gap-4">
+                        {/* Group A: View Controls (Icons only) */}
+                        <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
+                            <button
+                                onClick={() => setIsFullscreen(!isFullscreen)}
+                                className="text-gray-500 hover:text-primary hover:bg-white dark:hover:bg-gray-800 p-2 rounded-md transition-all"
+                                title={isFullscreen ? "Restaurar vista" : "Pantalla completa"}
+                            >
+                                {isFullscreen ? <Shrink size={18} /> : <Expand size={18} />}
+                            </button>
+                            <button
+                                onClick={handleReset}
+                                disabled={isReadOnly}
+                                className={`text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-md transition-all ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                title="Reiniciar Proyecto"
+                            >
+                                <RotateCcw size={18} />
+                            </button>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
+
+                        {/* Group B: Primary Actions (Labeled Buttons) */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleReTriage}
+                                disabled={isReadOnly || isLoading}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200 dark:shadow-none'
+                                    }`}
+                                title="Volver a ejecutar el análisis"
+                            >
+                                <Play size={14} className={isLoading ? "animate-spin" : ""} />
+                                {isLoading ? "Procesando..." : "Triaje"}
+                            </button>
+
+                            <button
+                                onClick={() => saveLayout(nodes, edges)}
+                                disabled={isReadOnly}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all border ${isReadOnly
+                                        ? 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                                    }`}
+                            >
+                                <Save size={14} /> Guardar
+                            </button>
+
+                            <button
+                                onClick={handleApprove}
+                                disabled={isReadOnly}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly
+                                        ? 'bg-green-100 text-green-700 cursor-default border border-green-200'
+                                        : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none'
+                                    }`}
+                            >
+                                <CheckCircle size={14} /> {isReadOnly ? "Aprobado" : "Aprobar"}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
