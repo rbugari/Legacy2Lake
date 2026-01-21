@@ -12,6 +12,7 @@ Recibirás un JSON que contiene:
 *   **signatures**: Firmas tecnológicas detectadas (ej. XML tags, SQL Keywords, Python imports).
 *   **snippets**: Los primeros 500 caracteres de archivos clave y líneas donde se detectaron "verbos de invocación" (ej. EXEC, dts:executable, os.system).
 *   **metadata**: Versiones detectadas (ej. SQL Server 2016, Spark 3.4).
+*   **global_design_registry**: Reglas de diseño corporativas (ej. Prefijos de tablas, rutas base, políticas de privacidad).
 
 ## Reasoning Tasks
 
@@ -37,6 +38,12 @@ Evalúa el "peso" de la migración:
 *   **Medium**: Uso de Lookups complejos, manejo de errores personalizado.
 *   **High**: Uso de Script Tasks, componentes de terceros, lógica procedimental anidada.
 
+### 4. Inteligencia de Negocio y Estándares (Release 1.3)
+
+*   **Business Entity**: Analiza el nombre y contenido del archivo para mapearlo a una entidad de negocio del "mundo real" (ej. `DimCustomer.dtsx` -> `CUSTOMER`, `FactSales.dtsx` -> `SALES`).
+*   **Target Naming Enforced**: Proyecta el nombre que el archivo tendrá en el Lakehouse siguiendo las reglas de `NAMING` en el registry.
+    *   *Ejemplo*: Si `silver_prefix` es `stg_`, entonces `DimCustomer` -> `stg_dim_customer`.
+
 ## Response Constraints (JSON Format)
 
 Tu salida debe ser exclusivamente un objeto JSON con la siguiente estructura:
@@ -55,7 +62,9 @@ Tu salida debe ser exclusivamente un objeto JSON con la siguiente estructura:
         "label": "string",
         "category": "CORE | SUPPORT | IGNORED",
         "complexity": "LOW | MEDIUM | HIGH",
-        "confidence": "0.0 - 1.0"
+        "confidence": "0.0 - 1.0",
+        "business_entity": "string",
+        "target_name": "string"
       }
     ],
     "edges": [

@@ -9,7 +9,7 @@ import {
     MarkerType
 } from '@xyflow/react';
 import MeshGraph from '../MeshGraph';
-import { CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity } from 'lucide-react';
 
 import DiscoveryDashboard from '../DiscoveryDashboard';
 
@@ -21,11 +21,14 @@ const TABS = [
     { id: 'grid', label: 'Grilla', icon: <List size={18} /> },
     { id: 'prompt', label: 'Refine Prompt', icon: <Terminal size={18} /> },
     { id: 'context', label: 'User Input', icon: <MessageSquare size={18} /> },
+    { id: 'settings', label: 'Settings', icon: <Database size={18} /> },
     { id: 'logs', label: 'Logs', icon: <FileText size={18} /> },
 ];
 
 export default function TriageView({ projectId, onStageChange }: { projectId: string, onStageChange?: (stage: number) => void }) {
     const [activeTab, setActiveTab] = useState('graph');
+    const [designRegistry, setDesignRegistry] = useState<any[]>([]);
+    const [isSavingRegistry, setIsSavingRegistry] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Data State
@@ -46,6 +49,11 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
     const [showSidebar, setShowSidebar] = useState(true);
+
+    // Release 1.1: Context State
+    const [assetContexts, setAssetContexts] = useState<Record<string, { notes: string, rules: any }>>({});
+    const [selectedAssetForContext, setSelectedAssetForContext] = useState<any | null>(null);
+    const [isSavingContext, setIsSavingContext] = useState(false);
 
     const handleDeleteNode = useCallback((id: string) => {
         if (isReadOnly) return;
@@ -105,6 +113,26 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         }
     }, [assets, setNodes, setAssets, enrichNodes, isReadOnly]);
 
+    const handleMetadataChange = useCallback(async (assetId: string, updates: any) => {
+        if (isReadOnly) return;
+
+        // Optimistic UI Update
+        setAssets(prev => prev.map(a =>
+            a.id === assetId ? { ...a, ...updates } : a
+        ));
+
+        // Persist to Backend
+        try {
+            await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+        } catch (e) {
+            console.error("Failed to persist metadata change", e);
+        }
+    }, [setAssets, isReadOnly]);
+
     const handleSelectionChange = useCallback(async (assetId: string, isSelected: boolean) => {
         if (isReadOnly) return;
 
@@ -125,68 +153,104 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         }
     }, [isReadOnly]);
 
-    // Initialization
-    useEffect(() => {
-        const init = async () => {
-            try {
-                // Check Status first
-                const resStatus = await fetch(`${API_BASE_URL}/projects/${projectId}/status`);
-                const dataStatus = await resStatus.json();
-                const readOnly = dataStatus.status === 'DRAFTING' || dataStatus.status === 'LOCKED';
-                setIsReadOnly(readOnly);
-
-                // Fetch Assets
-                const resAssets = await fetch(`${API_BASE_URL}/projects/${projectId}/assets`);
-                const dataAssets = await resAssets.json();
-                if (dataAssets.assets) {
-                    // Normalize: DB uses 'filename', Frontend uses 'name'
-                    const normalized = dataAssets.assets.map((a: any) => ({
-                        ...a,
-                        name: a.name || a.filename || "Unnamed Asset"
-                    }));
-                    setAssets(normalized);
-                }
-
-                // Fetch Layout
-                const resLayout = await fetch(`${API_BASE_URL}/projects/${projectId}/layout`);
-                const dataLayout = await resLayout.json();
-                if (dataLayout.nodes) {
-                    // Re-enrich with potentially new isReadOnly state
-                    // Note: enrichNodes depends on isReadOnly, so we need to process it after setting state or use local var?
-                    // React state updates are async, so use 'readOnly' local var for the immediate call
-                    const enriched = dataLayout.nodes.map((n: any) => ({
-                        ...n,
-                        data: {
-                            ...n.data,
-                            onDelete: handleDeleteNode,
-                            id: n.id,
-                            isReadOnly: readOnly
-                        },
-                        draggable: !readOnly,
-                        selectable: !readOnly,
-                        deletable: !readOnly
-                    }));
-                    setNodes(enriched);
-                    setEdges(dataLayout.edges || []);
-                }
-                // Fetch Prompt
-                const resPrompt = await fetch(`${API_BASE_URL}/prompts/agent-a`);
-                if (resPrompt.ok) {
-                    const dataPrompt = await resPrompt.json();
-                    if (dataPrompt.prompt) setSystemPrompt(dataPrompt.prompt);
-                } else {
-                    // Fallback to a hardcoded default if the backend is older/unavailable
-                    setSystemPrompt("Analyze the SSIS packages and determine the optimal PySpark architecture...");
-                }
-
-            } catch (err) {
-                console.error("Init failed", err);
-            } finally {
-                setIsLoading(false);
+    const fetchRegistry = useCallback(async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`);
+            if (response.ok) {
+                const data = await response.json();
+                setDesignRegistry(data.registry || []);
             }
-        };
-        init();
-    }, [projectId, setNodes, setEdges, handleDeleteNode]); // Removed isReadOnly from dependency to avoid loop if not handled carefully, but handleSelection needed it.
+        } catch (error) {
+            console.error("Error fetching registry:", error);
+        }
+    }, [projectId]);
+
+    const handleRegistryUpdate = async (category: string, key: string, value: any) => {
+        setIsSavingRegistry(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category, key, value })
+            });
+
+            if (response.ok) {
+                // Update local state optimistically
+                setDesignRegistry(prev => {
+                    const existingIndex = prev.findIndex(r => r.category === category && r.key === key);
+                    if (existingIndex > -1) {
+                        const next = [...prev];
+                        next[existingIndex] = { ...next[existingIndex], value };
+                        return next;
+                    }
+                    return [...prev, { category, key, value }];
+                });
+            }
+        } catch (error) {
+            console.error("Error updating registry:", error);
+        } finally {
+            setIsSavingRegistry(false);
+        }
+    };
+
+    const initializeRegistry = async () => {
+        setIsSavingRegistry(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry/initialize`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                fetchRegistry();
+            }
+        } catch (error) {
+            console.error("Error initializing registry:", error);
+        } finally {
+            setIsSavingRegistry(false);
+        }
+    };
+
+    // Initialization
+    const fetchProject = useCallback(async () => {
+        try {
+            // Check Status first
+            const statusRes = await fetch(`${API_BASE_URL}/discovery/status/${projectId}`);
+            const statusData = await statusRes.json();
+
+            if (statusData.status === 'COMPLETED' || statusData.status === 'TRIAGED' || statusData.status === 'TRIAGE' || statusData.status === 'DRAFTING') {
+                const projectRes = await fetch(`${API_BASE_URL}/discovery/project/${projectId}`);
+                const projectData = await projectRes.json();
+                setAssets(projectData.assets || []);
+                setSystemPrompt(projectData.prompt || "");
+                setIsReadOnly(statusData.status === 'COMPLETED');
+            }
+        } catch (error) {
+            console.error("Init error:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [projectId]);
+
+    const fetchLayout = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/layout`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.nodes) setNodes(enrichNodes(data.nodes));
+                if (data.edges) setEdges(data.edges);
+            }
+        } catch (e) {
+            console.error("Layout fetch error", e);
+        }
+    }, [projectId, enrichNodes]);
+
+    useEffect(() => {
+        if (projectId) {
+            fetchProject();
+            fetchRegistry();
+            fetchLayout();
+        }
+    }, [projectId, fetchProject, fetchRegistry, fetchLayout]);
+    // Logic below the useEffect
 
     // Autosave
     const saveLayout = useCallback(async (nds: any[], eds: any[]) => {
@@ -201,6 +265,32 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
             console.error("Autosave failed", e);
         }
     }, [projectId, isReadOnly]);
+
+    const handleSaveContext = useCallback(async (sourcePath: string, notes: string) => {
+        setIsSavingContext(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/context`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_path: sourcePath,
+                    notes,
+                    rules: assetContexts[sourcePath]?.rules || {}
+                })
+            });
+            if (res.ok) {
+                setAssetContexts(prev => ({
+                    ...prev,
+                    [sourcePath]: { ...prev[sourcePath], notes }
+                }));
+            }
+        } catch (e) {
+            console.error("Failed to save context", e);
+        } finally {
+            setIsSavingContext(false);
+            setSelectedAssetForContext(null);
+        }
+    }, [projectId, assetContexts]);
 
     const onConnect = useCallback((params: any) => {
         if (isReadOnly) return;
@@ -577,15 +667,85 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 uppercase text-xs">
                                         <tr>
-                                            <th className="px-6 py-4">Nombre del Paquete</th>
+                                            <th className="px-6 py-4">Origen</th>
+                                            <th className="px-6 py-4">Nombre Destino</th>
+                                            <th className="px-6 py-4">Entidad</th>
+                                            <th className="px-6 py-4">Soberanía</th>
+                                            <th className="px-6 py-4">Estrategia</th>
                                             <th className="px-6 py-4">Tipo</th>
-                                            <th className="px-6 py-4 text-center">Incluir en Migración</th>
+                                            <th className="px-6 py-4 text-center">Incluir</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {assets.map(asset => (
                                             <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
-                                                <td className="px-6 py-4 font-medium">{asset.name}</td>
+                                                <td className="px-6 py-4 font-medium group">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="truncate max-w-[150px]" title={asset.name}>
+                                                            {asset.name}
+                                                        </div>
+                                                        {assetContexts[asset.id]?.notes && (
+                                                            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse shrink-0" title="Tiene notas de negocio" />
+                                                        )}
+                                                        <button
+                                                            onClick={() => setSelectedAssetForContext(asset.id)}
+                                                            className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                                            title="Editar notas de negocio"
+                                                        >
+                                                            <MessageSquare size={12} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={asset.target_name || ''}
+                                                        placeholder={asset.name.split('.')[0].toLowerCase()}
+                                                        onChange={(e) => handleMetadataChange(asset.id, { target_name: e.target.value })}
+                                                        className="bg-transparent border-b border-gray-200 dark:border-gray-800 text-[11px] focus:border-primary focus:ring-0 w-full transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={asset.business_entity || ''}
+                                                        placeholder="e.g. CUSTOMER"
+                                                        onChange={(e) => handleMetadataChange(asset.id, { business_entity: e.target.value.toUpperCase() })}
+                                                        className="bg-gray-50 dark:bg-gray-900 border-none rounded px-2 py-1 text-[10px] font-bold uppercase focus:ring-1 focus:ring-primary w-24 transition-all"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <button
+                                                        onClick={() => handleMetadataChange(asset.id, { is_pii: !asset.is_pii })}
+                                                        className={`p-1.5 rounded-lg transition-all flex items-center gap-2 ${asset.is_pii
+                                                            ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse'
+                                                            : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+                                                            }`}
+                                                        title={asset.is_pii ? "PII Detectado" : "Marcar como PII"}
+                                                    >
+                                                        {asset.is_pii ? <ShieldAlert size={14} /> : <Shield size={14} />}
+                                                        {asset.is_pii && <span className="text-[10px] font-bold">PII</span>}
+                                                    </button>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col gap-1">
+                                                        <select
+                                                            value={asset.load_strategy || 'FULL_OVERWRITE'}
+                                                            onChange={(e) => handleMetadataChange(asset.id, { load_strategy: e.target.value })}
+                                                            className={`text-[9px] font-bold uppercase rounded px-1.5 py-0.5 border-none focus:ring-1 focus:ring-primary w-24 cursor-pointer ${asset.load_strategy === 'INCREMENTAL' ? 'bg-blue-100 text-blue-700' :
+                                                                asset.load_strategy === 'SCD_2' ? 'bg-indigo-100 text-indigo-700' :
+                                                                    'bg-gray-100 text-gray-600'
+                                                                }`}
+                                                        >
+                                                            <option value="FULL_OVERWRITE">FULL</option>
+                                                            <option value="INCREMENTAL">INCREMENTAL</option>
+                                                            <option value="SCD_2">SCD TYPE 2</option>
+                                                        </select>
+                                                        <div className="flex items-center gap-1 text-[9px] text-gray-400 font-mono">
+                                                            <Clock size={8} /> {asset.frequency || 'DAILY'}
+                                                        </div>
+                                                    </div>
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <select
                                                         value={asset.type}
@@ -606,20 +766,121 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                         type="checkbox"
                                                         checked={asset.selected || false}
                                                         onChange={(e) => handleSelectionChange(asset.id, e.target.checked)}
-                                                        className="w-5 h-5 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer transition-all"
+                                                        className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer transition-all"
                                                     />
                                                 </td>
                                             </tr>
                                         ))}
                                         {assets.length === 0 && (
                                             <tr>
-                                                <td colSpan={3} className="px-6 py-8 text-center text-gray-400">
+                                                <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
                                                     No se encontraron activos.
                                                 </td>
                                             </tr>
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 4. SETTINGS TAB - DESIGN REGISTRY */}
+                    {activeTab === 'settings' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+                            <div className="max-w-4xl mx-auto space-y-8">
+                                <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                                            <Database className="text-primary" />
+                                            Design Registry
+                                        </h2>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Define global standards for naming, paths, and privacy policies.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={initializeRegistry}
+                                        disabled={isSavingRegistry}
+                                        className="px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all font-medium text-sm flex items-center gap-2"
+                                    >
+                                        <Zap size={16} />
+                                        Initialize Defaults
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Naming Standards */}
+                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                                            <Terminal size={14} />
+                                            Naming Conventions
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-2">SILVER PREFIX</label>
+                                                <input
+                                                    type="text"
+                                                    value={designRegistry.find(r => r.category === 'NAMING' && r.key === 'silver_prefix')?.value || ''}
+                                                    onChange={(e) => handleRegistryUpdate('NAMING', 'silver_prefix', e.target.value)}
+                                                    placeholder="stg_"
+                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-2">GOLD PREFIX</label>
+                                                <input
+                                                    type="text"
+                                                    value={designRegistry.find(r => r.category === 'NAMING' && r.key === 'gold_prefix')?.value || ''}
+                                                    onChange={(e) => handleRegistryUpdate('NAMING', 'gold_prefix', e.target.value)}
+                                                    placeholder="dim_"
+                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Infrastructure & Paths */}
+                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                                            <Database size={14} />
+                                            Target Storage
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-2">LAKEHOUSE ROOT PATH</label>
+                                                <input
+                                                    type="text"
+                                                    value={designRegistry.find(r => r.category === 'PATHS' && r.key === 'root_path')?.value || ''}
+                                                    onChange={(e) => handleRegistryUpdate('PATHS', 'root_path', e.target.value)}
+                                                    placeholder="abfss://..."
+                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Privacy Policies */}
+                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                                            <Shield size={14} />
+                                            Data Privacy (PII)
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-2">MASKING METHOD</label>
+                                                <select
+                                                    value={designRegistry.find(r => r.category === 'PRIVACY' && r.key === 'masking_method')?.value || 'sha256'}
+                                                    onChange={(e) => handleRegistryUpdate('PRIVACY', 'masking_method', e.target.value)}
+                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
+                                                >
+                                                    <option value="sha256">SHA-256 (Hashing)</option>
+                                                    <option value="redact">REDACT (Partial Mask)</option>
+                                                    <option value="null">NULL (Remove Column)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -654,23 +915,75 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                     {/* 4. USER INPUT TAB */}
                     {activeTab === 'context' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-4xl mx-auto space-y-6">
-                                <h2 className="text-xl font-bold flex items-center gap-2">
-                                    <MessageSquare className="text-primary" /> Contexto del Usuario
-                                </h2>
-                                <p className="text-sm text-gray-500">
-                                    Proporciona contexto adicional, reglas de negocio o restricciones que el agente debe considerar.
-                                </p>
-                                <textarea
-                                    value={userContext}
-                                    onChange={(e) => setUserContext(e.target.value)}
-                                    placeholder="Ej: Ignorar tablas de auditoría, priorizar paquetes de Ventas, usar prefijo 'stg_' para tablas staging..."
-                                    className="w-full h-64 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
-                                />
-                                <div className="flex justify-end">
-                                    <button className="px-6 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg font-bold hover:bg-gray-50 transition-colors">
-                                        Guardar Contexto
-                                    </button>
+                            <div className="max-w-4xl mx-auto space-y-10">
+                                {/* Global Context */}
+                                <div className="space-y-6">
+                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                        <MessageSquare className="text-primary" /> Contexto Global del Proyecto
+                                    </h2>
+                                    <p className="text-sm text-gray-500">
+                                        Proporciona reglas generales que el agente debe aplicar a todo el proyecto (ej: "Usar CamelCase", "Ignorar esquemas de QA").
+                                    </p>
+                                    <textarea
+                                        value={userContext}
+                                        onChange={(e) => setUserContext(e.target.value)}
+                                        placeholder="Ej: Ignorar tablas de auditoría, priorizar paquetes de Ventas, usar prefijo 'stg_' para tablas staging..."
+                                        className="w-full h-40 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
+                                    />
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={() => handleSaveContext('__global__', userContext)}
+                                            className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-secondary transition-colors flex items-center gap-2"
+                                            disabled={isSavingContext}
+                                        >
+                                            <Save size={16} /> {isSavingContext ? 'Guardando...' : 'Guardar Contexto Global'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <hr className="border-gray-200 dark:border-gray-800" />
+
+                                {/* Virtual Step Builder */}
+                                <div className="space-y-6 pb-20">
+                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                        <RotateCcw className="text-primary" /> Constructor de Pasos Virtuales
+                                    </h2>
+                                    <p className="text-sm text-gray-500">
+                                        Crea nodos manuales para procesos que no están en el código. El Agente los conectará lógicamente al re-ejecutar el triaje.
+                                    </p>
+
+                                    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-gray-400 uppercase">Nombre del Paso</label>
+                                                <input id="v-step-name" type="text" placeholder="Ej: Validación Manual" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-gray-400 uppercase">Depende de (Path)</label>
+                                                <input id="v-step-dep" type="text" placeholder="Ej: schema/table.sql" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Instrucciones para el Agente</label>
+                                            <textarea id="v-step-desc" placeholder="Describe qué hace este paso y cómo se conecta..." className="w-full h-24 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button
+                                                onClick={() => {
+                                                    const name = (document.getElementById('v-step-name') as HTMLInputElement).value;
+                                                    const dep = (document.getElementById('v-step-dep') as HTMLInputElement).value;
+                                                    const desc = (document.getElementById('v-step-desc') as HTMLTextAreaElement).value;
+                                                    const virtualId = `virtual_${name.toLowerCase().replace(/\s+/g, '_')}`;
+                                                    const fullNotes = `VIRTUAL_STEP: ${name}\nDEPENDENCY: ${dep}\nINSTRUCTIONS: ${desc}`;
+                                                    handleSaveContext(virtualId, fullNotes);
+                                                }}
+                                                className="px-6 py-2 bg-gray-900 text-white dark:bg-primary dark:text-white rounded-lg font-bold hover:bg-black transition-colors"
+                                                disabled={isSavingContext}
+                                            >
+                                                + Añadir Paso al Mesh
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -692,6 +1005,80 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
 
                 </div>
             </div>
+
+            {/* Release 1.1: Context Sidebar Overlay */}
+            {selectedAssetForContext && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+                    <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-lg dark:text-white">Contexto de Negocio</h3>
+                                <p className="text-xs text-gray-500 truncate w-64">
+                                    {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedAssetForContext(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                                <PanelLeftClose size={20} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Descripción / Notas</label>
+                                <textarea
+                                    className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="Indica reglas específicas para este archivo..."
+                                    defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
+                                    id="context-notes"
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
+                                        <span>Ignorar Duplicados</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
+                                        <span>Tipado Estricto</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setSelectedAssetForContext(null)}
+                                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const notes = (document.getElementById('context-notes') as HTMLTextAreaElement).value;
+                                    const rules = {
+                                        ignore_duplicates: (document.getElementById('rule-dedup') as HTMLInputElement).checked,
+                                        strict_types: (document.getElementById('rule-types') as HTMLInputElement).checked,
+                                    };
+                                    // Local state update first
+                                    setAssetContexts(prev => ({
+                                        ...prev,
+                                        [selectedAssetForContext]: { notes, rules }
+                                    }));
+                                    // Save to backend
+                                    handleSaveContext(selectedAssetForContext, notes);
+                                }}
+                                className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+                                disabled={isSavingContext}
+                            >
+                                {isSavingContext ? 'Guardando...' : <><Save size={16} /> Guardar</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </ReactFlowProvider>
     );
 }

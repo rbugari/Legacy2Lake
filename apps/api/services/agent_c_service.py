@@ -5,11 +5,17 @@ from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 try:
     from apps.api.utils.logger import logger
+    from apps.api.services.persistence_service import SupabasePersistence
+    from apps.api.services.knowledge_service import KnowledgeService
 except ImportError:
     try:
         from utils.logger import logger
+        from services.persistence_service import SupabasePersistence
+        from services.knowledge_service import KnowledgeService
     except ImportError:
         from ..utils.logger import logger
+        from .persistence_service import SupabasePersistence
+        from .knowledge_service import KnowledgeService
 
 
 class AgentCService:
@@ -34,6 +40,11 @@ class AgentCService:
         system_prompt = self._load_prompt(self.prompt_path)
         standards = self._load_prompt(self.standards_path)
         
+        project_id = node_data.get('project_id')
+        db = SupabasePersistence()
+        registry_raw = await db.get_design_registry(project_id) if project_id else []
+        registry = KnowledgeService.flatten_knowledge(registry_raw)
+        
         human_content = f"""
         CODING STANDARDS TO FOLLOW:
         {standards}
@@ -44,7 +55,16 @@ class AgentCService:
         Task Description: {node_data.get('description')}
         
         CONTEXT:
-        {json.dumps(context or {}, indent=2)}
+        {json.dumps({
+            **(context or {}),
+            "load_strategy": node_data.get("load_strategy", "FULL_OVERWRITE"),
+            "frequency": node_data.get("frequency", "DAILY"),
+            "is_pii": node_data.get("is_pii", False),
+            "masking_rule": node_data.get("masking_rule"),
+            "target_name": node_data.get("target_name"),
+            "business_entity": node_data.get("business_entity"),
+            "global_design_registry": registry
+        }, indent=2)}
         """
 
         messages = [

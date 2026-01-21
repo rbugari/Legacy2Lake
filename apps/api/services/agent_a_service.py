@@ -5,12 +5,18 @@ from typing import Dict, Any
 import json
 try:
     from apps.api.utils.logger import logger
+    from apps.api.services.persistence_service import SupabasePersistence
+    from apps.api.services.knowledge_service import KnowledgeService
 except ImportError:
     try:
         from utils.logger import logger
+        from services.persistence_service import SupabasePersistence
+        from services.knowledge_service import KnowledgeService
     except ImportError:
         # Fallback for when running directly or tests
         from ..utils.logger import logger
+        from .persistence_service import SupabasePersistence
+        from .knowledge_service import KnowledgeService
 
 class AgentAService:
     """Service for Agent A (Detective) using Azure OpenAI."""
@@ -35,6 +41,12 @@ class AgentAService:
         """Analyzes the full project manifest to build the Mesh Graph."""
         
         system_prompt = system_prompt_override or self._load_prompt()
+        project_id = manifest.get('project_id')
+        
+        # Release 1.3: Fetch Design Registry
+        db = SupabasePersistence()
+        registry_raw = await db.get_design_registry(project_id) if project_id else []
+        registry = KnowledgeService.flatten_knowledge(registry_raw)
         
         # Prepare content for LLM (might need truncation if too large)
         # We send the structure and snippets.
@@ -48,11 +60,29 @@ class AgentAService:
         FILE INVENTORY:
         {json.dumps(manifest.get('file_inventory'), indent=2)}
         
+        USER CONTEXT & BUSINESS RULES:
+        {json.dumps(manifest.get('user_context', []), indent=2)}
+
+        GLOBAL DESIGN REGISTRY:
+        {json.dumps(registry, indent=2)}
+
         INSTRUCTIONS:
-        1. Process the FILE INVENTORY. Pay special attention to 'metadata' fields for .dtsx files (contain executables) and 'signatures' for .sql files.
-        2. Assign a FUNCTIONAL CATEGORY (CORE, SUPPORT, IGNORED) to all relevant files.
-        3. Discover dependencies (Edges) based on 'invocations', 'metadata.executables', or naming conventions. Focus the mesh on CORE components.
-        4. Synthesize the Mesh Graph. Return ONLY the JSON requested in the System Prompt.
+        1. Process the FILE INVENTORY.
+        2. **PRIORITY**: If a file in the inventory has entries in USER CONTEXT, those rules/descriptions MUST take precedence over automated inference.
+        3. **VIRTUAL STEPS**: If the USER CONTEXT describes a logical process, validation, or manual step that DOES NOT exist in the FILE INVENTORY, you MUST create a node for it:
+            - Set `id` to `virtual_[unique_name]`.
+            - Set `category` to `CORE`.
+            - Create `edges` from/to this virtual node based on the context description.
+        4. **OPERATIONAL INTELLIGENCE**: For each file, infer:
+            - `frequency`: (HOURLY, DAILY, MONTHLY, NEAR-RT) based on names like 'hourly_load' or context.
+            - `load_strategy`: (INCREMENTAL, FULL_OVERWRITE, SCD_2) based on presence of watermarks, merge logic, or 'Dim' naming (for SCD).
+            - `criticality`: (P1, P2, P3) based on importance.
+        5. **SOVEREIGNTY & SECURITY**: Analyze `signatures` and `snippet` to detect:
+            - `is_pii`: Set to true if you detect columns/data like emails, SSN, personal IDs, birthdays, or salaries.
+            - `masking_rule`: Suggest a logic like 'SHA2 hashing' or 'Redacted'.
+        6. Assign a FUNCTIONAL CATEGORY (CORE, SUPPORT, IGNORED) to all relevant files.
+        7. Discover dependencies (Edges).
+        8. Synthesize the Mesh Graph. Return ONLY the JSON requested in the System Prompt. Ensure the 'nodes' in your response include the new fields: `frequency`, `load_strategy`, `criticality`, `is_pii`, `masking_rule`.
         """
         
         logger.info(f"Agent A analyzing manifest for {manifest.get('project_id')}...", "Agent A")

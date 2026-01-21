@@ -13,8 +13,10 @@ The system applies a layer of "Super-Engineering" to your scripts, ensuring an a
     *   **Bronze**: Raw ingestion and history preservation.
     *   **Silver**: Cleaning, strict typing, and deduplication.
     *   **Gold**: Business aggregations and final BI tables.
-2.  **Automatic Optimization**: Corrects inefficient patterns (shuffles, small files).
-3.  **Security Hardening**: Injects access controls and validates against vulnerabilities.
+2.  **Design Registry Execution (Rel 1.3)**:
+    *   The system uses the **Design Registry** (Knowledge Base) to apply custom naming conventions (e.g., `stg_` prefix), standard paths (Azure/AWS), and privacy policies across all layers.
+3.  **Automatic Optimization**: Corrects inefficient patterns (shuffles, small files).
+4.  **Security Hardening**: Injects access controls and validates against vulnerabilities.
 
 ---
 

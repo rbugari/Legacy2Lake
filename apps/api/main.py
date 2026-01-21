@@ -113,6 +113,11 @@ class TranspileRequest(BaseModel):
     node_data: Dict[str, Any]
     context: Optional[Dict[str, Any]] = None
 
+class RegistryEntry(BaseModel):
+    category: str
+    key: str
+    value: Any
+
 @app.post("/transpile/task")
 async def transpile_task(payload: TranspileRequest):
     """Chain Agent C (Interpreter) and Agent F (Critic) for a robust result."""
@@ -258,6 +263,35 @@ async def get_layout(project_id: str):
     layout = await db.get_project_layout(project_id)
     return layout or {}
 
+@app.get("/projects/{project_id}")
+async def get_project(project_id: str):
+    db = SupabasePersistence()
+    return await db.get_project_metadata(project_id)
+
+@app.get("/discovery/status/{project_id}")
+async def get_discovery_status(project_id: str):
+    """Returns the current status of the project (TRIAGE, DRAFTING, etc)."""
+    db = SupabasePersistence()
+    status = await db.get_project_status(project_id)
+    return {"status": status}
+
+@app.get("/discovery/project/{project_id}")
+async def get_discovery_project(project_id: str):
+    """Returns all assets and the system prompt for a project."""
+    db = SupabasePersistence()
+    project_uuid = project_id
+    if "-" not in project_id:
+        u = await db.get_project_id_by_name(project_id)
+        if u: project_uuid = u
+        
+    assets = await db.get_project_assets(project_uuid)
+    meta = await db.get_project_metadata(project_uuid)
+    
+    return {
+        "assets": assets,
+        "prompt": meta.get("prompt", "") if meta else ""
+    }
+
 @app.patch("/assets/{asset_id}")
 async def patch_asset(asset_id: str, updates: Dict[str, Any]):
     """Updates asset metadata (type, selected status)."""
@@ -314,7 +348,14 @@ async def run_triage(project_id: str, params: TriageParams):
     
     # 1. Deep Scan (The Scanner / Pre-processing)
     log_lines.append("[Step 1] Running Deep Scanner (Python Engine)...")
-    manifest = DiscoveryService.generate_manifest(project_folder)
+    
+    # NEW: Fetch persistent human context
+    user_context = await db.get_project_context(project_uuid)
+    if user_context:
+        log_lines.append(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
+        
+    manifest = DiscoveryService.generate_manifest(project_folder, user_context=user_context)
+    manifest["project_id"] = project_uuid # Ensure UUID is used for DB lookups in agents
     
     file_count = len(manifest["file_inventory"])
     tech_stats = manifest["tech_stats"]
@@ -390,7 +431,7 @@ async def run_triage(project_id: str, params: TriageParams):
     
     saved_assets = await db.batch_save_assets(project_uuid, db_assets)
     # Create lookup map for UUIDs: source_path -> id
-    asset_map = { a["source_path"]: a["id"] for a in saved_assets }
+    asset_map = { a["source_path"]: a.get("id") or a.get("object_id") for a in saved_assets }
 
     
     # Transform Agent Nodes to ReactFlow Nodes (basic)
@@ -798,6 +839,42 @@ async def get_governance(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- Release 1.1: Context Injection Endpoints ---
+
+class AssetContextPayload(BaseModel):
+    source_path: str
+    notes: str
+    rules: Optional[Dict[str, Any]] = None
+
+@app.post("/projects/{project_id}/context")
+async def save_context(project_id: str, payload: AssetContextPayload):
+    """Saves human context for an asset."""
+    db = SupabasePersistence()
+    project_uuid = project_id
+    if "-" not in project_id:
+        u = await db.get_project_id_by_name(project_id)
+        if u: project_uuid = u
+        
+    success = await db.save_asset_context(
+        project_uuid, 
+        payload.source_path, 
+        payload.notes, 
+        payload.rules
+    )
+    return {"success": success}
+
+@app.get("/projects/{project_id}/context")
+async def get_context(project_id: str):
+    """Retrieves all context entries for a project."""
+    db = SupabasePersistence()
+    project_uuid = project_id
+    if "-" not in project_id:
+        u = await db.get_project_id_by_name(project_id)
+        if u: project_uuid = u
+        
+    context_entries = await db.get_project_context(project_uuid)
+    return {"context": context_entries}
+
 
 @app.get("/projects/{project_id}/export")
 async def export_project(project_id: str):
@@ -824,3 +901,32 @@ async def export_project(project_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8005)
+@app.get("/projects/{project_id}/registry")
+async def get_project_registry(project_id: str):
+    """Retrieves all global design rules for a project."""
+    db = SupabasePersistence()
+    registry = await db.get_design_registry(project_id)
+    return {"registry": registry}
+
+@app.post("/projects/{project_id}/registry")
+async def update_project_registry(project_id: str, entry: RegistryEntry):
+    """Upserts a specific design rule."""
+    db = SupabasePersistence()
+    success = await db.update_design_registry(
+        project_id, 
+        entry.category, 
+        entry.key, 
+        entry.value
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update registry")
+    return {"status": "success"}
+
+@app.post("/projects/{project_id}/registry/initialize")
+async def initialize_project_registry(project_id: str):
+    """Seeds default design standards for a new project."""
+    db = SupabasePersistence()
+    success = await db.initialize_design_registry(project_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to initialize registry")
+    return {"status": "success"}

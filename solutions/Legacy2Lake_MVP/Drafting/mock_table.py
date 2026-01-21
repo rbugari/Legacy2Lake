@@ -1,2 +1,0 @@
-# Mock source
-print(" ingest\)

@@ -16,11 +16,12 @@
    - Every column cast must explicitly match the Destination DDL.
    - **MANDATORY**: You must iterate through the Target Schema and apply `.withColumn(col, col.cast(type))` for EVERY column before writing.
    - Use `Decimal(18,2)`, `Long`, `Boolean` precisely. Do not rely on Spark's auto-inference.
-4. **Stable Surrogate Keys (IDEMPOTENT)**:
-   - **Dimensions**: Use the "Lookup + New" pattern. Read target, Join, Preserve existing SKs, Generate new SKs only for new rows.
-   - **Facts**: Must generate keys deterministically. DO NOT comment out key generation logic.
-5. **Path & Environment Management**:
-   - Paths MUST be externalized. Assume a standard `context.get_path('layer', 'table')` pattern.
+6. **Load Strategy Awareness**:
+   - **INCREMENTAL**: Must implement watermark-based filtering using a `ModifiedDate` or `ID` column.
+   - **SCD_2**: Must implement history tracking (Start/End dates, `is_current` flag).
+   - **FULL**: Replace target completely (standard `mode("overwrite")` only for Bronze, use `STATIC_PARTITION` for others).
+7. **Sovereignty (PII Masking)**:
+   - If an asset is flagged for PII, you MUST apply the requested `masking_rule` (e.g., `F.sha2(col, 256)` or `F.lit('REDACTED')`) in the Silver layer.
 
 ## Code Structure (Medallion Standard)
 ```python

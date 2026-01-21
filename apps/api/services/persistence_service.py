@@ -196,23 +196,26 @@ class SupabasePersistence:
 
     async def get_or_create_project(self, name: str, repo_url: str = None) -> str:
         """Finds or creates a project by name and returns its UUID."""
-        res = self.client.table("projects").select("id").eq("name", name).execute()
+        res = self.client.table("utm_projects").select("project_id").eq("name", name).execute()
         if res.data:
-            project_id = res.data[0]["id"]
+            project_id = res.data[0]["project_id"]
             if repo_url:
-                self.client.table("projects").update({"repo_url": repo_url}).eq("id", project_id).execute()
+                self.client.table("utm_projects").update({"repo_url": repo_url}).eq("project_id", project_id).execute()
             return project_id
         
         data = {"name": name, "stage": "1"}
         if repo_url:
             data["repo_url"] = repo_url
             
-        res = self.client.table("projects").insert(data).execute()
-        return res.data[0]["id"]
+        res = self.client.table("utm_projects").insert(data).execute()
+        return res.data[0]["project_id"]
 
     async def list_projects(self) -> List[Dict[str, Any]]:
         """Returns a list of all projects."""
-        res = self.client.table("projects").select("*").execute()
+        res = self.client.table("utm_projects").select("*").execute()
+        if res.data:
+            for item in res.data:
+                item["id"] = item["project_id"]
         return res.data if res.data else []
 
     async def delete_project(self, project_id: str) -> bool:
@@ -220,7 +223,7 @@ class SupabasePersistence:
         try:
             # Supabase should handle cascade if configured, but let's be explicit if needed.
             # Assuming 'projects' deletion deletes related 'assets' via FK cascade.
-            self.client.table("projects").delete().eq("id", project_id).execute()
+            self.client.table("utm_projects").delete().eq("project_id", project_id).execute()
             return True
         except Exception as e:
             print(f"Error deleting project {project_id} from DB: {e}")
@@ -228,15 +231,15 @@ class SupabasePersistence:
 
     async def get_project_id_by_name(self, name: str) -> Optional[str]:
         """Resolves a project name (slug) to its UUID."""
-        res = self.client.table("projects").select("id").eq("name", name).execute()
+        res = self.client.table("utm_projects").select("project_id").eq("name", name).execute()
         if res.data:
-            return res.data[0]["id"]
+            return res.data[0]["project_id"]
         return None
 
     async def get_project_name_by_id(self, project_id: str) -> Optional[str]:
         """Resolves a project UUID to its name."""
         try:
-            res = self.client.table("projects").select("name").eq("id", project_id).execute()
+            res = self.client.table("utm_projects").select("name").eq("project_id", project_id).execute()
             if res.data:
                 return res.data[0]["name"]
         except Exception:
@@ -244,11 +247,13 @@ class SupabasePersistence:
         return None
 
     async def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Returns project metadata (name, repo_url, status, stage)."""
+        """Returns project metadata (name, repo_url, status, stage, prompt)."""
         try:
-            res = self.client.table("projects").select("name, repo_url, status, stage").eq("id", project_id).execute()
+            res = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt").eq("project_id", project_id).execute()
             if res.data:
-                return res.data[0]
+                item = res.data[0]
+                item["id"] = item["project_id"]
+                return item
         except Exception:
             pass
         return None
@@ -257,27 +262,31 @@ class SupabasePersistence:
         """Saves an asset (e.g. .dtsx file) to the database."""
         data = {
             "project_id": project_id,
-            "filename": filename,
-            "content": content,
+            "source_name": filename,
+            "raw_content": content,
             "type": asset_type,
             "hash": file_hash
         }
         if source_path:
             data["source_path"] = source_path
             
-        res = self.client.table("assets").insert(data).execute()
-        return res.data[0]["id"]
+        res = self.client.table("utm_objects").insert(data).execute()
+        return res.data[0]["object_id"]
 
     async def update_asset_metadata(self, asset_id: str, updates: Dict[str, Any]) -> bool:
-        """Updates specific fields of an asset (type, selected, metadata)."""
-        allowed_fields = ["type", "selected", "metadata"]
+        """Updates specific fields of an asset (type, selected, metadata, operational metadata, business metadata)."""
+        allowed_fields = [
+            "type", "selected", "metadata", 
+            "frequency", "load_strategy", "criticality", "is_pii", "masking_rule",
+            "business_entity", "target_name"
+        ]
         safe_updates = {k: v for k, v in updates.items() if k in allowed_fields}
         
         if not safe_updates:
             return False
             
         try:
-            self.client.table("assets").update(safe_updates).eq("id", asset_id).execute()
+            self.client.table("utm_objects").update(safe_updates).eq("object_id", asset_id).execute()
             return True
         except Exception as e:
             print(f"Error updating asset {asset_id}: {e}")
@@ -291,15 +300,13 @@ class SupabasePersistence:
             return []
 
         # 1. State Check
-        # Check if project is in DRAFTING mode (Read-Only Inventory)
         try:
-             proj_res = self.client.table("projects").select("status").eq("id", project_id).execute()
+             proj_res = self.client.table("utm_projects").select("status").eq("project_id", project_id).execute()
              if proj_res.data:
                  current_status = proj_res.data[0].get("status", "TRIAGE")
                  if current_status == "DRAFTING":
                      raise ValueError("Project is in DRAFTING mode. Asset Inventory is locked. Unlock Triege first.")
         except Exception as e:
-             # If ID is invalid UUID, this will catch it too
              print(f"Error checking status for {project_id}: {e}")
              return []
 
@@ -310,20 +317,30 @@ class SupabasePersistence:
         for asset in assets:
             insert_data.append({
                 "project_id": project_id,
-                "filename": asset["filename"],
-                "content": asset.get("content"),
+                "source_name": asset["filename"],
+                "raw_content": asset.get("content"),
                 "type": asset.get("type", "OTHER"),
                 "hash": asset.get("hash", "v1"),
                 "source_path": asset.get("source_path") or asset.get("path"),
                 "metadata": asset.get("metadata", {}),
-                "selected": asset.get("selected", False)
+                "selected": asset.get("selected", False),
+                # Release 1.2 Fields
+                "frequency": asset.get("frequency", "DAILY"),
+                "load_strategy": asset.get("load_strategy", "FULL_OVERWRITE"),
+                "criticality": asset.get("criticality", "P3"),
+                "is_pii": asset.get("is_pii", False),
+                "masking_rule": asset.get("masking_rule"),
+                "business_entity": asset.get("business_entity"),
+                "target_name": asset.get("target_name")
             })
             
-        # Supabase Python client upsert uses the on_conflict parameter or looks for PK.
-        # Since we have a unique constraint on (project_id, source_path), we can use it.
         try:
-            res = self.client.table("assets").upsert(insert_data, on_conflict="project_id, source_path").execute()
-            return res.data # Return full asset objects with UUIDs
+            res = self.client.table("utm_objects").upsert(insert_data, on_conflict="project_id, source_path").execute()
+            if res.data:
+                for item in res.data:
+                    item["id"] = item["object_id"]
+                    item["filename"] = item["source_name"]
+            return res.data 
         except Exception as e:
             print(f"Error in batch_save_assets: {e}")
             return []
@@ -331,7 +348,14 @@ class SupabasePersistence:
     async def get_project_assets(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves all assets for a given project from the database."""
         try:
-            res = self.client.table("assets").select("*").eq("project_id", project_id).execute()
+            res = self.client.table("utm_objects").select("*").eq("project_id", project_id).execute()
+            # Map source_name back to filename for frontend compatibility if needed, 
+            # though it's better to keep it consistent.
+            if res.data:
+                for item in res.data:
+                    item["id"] = item["object_id"]
+                    item["filename"] = item["source_name"]
+                    item["name"] = item["source_name"] # Compatibility
             return res.data if res.data else []
         except Exception as e:
             print(f"Error fetching assets for {project_id}: {e}")
@@ -351,14 +375,13 @@ class SupabasePersistence:
     async def update_project_stage(self, project_id_or_name: str, stage: str) -> bool:
         """Updates the stage of a project. Handles both UUID and Name."""
         try:
-            # 1. Resolve to UUID if needed
             project_uuid = project_id_or_name
             if "-" not in project_id_or_name:
                 resolved = await self.get_project_id_by_name(project_id_or_name)
                 if resolved:
                     project_uuid = resolved
 
-            self.client.table("projects").update({"stage": stage}).eq("id", project_uuid).execute()
+            self.client.table("utm_projects").update({"stage": stage}).eq("project_id", project_uuid).execute()
             return True
         except Exception as e:
             print(f"Error updating stage for {project_id_or_name}: {e}")
@@ -368,23 +391,20 @@ class SupabasePersistence:
         """Saves the graph layout as a JSON asset. Handles both UUID and Name."""
         import json
         
-        # 1. Resolve to UUID if needed
         project_uuid = project_id_or_name
-        if "-" not in project_id_or_name: # Simple heuristic for UUID
+        if "-" not in project_id_or_name: 
             resolved = await self.get_project_id_by_name(project_id_or_name)
             if resolved:
                 project_uuid = resolved
             else:
-                # Fallback: Create project if it doesn't exist? 
-                # For layout save, we probably should ensure project exists.
                 project_uuid = await self.get_or_create_project(project_id_or_name)
 
         content = json.dumps(layout_data)
-        res = self.client.table("assets").select("id").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
+        res = self.client.table("utm_objects").select("object_id").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
         
         if res.data:
-            asset_id = res.data[0]["id"]
-            self.client.table("assets").update({"content": content}).eq("id", asset_id).execute()
+            asset_id = res.data[0]["object_id"]
+            self.client.table("utm_objects").update({"raw_content": content}).eq("object_id", asset_id).execute()
             return asset_id
         else:
             return await self.save_asset(project_uuid, "layout.json", content, "LAYOUT", "v1")
@@ -392,31 +412,35 @@ class SupabasePersistence:
     async def get_project_layout(self, project_id_or_name: str) -> Optional[Dict[str, Any]]:
         """Retrieves the graph layout. Handles both UUID and Name."""
         import json
-
-        # 1. Resolve to UUID if needed
         project_uuid = project_id_or_name
         if "-" not in project_id_or_name:
             resolved = await self.get_project_id_by_name(project_id_or_name)
             if resolved:
                 project_uuid = resolved
             else:
-                return None # Not found
+                return None
 
-        res = self.client.table("assets").select("content").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
+        res = self.client.table("utm_objects").select("raw_content").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
         if res.data:
             try:
-                return json.loads(res.data[0]["content"])
+                return json.loads(res.data[0]["raw_content"])
             except:
                 return None
         return None
 
     async def reset_project_data(self, project_id: str) -> bool:
-        """Clears all assets and resets stage for a project."""
+        """Clears all assets and resets stage/status for a project."""
         try:
-            # Delete all assets for the project
-            self.client.table("assets").delete().eq("project_id", project_id).execute()
-            # Reset stage to 1 (Discovery)
-            self.client.table("projects").update({"stage": "1"}).eq("id", project_id).execute()
+            # 1. Delete all assets for the project
+            self.client.table("utm_objects").delete().eq("project_id", project_id).execute()
+            
+            # 2. Reset stage to 1 and status to TRIAGE
+            self.client.table("utm_projects").update({
+                "stage": "1",
+                "status": "TRIAGE",
+                "triage_approved_at": None
+            }).eq("project_id", project_id).execute()
+            
             return True
         except Exception as e:
             print(f"Error resetting project {project_id}: {e}")
@@ -435,7 +459,7 @@ class SupabasePersistence:
             data["triage_approved_at"] = "now()"
         
         try:
-            self.client.table("projects").update(data).eq("id", project_uuid).execute()
+            self.client.table("utm_projects").update(data).eq("project_id", project_uuid).execute()
             return True
         except Exception as e:
             print(f"Error updating status: {e}")
@@ -449,7 +473,7 @@ class SupabasePersistence:
                  project_uuid = resolved
 
          try:
-             res = self.client.table("projects").select("status").eq("id", project_uuid).execute()
+             res = self.client.table("utm_projects").select("status").eq("project_id", project_uuid).execute()
              if res.data:
                  return res.data[0].get("status", "TRIAGE")
          except:
@@ -465,9 +489,76 @@ class SupabasePersistence:
                 project_uuid = resolved
 
         try:
-            self.client.table("projects").update({"settings": settings}).eq("id", project_uuid).execute()
+            self.client.table("utm_projects").update({"settings": settings}).eq("project_id", project_uuid).execute()
             return True
         except Exception as e:
             print(f"Error updating settings for {project_id}: {e}")
+            return False
+
+    async def save_asset_context(self, project_id: str, source_path: str, notes: str, rules: Dict[str, Any] = None) -> bool:
+        """Saves or updates human context for a specific asset."""
+        data = {
+            "project_id": project_id,
+            "source_path": source_path,
+            "notes": notes,
+            "rules": rules or {}
+        }
+        try:
+            self.client.table("asset_context").upsert(data, on_conflict="project_id, source_path").execute()
+            return True
+        except Exception as e:
+            print(f"Error saving asset context: {e}")
+            return False
+
+    async def get_project_context(self, project_id: str) -> List[Dict[str, Any]]:
+        """Retrieves all human context entries for a project."""
+        try:
+            res = self.client.table("asset_context").select("*").eq("project_id", project_id).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error fetching project context: {e}")
+            return []
+
+    # Release 1.3 Knowledge Registry Methods
+    async def get_design_registry(self, project_id: str) -> List[Dict[str, Any]]:
+        """Retrieves all global design rules for a project."""
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await self.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+
+        try:
+            res = self.client.table("design_registry").select("*").eq("project_id", project_uuid).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error fetching design registry: {e}")
+            return []
+
+    async def update_design_registry(self, project_id: str, category: str, key: str, value: Any) -> bool:
+        """Upserts a specific design rule."""
+        data = {
+            "project_id": project_id,
+            "category": category,
+            "key": key,
+            "value": value,
+            "updated_at": "now()"
+        }
+        try:
+            self.client.table("design_registry").upsert(data, on_conflict="project_id, category, key").execute()
+            return True
+        except Exception as e:
+            print(f"Error updating design registry: {e}")
+            return False
+
+    async def initialize_design_registry(self, project_id: str) -> bool:
+        """Seeds default design standards for a new project."""
+        from apps.api.services.knowledge_service import KnowledgeService
+        defaults = KnowledgeService.get_default_registry_entries(project_id)
+        try:
+            self.client.table("design_registry").upsert(defaults, on_conflict="project_id, category, key").execute()
+            return True
+        except Exception as e:
+            print(f"Error initializing design registry: {e}")
             return False
 

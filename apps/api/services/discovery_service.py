@@ -8,7 +8,7 @@ from apps.utm.cartridges.ssis.parser import SSISCartridge
 
 class DiscoveryService:
     @staticmethod
-    def generate_manifest(project_id: str) -> Dict[str, Any]:
+    def generate_manifest(project_id: str, user_context: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generates a comprehensive 'Triage Manifest' for Agent A.
         Includes structure, snippets of logic, and detected invocations.
@@ -50,7 +50,8 @@ class DiscoveryService:
             "project_id": project_id,
             "root_path": project_path,
             "tech_stats": tech_counts,
-            "file_inventory": inventory
+            "file_inventory": inventory,
+            "user_context": user_context or []
         }
 
     @staticmethod
@@ -163,7 +164,14 @@ class DiscoveryService:
                  "status": status,
                  "tags": item["signatures"],
                  "path": item["path"],
-                 "dependencies": [] # populated by Agent A now
+                 "dependencies": [], # populated by Agent A now
+                 "frequency": item.get("frequency", "DAILY"),
+                 "load_strategy": item.get("load_strategy", "FULL_OVERWRITE"),
+                 "criticality": item.get("criticality", "P3"),
+                 "is_pii": item.get("is_pii", False),
+                 "masking_rule": item.get("masking_rule"),
+                 "business_entity": item.get("business_entity"),
+                 "target_name": item.get("target_name")
              })
              
         return {"assets": simple_assets}

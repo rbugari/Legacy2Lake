@@ -2,44 +2,26 @@
 
 This document defines the architectural evolution of the Legacy2Lake engine. The goal is to evolve from a technical "code converter" into an "Autonomous Data Solution Architect."
 
-## 🧠 Release v1.1: The "Conscious Architect" (Human Context)
+---
 
-**Theme**: Bridging the gap between code logic and business intent ("Tribal Knowledge").
+## ✅ Release v1.1 - v1.3: The "Contextual Architect" (SHIPPED)
 
-### Core Problems Solved
-- Legacy code is often a "black box" where business logic is undocumented.
-- AI agents may misinterpret operational "hacks" as structural logic.
+**Theme**: Bridging logic with business intent and operational behavioral intelligence.
 
-### Technical Implementation
-- [ ] **Context Injection Layer**: Dedicated UI for mandatory pre-triage manual input.
-- [ ] **Entity `UTM_Asset_Context`**: Relational storage linking `ObjectID` to user descriptions/rules.
-    - *Example*: "Ignore duplicates in Table X, filter by `LastUpdateDate`."
-- [ ] **Context-Aware Triage**: Injecting user notes into Agent A's system prompt to override or complement XML logic.
-- [ ] **"Virtual Steps"**: Generating IR placeholders for manual logic described by users but missing in source code.
+### 🧠 Core Features Implemented
+- **Release v1.1: Context Injection Layer**: 
+    - Dedicated UI for manual pre-triage input.
+    - **"Virtual Steps"**: Agent-generated logic placeholders for business requirements not found in source code.
+- **Release v1.2: Operational & Security Intelligence**:
+    - **Inertial Mapping**: Automated detection of `frequency`, `load_strategy`, and `criticality`.
+    - **PII Awareness**: Automated detection of sensitive data (Names, Emails, SSN) with suggested masking policies.
+- **Release v1.3: Design Registry & Policies**:
+    - Centralized **Knowledge Base** where users define naming conventions and cloud paths.
+    - Policies are injected into Agent A/C to ensure "Senior Architect" quality code from flight one.
 
 ---
 
-## 📈 Release v1.2: Operational Intelligence (Behavioral Metadata)
-
-**Theme**: Moving from static "snapshots" to dynamic "workloads".
-
-### Core Problems Solved
-- Missing knowledge of frequency, volume, and criticality leads to inefficient code (e.g., using Full Load for hourly data).
-
-### Technical Implementation
-- [ ] **Dynamic Behavior Attributes**:
-    - `frequency`: {Hourly, Daily, Monthly, Near-RT}
-    - `load_strategy`: {Incremental_Watermark, Full_Overwrite, SCD_Type_2}
-    - `criticality`: {P1, P2, P3}
-- [ ] **Adaptive Code Injection**:
-    - **Hourly**: Auto-inject `checkpointLocation` and `Trigger.AvailableNow` (Databricks logic).
-    - **Incremental**: Auto-detect watermark columns (e.g., `ModifiedDate`) and inject dynamic `WHERE` clauses.
-- [ ] **Pre-Flight FinOps (Cost Estimation)**:
-    - A distinct agent that scans complexity and estimates token usage and cloud execution costs before starting the migration.
-
----
-
-## 🎨 Release v2.0: The "Style Master" (Design Policies)
+## 🏗️ Release v1.5: Executable Governance (In Development)
 
 **Theme**: Ensuring mass-generated code looks uniformed and "Senior Architect" quality.
 

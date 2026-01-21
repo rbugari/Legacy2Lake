@@ -35,18 +35,18 @@ To ensure development success, the system must meet the following design pillars
 
 ## **4. Multi-Agent Workforce (Responsibilities)**
 
-- **Detective (Discovery)**: Performs deep scanning of the repo structure, identifying legacy tool versions and external dependencies.
-- **Cartographer (Lineage & Mesh)**: Builds the execution graph and precedence constraints for parallel execution optimization.
-- **Interpreter (Transpiler)**: The main execution engine. Applies target-specific design patterns (e.g., Delta Lake MERGE for SCD Type 2).
-- **Critic (Refinement & Optimization)**: Acts as a senior architect, analyzing the project for anti-patterns, cost optimization (FinOps), and consistency.
+- **Detective (Discovery / Agent A)**: Performs deep scanning, identifies legacy tool versions, and infers **Operational Intelligence** (PII, frequency, load strategy).
+- **Cartographer (Lineage & Mesh / Agent B)**: Builds the execution graph and precedence constraints, incorporating **User Context/Notes**.
+- **Interpreter (Transpiler / Agent C)**: The main execution engine. Applies **Design Registry** policies and target-specific design patterns.
+- **Auditor (Critic / Agent F)**: Acts as a senior architect, analyzing the project for anti-patterns, cost optimization (FinOps), and consistency.
+- **Profiler (Agent P)**: Core element of Phase 3. Analyzes drafting output to prepare structured context for Medallion construction.
 
 ## **5. Step-by-Step Workflow (Lifecycle)**
 
-1. **Ingest & Identification**: Agent A classifies files (Core/Support/Ignore) and reports on the "Technology Footprint."
-2. **Mesh Construction**: Agent B translates legacy control flow to a visual graph for user validation.
-3. **Synthesis & Metadata Extraction**: Agent C generates code while metadata is documented in real-time.
-4. **Refinement Loop**: Agent F presents a findings report and refactors code for efficiency and standardization.
-5. **Deployment & Delivery**: Packaging a solution bundle (.zip) containing production-ready code, operation manuals, and governance certificates.
+1. **Ingest & Identification**: Agent A classifies files and detects **Sovereignty/Security** traits.
+2. **Mesh Construction**: Agent B translates control flow, allowing for **Virtual Steps** based on human context.
+3. **Execution & Refinement Loop**: Agent C & F generate code and optimize it following the **Design Registry**.
+4. **Governance & Delivery**: Final automated audit and delivery of a solution bundle.
 
 ## **6. Fulfillment Guidelines**
 
