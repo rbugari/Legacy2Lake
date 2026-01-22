@@ -57,9 +57,17 @@ class ArchitectService:
         for r in registry_list:
              cat = r.get('category') if isinstance(r, dict) else r.category
              key = r.get('key') if isinstance(r, dict) else r.key
-             existing_keys.add((cat, key))
+             # Normalize for comparison
+             existing_keys.add((str(cat).upper(), str(key)))
              
-        missing_defaults = [d for d in defaults if (d['category'], d['key']) not in existing_keys]
+        # Check defaults with normalized keys
+        missing_defaults = []
+        for d in defaults:
+            d_cat = str(d['category']).upper()
+            d_key = str(d['key'])
+            if (d_cat, d_key) not in existing_keys:
+                missing_defaults.append(d)
+
         if missing_defaults:
             registry_list.extend(missing_defaults)
             
@@ -162,6 +170,33 @@ class ArchitectService:
             with open(gold_dir / gold_name, "w", encoding="utf-8") as f:
                 f.write(gold_code)
             refined_files["gold"].append(str(gold_dir / gold_name))
+
+            # [Release 2.1] SQL Generation (Dual Output)
+            # If cartridge supports SQL generation, write .sql files alongside .py
+            
+            # Bronze SQL
+            if hasattr(cartridge, "generate_bronze_sql"):
+                sql_content = cartridge.generate_bronze_sql(table_metadata)
+                sql_name = bronze_name.replace(ext, ".sql")
+                with open(bronze_dir / sql_name, "w", encoding="utf-8") as f:
+                     f.write(sql_content)
+                refined_files["bronze"].append(str(bronze_dir / sql_name))
+
+            # Silver SQL
+            if hasattr(cartridge, "generate_silver_sql"):
+                sql_content = cartridge.generate_silver_sql(table_metadata)
+                sql_name = silver_name.replace(ext, ".sql")
+                with open(silver_dir / sql_name, "w", encoding="utf-8") as f:
+                     f.write(sql_content)
+                refined_files["silver"].append(str(silver_dir / sql_name))
+
+            # Gold SQL
+            if hasattr(cartridge, "generate_gold_sql"):
+                sql_content = cartridge.generate_gold_sql(table_metadata)
+                sql_name = gold_name.replace(ext, ".sql")
+                with open(gold_dir / sql_name, "w", encoding="utf-8") as f:
+                     f.write(sql_content)
+                refined_files["gold"].append(str(gold_dir / sql_name))
 
         return {
             "status": "COMPLETED",

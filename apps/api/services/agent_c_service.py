@@ -1,8 +1,12 @@
 import os
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+
+# Cartridges
+from services.generation.cartridges.spark_destination import SparkDestination
+from services.generation.cartridges.snowflake_destination import SnowflakeDestination
 try:
     from apps.api.utils.logger import logger
     from apps.api.services.persistence_service import SupabasePersistence
@@ -60,14 +64,35 @@ class AgentCService:
 
     @logger.llm_debug("Agent-C-Developer")
     async def transpile_task(self, node_data: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Transpiles a single SSIS task into PySpark code following defined standards."""
-        system_prompt = self._load_prompt(self.prompt_path)
-        standards = self._load_prompt(self.standards_path)
+        """Transpiles a task using the configured Destination Generator."""
+        db = SupabasePersistence()
         
+        # 1. Resolve Target Engine
         project_id = node_data.get('project_id')
         db = SupabasePersistence()
         registry_raw = await db.get_design_registry(project_id) if project_id else []
         registry = KnowledgeService.flatten_knowledge(registry_raw)
+
+        # 1. Resolve Target Engine
+        # Priority: Registry (Project) > Global Config > Default
+        gen_config = await db.get_global_config("generators") # e.g. {'default': 'snowflake'}
+        target_default = gen_config.get("default", "spark")
+        
+        target_engine = registry.get("paths", {}).get("target_stack", target_default)
+        
+        # 2. Instantiate Cartridge
+        if target_engine == "snowflake":
+            cartridge = SnowflakeDestination({"type": "snowflake"})
+            dialect_instruction = "TARGET DIALECT: SNOWFLAKE (SNOWPARK PYTHON + ANSI SQL)"
+        else:
+            cartridge = SparkDestination({"type": "spark", "version": "13.3"})
+            dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
+
+        system_prompt = self._load_prompt(self.prompt_path)
+        # Inject dialect instruction into system prompt dynamically
+        system_prompt = f"{system_prompt}\n\nIMPORTANT: {dialect_instruction}\nGenerate code strictly for this platform."
+
+        standards = self._load_prompt(self.standards_path)
         
         # Extract Style Rules for Prominence
         style = registry.get("style", {})

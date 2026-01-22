@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google"; // [NEW] Use next/font
 import "./globals.css";
 import ThemeToggle from "./components/ThemeToggle";
 import Navbar from "./components/Navbar";
+
+// [NEW] Configure Fonts
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Shift-T | Modernization Mesh",
@@ -14,8 +19,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning>
-      <body className="min-h-screen flex flex-col">
+    // [NEW] Default to dark mode as requested by "Antigravity Deep Space" spec
+    <html lang="en" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${jetbrains.variable}`}>
+      <body className="min-h-screen flex flex-col font-sans bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300">
         <Navbar />
         <main className="flex-1 w-full">
           {children}

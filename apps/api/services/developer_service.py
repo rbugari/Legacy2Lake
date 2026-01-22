@@ -35,12 +35,16 @@ class DeveloperService:
     async def generate_code(self, 
                             task_def: Dict[str, Any], 
                             platform_spec: Dict[str, Any], 
-                            schema_ref: Dict[str, Any]) -> Dict[str, Any]:
+                            schema_ref: Dict[str, Any],
+                            prompt_template: str = None) -> Dict[str, Any]:
         """
         Generates code for a specific task/package.
         """
         logger.info(f"Generating code for task: {task_def.get('package_name')}", "Developer")
-        system_prompt = self._load_prompt()
+        if prompt_template:
+            system_prompt = prompt_template
+        else:
+            system_prompt = self._load_prompt()
         
         # Prepare Context
         # Filter schema ref to only relevant tables if possible, 

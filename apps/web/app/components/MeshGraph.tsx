@@ -123,7 +123,7 @@ export default function MeshGraph({
 
     return (
         <div
-            className="h-full w-full bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-inner relative"
+            className="h-full w-full bg-[var(--background)] rounded-xl border border-[var(--border)] overflow-hidden shadow-inner relative"
             onDrop={onDrop}
             onDragOver={onDragOver}
         >
@@ -142,12 +142,12 @@ export default function MeshGraph({
                 connectionMode={ConnectionMode.Loose}
                 fitView
             >
-                <Background color="#aaa" gap={20} />
-                <Controls showInteractive={false} className="!bg-white/50 dark:!bg-black/20 !border-none !shadow-none opacity-50 hover:opacity-100 transition-opacity" />
-                <MiniMap zoomable pannable className="!bg-white/50 dark:!bg-black/20 !border-none !shadow-none opacity-20 hover:opacity-80 transition-opacity" />
+                <Background color="var(--text-secondary)" gap={20} className="opacity-10" />
+                <Controls showInteractive={false} className="!bg-[var(--surface)]/50 !border-none !shadow-none opacity-50 hover:opacity-100 transition-opacity" />
+                <MiniMap zoomable pannable className="!bg-[var(--surface)]/50 !border-none !shadow-none opacity-20 hover:opacity-80 transition-opacity" />
 
                 {/* Custom Layout Toolbar - Relocated and minimized */}
-                <div className="absolute bottom-4 right-4 z-50 flex gap-0.5 bg-white/90 dark:bg-gray-800/90 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-md backdrop-blur-md">
+                <div className="absolute bottom-4 right-4 z-50 flex gap-0.5 bg-[var(--surface)]/90 p-1 rounded-lg border border-[var(--border)] shadow-md backdrop-blur-md">
                     <button
                         onClick={() => onLayout('TB')}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-500 dark:text-gray-400"

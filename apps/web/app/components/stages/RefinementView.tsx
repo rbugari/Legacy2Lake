@@ -1,24 +1,35 @@
-
 "use client";
-import { useState, useEffect } from 'react';
-import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain } from 'lucide-react';
 import { API_BASE_URL } from '../../lib/config';
 import CodeDiffViewer from '../CodeDiffViewer';
+import StageHeader from "../StageHeader";
 import PromptsExplorer from '../PromptsExplorer';
+import DesignRegistryPanel from './DesignRegistryPanel';
+import TechnologyMixer from './TechnologyMixer';
 
 interface RefinementViewProps {
     projectId: string;
     onStageChange?: (stage: number) => void;
+    isReadOnly?: boolean;
+}
+
+interface FileNode {
+    name: string;
+    path: string;
+    type: "file" | "folder";
+    children?: FileNode[];
+    last_modified?: string | number;
 }
 
 const TABS = [
     { id: 'orchestrator', label: 'Orchestration', icon: <Layers size={18} /> },
-    { id: 'prompts', label: 'Intelligence', icon: <Terminal size={18} /> },
     { id: 'workbench', label: 'Workbench (Diff)', icon: <GitBranch size={18} /> },
     { id: 'artifacts', label: 'Artifacts', icon: <Database size={18} /> },
+    { id: 'config', label: 'Solution Config', icon: <Settings size={18} /> },
 ];
 
-export default function RefinementView({ projectId, onStageChange }: RefinementViewProps) {
+export default function RefinementView({ projectId, onStageChange, isReadOnly }: RefinementViewProps) {
     const [activeTab, setActiveTab] = useState('orchestrator');
     const [isRunning, setIsRunning] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
@@ -51,7 +62,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         fetchState();
     }, [projectId]);
 
-    const fetchRefinementLogs = async () => {
+    const fetchRefinementLogs = useCallback(async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs?type=refinement`);
             const data = await res.json();
@@ -62,7 +73,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         } catch (e) {
             console.error("Failed to load logs", e);
         }
-    };
+    }, [projectId]);
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -70,13 +81,11 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
             interval = setInterval(fetchRefinementLogs, 2000);
         }
         return () => clearInterval(interval);
-    }, [isRunning, projectId]);
+    }, [isRunning, fetchRefinementLogs]);
 
-    // Initial load of logs if we are restoring state
     useEffect(() => {
-        // If we restored logs from state, that's good, but we can also fetch latest file content
         fetchRefinementLogs();
-    }, [projectId]);
+    }, [fetchRefinementLogs]);
 
 
     const handleRunRefinement = async () => {
@@ -84,6 +93,7 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         if (!confirm(confirmMsg)) return;
 
         setIsRunning(true);
+        setIsFinished(false);
         setLogs(["Starting Refinement Phase...", "Initializing Agents..."]);
         try {
             const res = await fetch(`${API_BASE_URL}/refine/start`, {
@@ -94,7 +104,6 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
             const data = await res.json();
 
             if (data.log) {
-                // Final sync
                 setLogs(data.log);
             }
             if (data.profile) {
@@ -104,12 +113,12 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
             setLogs(prev => [...prev, `[Network Error] ${e}`]);
         } finally {
             setIsRunning(false);
-            fetchRefinementLogs(); // Final check
+            fetchRefinementLogs();
         }
     };
 
     const handleApprove = async () => {
-        if (!confirm("Are you sure you want to approve this architecture and move to Governance?")) return;
+        if (!confirm("¿Seguro que deseas aprobar la fase de refinamiento y mover el proyecto a Gobernanza?")) return;
         try {
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
                 method: "POST",
@@ -125,30 +134,23 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         }
     };
 
-    // Fetch files when changing to Workbench or Artifacts tab
     useEffect(() => {
         if (activeTab === 'workbench' || activeTab === 'artifacts') {
             fetch(`${API_BASE_URL}/projects/${projectId}/files`)
                 .then(res => res.json())
-                .then(data => setFileTree(data))
+                .then(data => setFileTree(data.children || []))
                 .catch(err => console.error("Failed to load file tree", err));
         }
-    }, [activeTab, projectId, logs]); // Refresh when logs change (pipeline done)
+    }, [activeTab, projectId, logs]);
 
     const resolveOriginalPath = (refinedPath: string) => {
-        // Heuristic to find original file in Output/ from a Refined/ file
-        // Refined: .../Refined/Bronze/DimCategory_bronze.py -> Output/DimCategory.py
-        if (!refinedPath.includes('Refined')) return null;
-
-        // Extract filename and clean layer suffixes
+        if (!refinedPath.includes('Refinement')) return null;
         let filename = refinedPath.split(/[\\/]/).pop() || "";
         filename = filename.replace('_bronze.py', '.py')
             .replace('_silver.py', '.py')
             .replace('_gold.py', '.py');
-
-        // Replace Refined/... with Output/
-        const basePath = refinedPath.split('Refined')[0];
-        return `${basePath}Output/${filename}`;
+        const basePath = refinedPath.split('Refinement')[0];
+        return `${basePath}Drafting/${filename}`;
     };
 
     const handleFileSelect = async (path: string) => {
@@ -158,12 +160,10 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         setOriginalContent("");
 
         try {
-            // Load Refined Content
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
             const data = await res.json();
             setFileContent(data.content || "");
 
-            // If in Workbench (Diff), try to load original
             if (activeTab === 'workbench') {
                 const origPath = resolveOriginalPath(path);
                 if (origPath) {
@@ -180,118 +180,118 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
         }
     };
 
-    const renderFileTree = (nodes: any[], filterDir?: string) => {
-        // Validation check
-        if (!nodes || !Array.isArray(nodes)) {
-            return <div className="p-4 text-xs text-gray-400 italic">No files available</div>;
-        }
+    const FileTree = ({ node, level, onSelect, selectedPath }: { node: FileNode, level: number, onSelect: (n: FileNode) => void, selectedPath?: string }) => {
+        const [isOpen, setIsOpen] = useState(level < 2);
+        const isFolder = node.type === "folder" || (node.children && node.children.length > 0);
+        const isSelected = node.path === selectedPath;
 
-        // Option to filter tree to a specific root directory (e.g. "Refined")
-        const visibleNodes = filterDir ? nodes.filter(n => n.name === filterDir) : nodes;
+        return (
+            <div className="ml-2">
+                <div
+                    className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-sm transition-colors group justify-between ${isSelected
+                        ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                        : "hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                        }`}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (isFolder) setIsOpen(!isOpen);
+                        else onSelect(node);
+                    }}
+                >
+                    <div className="flex items-center gap-2 truncate">
+                        <span className="text-gray-400 shrink-0">
+                            {isFolder ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <span className="w-3.5" />}
+                        </span>
+                        {isFolder ? <Folder size={14} className="text-blue-500 shrink-0" /> : <FileCode size={14} className="text-orange-500 shrink-0" />}
+                        <span className="truncate">
+                            {node.name}
+                            {!isFolder && node.last_modified && (
+                                <span className="ml-2 text-[10px] text-gray-400 font-mono">
+                                    ({new Date(typeof node.last_modified === 'number' ? node.last_modified * 1000 : node.last_modified).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })})
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                </div>
 
-        const renderNodes = (nds: any[]) => (
-            <ul className="pl-4 border-l border-gray-200 dark:border-gray-800 space-y-1">
-                {nds.map((node: any) => (
-                    <li key={node.path}>
-                        {node.type === 'directory' ? (
-                            <details open={node.name === 'Refined' || node.name === 'Bronze' || node.name === 'Silver'}>
-                                <summary className="cursor-pointer text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-primary list-none flex items-center gap-1">
-                                    <span className="text-xs">📂</span> {node.name}
-                                </summary>
-                                {node.children && renderNodes(node.children)}
-                            </details>
-                        ) : (
-                            <button
-                                onClick={() => handleFileSelect(node.path)}
-                                className={`text-sm py-1 px-2 rounded w-full text-left truncate flex items-center gap-2 ${selectedFile === node.path
-                                    ? 'bg-primary/10 text-primary font-bold'
-                                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
-                                    }`}
-                            >
-                                <FileText size={14} />
-                                {node.name}
-                            </button>
-                        )}
-                    </li>
-                ))}
-            </ul>
+                {isFolder && isOpen && node.children && (
+                    <div className="border-l border-gray-200 dark:border-gray-700 ml-3 pl-1">
+                        {node.children.map((child, i) => (
+                            <FileTree
+                                key={i}
+                                node={child}
+                                level={level + 1}
+                                onSelect={onSelect}
+                                selectedPath={selectedPath}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
         );
-
-        return renderNodes(visibleNodes);
     };
 
-    const isComplete = logs.some(l => l.includes("Pipeline Complete") || l.includes("COMPLETED"));
+    const [isFinished, setIsFinished] = useState(false);
+    const isComplete = isFinished || logs.some(l =>
+        l.toUpperCase().includes("PIPELINE COMPLETE") ||
+        l.toUpperCase().includes("COMPLETED") ||
+        l.toUpperCase().includes("SUCCESS")
+    );
+
+    useEffect(() => {
+        if (!isFinished && logs.some(l => l.toUpperCase().includes("PIPELINE COMPLETE") || l.toUpperCase().includes("COMPLETED"))) {
+            setIsFinished(true);
+        }
+    }, [logs, isFinished]);
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-            {/* Top Operational Bar (Toolbar) */}
-            <div className="flex items-center justify-between px-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 shadow-sm z-10 transition-all">
-                {/* Left: Tabs */}
-                <div className="flex">
-                    {TABS.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                                ? 'border-primary text-primary bg-primary/5'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-                                }`}
-                        >
-                            {tab.icon} <span>{tab.label}</span>
-                        </button>
-                    ))}
-                </div>
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+            <StageHeader
+                title="Refinamiento (Modernization)"
+                subtitle="Transformación a arquitectura Medallion (Bronze/Silver/Gold)"
+                icon={<Layers className="text-primary" />}
+                isReadOnly={isReadOnly}
+                isApproveDisabled={!isComplete}
+                isExecuting={isRunning}
+                onApprove={handleApprove}
+                approveLabel="Aprobar Fase 3"
+                onRestart={async () => {
+                    if (window.confirm("¿Reiniciar Refinamiento? Se perderán las transformaciones actuales.")) {
+                        if (onStageChange) onStageChange(3);
+                    }
+                }}
+            >
+                <button
+                    onClick={handleRunRefinement}
+                    disabled={isRunning || isReadOnly}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning || isReadOnly
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200 dark:shadow-none"
+                        }`}
+                >
+                    <Play size={12} className={isRunning ? "animate-spin" : ""} />
+                    {isRunning ? "Refining..." : "Refinar & Modernizar"}
+                </button>
+            </StageHeader>
 
-                {/* Right: Operational Controls */}
-                <div className="flex items-center gap-4">
-                    {/* Group A: View/State Controls (Placeholder for consistency or Reset) */}
-                    {/* We can add a Reset Log button here if we want, for now just keeping structure consistent */}
-                    <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 px-2 select-none">Refinement Ops</span>
-                    </div>
-
-                    <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
-
-                    {/* Group B: Actions */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleRunRefinement}
-                            disabled={isRunning}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning
-                                ? "bg-gray-400 cursor-not-allowed"
-                                : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200 dark:shadow-none"
-                                }`}
-                        >
-                            <Play size={14} className={isRunning ? "animate-spin" : ""} />
-                            {isRunning ? "Refining..." : "Refine & Modernize"}
-                        </button>
-
-                        {isComplete && (
-                            <button
-                                onClick={handleApprove}
-                                className="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none"
-                            >
-                                <CheckCircle size={14} /> Approve Phase 3
-                            </button>
-                        )}
-                    </div>
-                </div>
+            <div className="flex bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4">
+                {TABS.map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-2 px-6 py-4 text-xs font-bold border-b-2 transition-colors ${activeTab === tab.id
+                            ? 'border-primary text-primary bg-primary/5'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        {tab.icon} <span>{tab.label}</span>
+                    </button>
+                ))}
             </div>
 
-            {/* Content Area */}
             <div className="flex-1 p-8 overflow-hidden">
                 {activeTab === 'orchestrator' && (
-                    <div className="max-w-4xl mx-auto space-y-6 flex flex-col h-full">
-                        {/* Control Panel */}
-                        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-xl font-bold flex items-center gap-2"><Layers className="text-primary" /> Phase 3: Refinement</h2>
-                                <p className="text-gray-500 text-sm mt-1">Transform Draft Code into Medallion Architecture (Bronze/Silver/Gold).</p>
-                            </div>
-                            {/* Actions moved to Top Toolbar */}
-                        </div>
-
-                        {/* Console Output */}
+                    <div className="max-w-7xl mx-auto space-y-6 flex flex-col h-full">
                         <div className="flex-1 bg-black text-green-400 rounded-xl p-6 font-mono text-sm overflow-y-auto shadow-inner border border-gray-800 min-h-0">
                             <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
                                 <span className="font-bold text-gray-400">AGENT LOGS</span>
@@ -304,7 +304,6 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
                             </div>
                         </div>
 
-                        {/* Profile Summary */}
                         {profile && (
                             <div className="grid grid-cols-2 gap-4 shrink-0">
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 shadow-sm">
@@ -320,19 +319,9 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
                     </div>
                 )}
 
-                {activeTab === 'prompts' && (
-                    <div className="h-full bg-white dark:bg-gray-950 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                        <div className="mb-6">
-                            <h2 className="text-xl font-bold flex items-center gap-2"><Terminal className="text-primary" /> Intelligence Hub</h2>
-                            <p className="text-gray-500 text-sm">System Prompts for cross-phase orchestration.</p>
-                        </div>
-                        <PromptsExplorer />
-                    </div>
-                )}
-
                 {(activeTab === 'workbench' || activeTab === 'artifacts') && (
                     <div className="flex h-full gap-4">
-                        {/* File Tree */}
+                        {/* Existing Workbench/Artifacts code... */}
                         <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                             <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
                                 <h3 className="font-bold text-sm uppercase text-gray-400">{activeTab === 'workbench' ? 'Files to Review' : 'Artifacts Explorer'}</h3>
@@ -342,12 +331,21 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
                                 {fileTree.length === 0 ? (
                                     <p className="text-gray-400 text-sm text-center mt-10">No files generated yet.</p>
                                 ) : (
-                                    renderFileTree(fileTree, activeTab === 'artifacts' ? 'Refined' : undefined)
+                                    <div className="space-y-1">
+                                        {fileTree.map((child, i) => (
+                                            <FileTree
+                                                key={i}
+                                                node={child}
+                                                level={0}
+                                                onSelect={(n) => handleFileSelect(n.path)}
+                                                selectedPath={selectedFile || undefined}
+                                            />
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         </div>
 
-                        {/* Right Content Pane (Diff or Artifact Viewer) */}
                         <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
                             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
                                 <h3 className="font-bold text-sm flex items-center gap-2">
@@ -382,6 +380,28 @@ export default function RefinementView({ projectId, onStageChange }: RefinementV
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'config' && (
+                    <div className="h-full flex flex-col gap-6 overflow-y-auto pr-2">
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <TechnologyMixer projectId={projectId} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Settings size={20} className="text-primary" />
+                                Estándares de Arquitectura
+                            </h3>
+                            <DesignRegistryPanel projectId={projectId} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Brain size={20} className="text-primary" />
+                                Configuración de Inteligencia
+                            </h3>
+                            <PromptsExplorer />
                         </div>
                     </div>
                 )}

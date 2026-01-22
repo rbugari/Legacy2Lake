@@ -4,7 +4,9 @@
         "DimCustomers.py",
         "DimEmployee.py",
         "DimProduct.py",
-        "DimShipper.py"
+        "DimShipper.py",
+        "DimSupplier.py",
+        "FactSales.py"
     ],
     "shared_connections": {},
     "table_metadata": {
@@ -34,9 +36,22 @@
         },
         "DimShipper.py": {
             "pk": [
-                "ShipperID"
+                "shipperid"
             ],
             "type": "DIMENSION"
+        },
+        "DimSupplier.py": {
+            "pk": [
+                "supplierid"
+            ],
+            "type": "DIMENSION"
+        },
+        "FactSales.py": {
+            "pk": [
+                "orderid",
+                "productid"
+            ],
+            "type": "FACT"
         }
     },
     "primary_keys": {
@@ -53,8 +68,15 @@
             "ProductID"
         ],
         "DimShipper.py": [
-            "ShipperID"
+            "shipperid"
+        ],
+        "DimSupplier.py": [
+            "supplierid"
+        ],
+        "FactSales.py": [
+            "orderid",
+            "productid"
         ]
     },
-    "total_files": 5
+    "total_files": 7
 }

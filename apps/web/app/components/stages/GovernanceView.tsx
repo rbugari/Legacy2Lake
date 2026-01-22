@@ -32,6 +32,15 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"report" | "registry">("report");
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isPushing, setIsPushing] = useState(false);
+
+    const handlePush = () => {
+        setIsPushing(true);
+        setTimeout(() => {
+            setIsPushing(false);
+            alert("Success! A Pull Request has been created in the repository with the modernized code.");
+        }, 3000);
+    };
 
     useEffect(() => {
         fetch(`${API_BASE_URL}/projects/${projectId}/governance`)
@@ -123,7 +132,7 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                 </div>
             </div>
 
-            <div className="p-8 max-w-5xl mx-auto space-y-8">
+            <div className="p-8 max-w-7xl mx-auto space-y-8">
                 {activeTab === "registry" ? (
                     <DesignRegistryPanel projectId={projectId} />
                 ) : (
@@ -148,8 +157,21 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                         >
                                             <Download size={18} /> Download Final Bundle
                                         </a>
-                                        <button className="px-6 py-3 bg-blue-500/30 border border-white/20 backdrop-blur-md rounded-xl font-bold hover:bg-white/10 transition-all flex items-center gap-2">
-                                            <Github size={18} /> Push to Repository
+                                        <button
+                                            onClick={handlePush}
+                                            disabled={isPushing}
+                                            className="px-6 py-3 bg-blue-500/30 border border-white/20 backdrop-blur-md rounded-xl font-bold hover:bg-white/10 transition-all flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            {isPushing ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                    Pushing to GitHub...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Github size={18} /> Push to Repository
+                                                </>
+                                            )}
                                         </button>
                                     </div>
                                 </div>

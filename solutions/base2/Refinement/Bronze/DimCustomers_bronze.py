@@ -21,32 +21,35 @@ from pyspark.sql.types import *
 from pyspark.sql.window import Window
 
 # 2. Reading Bronze / Source
-# Extract SQL from Inputs
-source_sql = '''SELECT custid,contactname,city,country,address,phone,postalcode FROM Sales.Customers WHERE custid > ?'''
-# Parameterize the query (assuming widget or parameter for custid threshold)
-custid_threshold = dbutils.widgets.get('custid_threshold')
-source_sql_param = source_sql.replace('?', str(custid_threshold))
+# Securely read from SQL Server using JDBC. Parameterize the custid filter.
+db_url = dbutils.secrets.get('jdbc', 'sales_db_url')
+db_user = dbutils.secrets.get('jdbc', 'sales_db_user')
+db_password = dbutils.secrets.get('jdbc', 'sales_db_password')
 
-# JDBC connection details (use secrets, never hardcode)
-db_url = dbutils.secrets.get('scope', 'jdbc_url')
-db_user = dbutils.secrets.get('scope', 'jdbc_user')
-db_password = dbutils.secrets.get('scope', 'jdbc_password')
+# Use a widget or parameter for custid threshold
+custid_threshold = dbutils.widgets.get('custid_threshold') if dbutils.widgets.get('custid_threshold') else '0'
 
-jdbc_options = {
-    "url": db_url,
-    "user": db_user,
-    "password": db_password,
-    "dbtable": f"({source_sql_param}) as src"
-}
+sql_query = f"""
+SELECT custid, contactname, city, country, address, phone, postalcode
+FROM Sales.Customers
+WHERE custid > {custid_threshold}
+"""
 
-df_source = spark.read.format("jdbc").options(**jdbc_options).load()
+source_df = spark.read.format("jdbc") \
+    .option("url", db_url) \
+    .option("user", db_user) \
+    .option("password", db_password) \
+    .option("dbtable", f"({sql_query}) as src") \
+    .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver") \
+    .load()
 
 # 3. Transformations (Apply Logic)
-# No lookups or complex logic per task definition
+# No lookups or complex logic required for this task.
+df_staged = source_df
 
 # 3.1 Surrogate Key Generation (STABLE & IDEMPOTENT)
 # SAFE MIGRATION PATTERN: Lookup existing keys, generate new ones only for new members.
-target_table_name = "DimCustomer"
+target_table_name = "base2.dbo.DimCustomer"
 bk_cols = ["custid"]
 sk_col = "CustomerKey"
 
@@ -60,9 +63,9 @@ except Exception:
 
 # 2. Join Source with Target to find existing SKs
 if df_target is not None:
-    df_joined = df_source.join(df_target, on=bk_cols, how="left")
+    df_joined = df_staged.join(df_target, on=bk_cols, how="left")
 else:
-    df_joined = df_source.withColumn(sk_col, lit(None).cast("integer"))
+    df_joined = df_staged.withColumn(sk_col, lit(None).cast("integer"))
 
 # 3. Generate Keys for New Rows ONLY
 window_spec = Window.orderBy(*bk_cols)
@@ -99,8 +102,7 @@ def ensure_unknown_member(df):
 df_final = ensure_unknown_member(df_with_sk)
 
 # 4. Mandatory Type Casting (STRICT)
-# Define target schema columns and types explicitly
-# (Assuming the following schema for DimCustomer)
+# Define the target schema explicitly (as per platform rules and typical DimCustomer)
 target_schema = [
     {"name": "CustomerKey", "type": "INTEGER"},
     {"name": "custid", "type": "INTEGER"},
@@ -119,16 +121,15 @@ for field in target_schema:
 
 # 5. Writing to Silver/Gold (Apply Platform Pattern)
 # Overwrite/merge into DimCustomer table
-(
-# [DISABLED_BY_ARCHITECT]     df_final.write
-    .format("delta")
-    .mode("overwrite")
-    .option("overwriteSchema", "true")
-# [DISABLED_BY_ARCHITECT]     .saveAsTable(target_table_name)
-)
+# Use Delta Lake for idempotency
 
-# Optimization: Z-ORDER on high-cardinality column
-# [DISABLED_BY_ARCHITECT] spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY (custid)")
+delta_table_path = "/mnt/delta/base2/dbo/DimCustomer"  # Use catalog path or table name as per deployment
+
+# [DISABLED_BY_ARCHITECT] df_final.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(delta_table_path)
+
+# Optional: Z-ORDER optimization on Business Key
+from delta.tables import DeltaTable
+DeltaTable.forPath(spark, delta_table_path).optimize().zorderBy("custid")
 
 # Apply Bronze Standard
 if 'df_source' not in locals() and 'df' in locals():

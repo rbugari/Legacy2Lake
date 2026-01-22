@@ -9,10 +9,9 @@ import {
     MarkerType
 } from '@xyflow/react';
 import MeshGraph from '../MeshGraph';
-import { CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity } from 'lucide-react';
-
+import StageHeader from '../StageHeader';
+import { Map, CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
-
 import { API_BASE_URL } from '../../lib/config';
 
 // Tab Definitions
@@ -21,20 +20,18 @@ const TABS = [
     { id: 'grid', label: 'Grilla', icon: <List size={18} /> },
     { id: 'prompt', label: 'Refine Prompt', icon: <Terminal size={18} /> },
     { id: 'context', label: 'User Input', icon: <MessageSquare size={18} /> },
-    { id: 'settings', label: 'Settings', icon: <Database size={18} /> },
     { id: 'logs', label: 'Logs', icon: <FileText size={18} /> },
 ];
 
-export default function TriageView({ projectId, onStageChange }: { projectId: string, onStageChange?: (stage: number) => void }) {
+export default function TriageView({ projectId, onStageChange, isReadOnly: propReadOnly }: { projectId: string, onStageChange?: (stage: number) => void, isReadOnly?: boolean }) {
+    // Safety check: prioritize Prop ReadOnly (from parent) but keep internal state for fallback
+    const isReadOnly = propReadOnly ?? false;
     const [activeTab, setActiveTab] = useState('graph');
-    const [designRegistry, setDesignRegistry] = useState<any[]>([]);
-    const [isSavingRegistry, setIsSavingRegistry] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Data State
     const [assets, setAssets] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isReadOnly, setIsReadOnly] = useState(false);
 
     // Graph State
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
@@ -141,7 +138,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
             a.id === assetId ? { ...a, selected: isSelected } : a
         ));
 
-        // Persist
+        // Persist (Batch update or per-check? Current UI does per-check persistence)
         try {
             await fetch(`${API_BASE_URL}/assets/${assetId}`, {
                 method: 'PATCH',
@@ -153,61 +150,22 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
         }
     }, [isReadOnly]);
 
-    const fetchRegistry = useCallback(async () => {
+    const handleSyncGraph = useCallback(async () => {
+        if (isReadOnly) return;
         try {
-            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`);
-            if (response.ok) {
-                const data = await response.json();
-                setDesignRegistry(data.registry || []);
-            }
-        } catch (error) {
-            console.error("Error fetching registry:", error);
-        }
-    }, [projectId]);
-
-    const handleRegistryUpdate = async (category: string, key: string, value: any) => {
-        setIsSavingRegistry(true);
-        try {
-            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category, key, value })
-            });
-
-            if (response.ok) {
-                // Update local state optimistically
-                setDesignRegistry(prev => {
-                    const existingIndex = prev.findIndex(r => r.category === category && r.key === key);
-                    if (existingIndex > -1) {
-                        const next = [...prev];
-                        next[existingIndex] = { ...next[existingIndex], value };
-                        return next;
-                    }
-                    return [...prev, { category, key, value }];
-                });
-            }
-        } catch (error) {
-            console.error("Error updating registry:", error);
-        } finally {
-            setIsSavingRegistry(false);
-        }
-    };
-
-    const initializeRegistry = async () => {
-        setIsSavingRegistry(true);
-        try {
-            const response = await fetch(`${API_BASE_URL}/projects/${projectId}/registry/initialize`, {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/sync-graph`, {
                 method: 'POST'
             });
-            if (response.ok) {
-                fetchRegistry();
+            if (res.ok) {
+                const data = await res.json();
+                if (data.nodes) setNodes(enrichNodes(data.nodes));
+                if (data.edges) setEdges(data.edges);
             }
-        } catch (error) {
-            console.error("Error initializing registry:", error);
-        } finally {
-            setIsSavingRegistry(false);
+        } catch (e) {
+            console.error("Failed to sync graph", e);
         }
-    };
+    }, [projectId, isReadOnly, enrichNodes, setNodes, setEdges]);
+
 
     // Initialization
     const fetchProject = useCallback(async () => {
@@ -221,7 +179,6 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                 const projectData = await projectRes.json();
                 setAssets(projectData.assets || []);
                 setSystemPrompt(projectData.prompt || "");
-                setIsReadOnly(statusData.status === 'COMPLETED');
             }
         } catch (error) {
             console.error("Init error:", error);
@@ -246,10 +203,9 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
     useEffect(() => {
         if (projectId) {
             fetchProject();
-            fetchRegistry();
             fetchLayout();
         }
-    }, [projectId, fetchProject, fetchRegistry, fetchLayout]);
+    }, [projectId, fetchProject, fetchLayout]);
     // Logic below the useEffect
 
     // Autosave
@@ -483,113 +439,57 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
 
     return (
         <ReactFlowProvider>
-            <div className={`flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'
+            <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'
                 }`}>
-                {/* Read Only Banner */}
-                {isReadOnly && (
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-2.5 text-white flex items-center justify-between shadow-lg z-[60]">
-                        <div className="flex items-center gap-3">
-                            <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                                <ShieldCheck size={18} />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">Design Status</span>
-                                <span className="text-sm font-bold">APPROVED & LOCKED</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <span className="text-xs font-medium text-blue-100 hidden md:block">
-                                The scope is finalized and ready for orchestration.
-                            </span>
-                            <button
-                                onClick={onStageChange ? () => onStageChange(2) : undefined}
-                                className="bg-white text-blue-700 px-4 py-1.5 rounded-full text-xs font-bold shadow-md hover:bg-blue-50 transition-all flex items-center gap-2"
-                            >
-                                <Play size={14} fill="currentColor" /> Resume Drafting
-                            </button>
-                        </div>
-                    </div>
-                )}
+                <StageHeader
+                    title="Análisis & Triaje"
+                    subtitle="Escaneo de código legado y definición de malla operativa"
+                    icon={<Map className="text-primary" />}
+                    isReadOnly={isReadOnly}
+                    onApprove={handleApprove}
+                    approveLabel="Aprobar Diseño"
+                    isExecuting={isLoading}
+                    onRestart={handleReset}
+                >
+                    <button
+                        onClick={handleReTriage}
+                        disabled={isReadOnly || isLoading}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-white shadow-blue-200 dark:shadow-none'
+                            }`}
+                    >
+                        <Play size={12} className={isLoading ? "animate-spin" : ""} />
+                        {isLoading ? "Procesando..." : "Ejecutar Análisis"}
+                    </button>
+                    <button
+                        onClick={async () => {
+                            await saveLayout(nodes, edges);
+                            if (activeTab === 'grid') await handleSyncGraph();
+                        }}
+                        disabled={isReadOnly}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all border ${isReadOnly
+                            ? 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed hidden'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                            }`}
+                    >
+                        <Save size={12} /> Guardar
+                    </button>
+                </StageHeader>
 
-
-                {/* Top Tabs Bar */}
-                <div className={`flex items-center justify-between px-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 shadow-sm transition-all ${isFullscreen ? 'py-1 opacity-80 hover:opacity-100' : 'py-0'
-                    }`}>
-                    <div className="flex">
-                        {TABS.map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                                    ? 'border-primary text-primary bg-primary/5'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-                                    }`}
-                            >
-                                {tab.icon}
-                                <span>{tab.label}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        {/* Group A: View Controls (Icons only) */}
-                        <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
-                            <button
-                                onClick={() => setIsFullscreen(!isFullscreen)}
-                                className="text-gray-500 hover:text-primary hover:bg-white dark:hover:bg-gray-800 p-2 rounded-md transition-all"
-                                title={isFullscreen ? "Restaurar vista" : "Pantalla completa"}
-                            >
-                                {isFullscreen ? <Shrink size={18} /> : <Expand size={18} />}
-                            </button>
-                            <button
-                                onClick={handleReset}
-                                disabled={isReadOnly}
-                                className={`text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 p-2 rounded-md transition-all ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                title="Reiniciar Proyecto"
-                            >
-                                <RotateCcw size={18} />
-                            </button>
-                        </div>
-
-                        {/* Divider */}
-                        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
-
-                        {/* Group B: Primary Actions (Labeled Buttons) */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleReTriage}
-                                disabled={isReadOnly || isLoading}
-                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200 dark:shadow-none'
-                                    }`}
-                                title="Volver a ejecutar el análisis"
-                            >
-                                <Play size={14} className={isLoading ? "animate-spin" : ""} />
-                                {isLoading ? "Procesando..." : "Triaje"}
-                            </button>
-
-                            <button
-                                onClick={() => saveLayout(nodes, edges)}
-                                disabled={isReadOnly}
-                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all border ${isReadOnly
-                                        ? 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed'
-                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
-                                    }`}
-                            >
-                                <Save size={14} /> Guardar
-                            </button>
-
-                            <button
-                                onClick={handleApprove}
-                                disabled={isReadOnly}
-                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly
-                                        ? 'bg-green-100 text-green-700 cursor-default border border-green-200'
-                                        : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none'
-                                    }`}
-                            >
-                                <CheckCircle size={14} /> {isReadOnly ? "Aprobado" : "Aprobar"}
-                            </button>
-                        </div>
-                    </div>
+                {/* Tab Navigation */}
+                <div className="flex border-b border-[var(--border)] bg-[var(--surface)] px-4">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-2 px-6 py-4 text-xs font-bold border-b-2 transition-colors ${activeTab === tab.id
+                                ? 'border-primary text-primary bg-primary/5 font-bold'
+                                : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'
+                                }`}
+                        >
+                            {tab.icon}
+                            <span>{tab.label}</span>
+                        </button>
+                    ))}
                 </div>
 
                 {/* Tab Content */}
@@ -601,29 +501,29 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                             {/* Drag Source Sidebar (Small Grid) */}
                             {!isReadOnly && (
                                 <div
-                                    className={`h-full border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-64' : 'w-0'
+                                    className={`h-full border-r border-[var(--border)] bg-[var(--surface)] flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-64' : 'w-0'
                                         }`}
                                 >
-                                    <div className="p-3 border-b border-gray-100 dark:border-gray-800 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-950 flex justify-between items-center whitespace-nowrap">
+                                    <div className="p-3 border-b border-[var(--border)] text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)] bg-[var(--background)] flex justify-between items-center whitespace-nowrap">
                                         <span>Activos</span>
                                         <button
                                             onClick={() => setShowSidebar(false)}
-                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors"
+                                            className="p-1 hover:bg-[var(--text-primary)]/10 rounded transition-colors"
                                             title="Ocultar Panel"
                                         >
                                             <PanelLeftClose size={14} />
                                         </button>
                                     </div>
                                     <div className="flex-1 overflow-hidden min-w-[256px] custom-scrollbar">
-                                        <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+                                        <div className="p-4 border-b border-[var(--border)]">
                                             <DiscoveryDashboard assets={assets} nodes={nodes} />
                                         </div>
 
                                         {isLoading ? (
-                                            <div className="p-4 text-center text-gray-400 text-xs">Cargando...</div>
+                                            <div className="p-4 text-center text-gray-400 text-sm">Cargando...</div>
                                         ) : (
                                             <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-3 space-y-2">
-                                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">Available Components</h4>
+                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">Available Components</h4>
                                                 {assets.map(asset => (
                                                     <div
                                                         key={asset.id}
@@ -632,18 +532,18 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                             e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
                                                             e.dataTransfer.effectAllowed = 'move';
                                                         }}
-                                                        className="p-3 text-xs bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:border-primary/50 hover:shadow-md cursor-grab flex items-center gap-3 transition-all group"
+                                                        className="p-3 text-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:border-primary/50 hover:shadow-md cursor-grab flex items-center gap-3 transition-all group"
                                                     >
                                                         <div className="p-1.5 bg-gray-50 dark:bg-gray-950 rounded-lg group-hover:bg-primary/10 transition-colors">
                                                             <Layout size={14} className="text-gray-400 group-hover:text-primary" />
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <span className="font-bold truncate text-gray-700 dark:text-gray-200">{asset.name}</span>
-                                                            <span className="text-[9px] text-gray-400 uppercase">{asset.complexity || 'Low'} Complexity</span>
+                                                            <span className="text-xs text-gray-400 uppercase">{asset.complexity || 'Low'} Complexity</span>
                                                         </div>
                                                     </div>
                                                 ))}
-                                                {assets.length === 0 && <div className="text-center text-gray-400 text-xs py-10 italic">No assets found in manifest</div>}
+                                                {assets.length === 0 && <div className="text-center text-gray-400 text-sm py-10 italic">No assets found in manifest</div>}
                                             </div>
                                         )}
                                     </div>
@@ -701,13 +601,13 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
 
                     {/* 2. GRID TAB */}
                     {activeTab === 'grid' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-white dark:bg-gray-900">
-                            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                                <List className="text-primary" /> Inventario de Paquetes
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-[var(--text-primary)]">
+                                <List className="text-blue-500" /> Inventario de Paquetes
                             </h2>
-                            <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+                            <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] shadow-sm overflow-hidden">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 uppercase text-xs">
+                                    <thead className="bg-[var(--background)] text-[var(--text-secondary)] uppercase text-sm">
                                         <tr>
                                             <th className="px-6 py-4">Origen</th>
                                             <th className="px-6 py-4">Nombre Destino</th>
@@ -718,7 +618,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                             <th className="px-6 py-4 text-center">Incluir</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                    <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
                                         {assets.map(asset => (
                                             <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                                                 <td className="px-6 py-4 font-medium group">
@@ -753,7 +653,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                         value={asset.business_entity || ''}
                                                         placeholder="e.g. CUSTOMER"
                                                         onChange={(e) => handleMetadataChange(asset.id, { business_entity: e.target.value.toUpperCase() })}
-                                                        className="bg-gray-50 dark:bg-gray-900 border-none rounded px-2 py-1 text-[10px] font-bold uppercase focus:ring-1 focus:ring-primary w-24 transition-all"
+                                                        className="bg-gray-50 dark:bg-gray-900 border-none rounded px-2 py-1 text-xs font-bold uppercase focus:ring-1 focus:ring-primary w-24 transition-all"
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -766,7 +666,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                         title={asset.is_pii ? "PII Detectado" : "Marcar como PII"}
                                                     >
                                                         {asset.is_pii ? <ShieldAlert size={14} /> : <Shield size={14} />}
-                                                        {asset.is_pii && <span className="text-[10px] font-bold">PII</span>}
+                                                        {asset.is_pii && <span className="text-xs font-bold">PII</span>}
                                                     </button>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -774,7 +674,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                         <select
                                                             value={asset.load_strategy || 'FULL_OVERWRITE'}
                                                             onChange={(e) => handleMetadataChange(asset.id, { load_strategy: e.target.value })}
-                                                            className={`text-[9px] font-bold uppercase rounded px-1.5 py-0.5 border-none focus:ring-1 focus:ring-primary w-24 cursor-pointer ${asset.load_strategy === 'INCREMENTAL' ? 'bg-blue-100 text-blue-700' :
+                                                            className={`text-xs font-bold uppercase rounded px-1.5 py-0.5 border-none focus:ring-1 focus:ring-primary w-24 cursor-pointer ${asset.load_strategy === 'INCREMENTAL' ? 'bg-blue-100 text-blue-700' :
                                                                 asset.load_strategy === 'SCD_2' ? 'bg-indigo-100 text-indigo-700' :
                                                                     'bg-gray-100 text-gray-600'
                                                                 }`}
@@ -783,7 +683,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                             <option value="INCREMENTAL">INCREMENTAL</option>
                                                             <option value="SCD_2">SCD TYPE 2</option>
                                                         </select>
-                                                        <div className="flex items-center gap-1 text-[9px] text-gray-400 font-mono">
+                                                        <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
                                                             <Clock size={8} /> {asset.frequency || 'DAILY'}
                                                         </div>
                                                     </div>
@@ -792,9 +692,9 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                                     <select
                                                         value={asset.type}
                                                         onChange={(e) => handleCategoryChange(asset.id, e.target.value)}
-                                                        className={`text-[10px] font-bold uppercase rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 focus:ring-2 focus:ring-primary cursor-pointer transition-colors ${asset.type === 'CORE' ? 'bg-blue-100 text-blue-700' :
-                                                            asset.type === 'SUPPORT' ? 'bg-purple-100 text-purple-700' :
-                                                                'bg-gray-100 text-gray-600'
+                                                        className={`text-xs font-bold uppercase rounded-md border border-[var(--border)] px-2 py-1 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors ${asset.type === 'CORE' ? 'bg-blue-500/10 text-blue-600' :
+                                                            asset.type === 'SUPPORT' ? 'bg-purple-500/10 text-purple-600' :
+                                                                'bg-[var(--background)] text-[var(--text-secondary)]'
                                                             }`}
                                                     >
                                                         <option value="CORE">CORE</option>
@@ -826,111 +726,11 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                         </div>
                     )}
 
-                    {/* 4. SETTINGS TAB - DESIGN REGISTRY */}
-                    {activeTab === 'settings' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-4xl mx-auto space-y-8">
-                                <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                                            <Database className="text-primary" />
-                                            Design Registry
-                                        </h2>
-                                        <p className="text-sm text-gray-500 mt-1">
-                                            Define global standards for naming, paths, and privacy policies.
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={initializeRegistry}
-                                        disabled={isSavingRegistry}
-                                        className="px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all font-medium text-sm flex items-center gap-2"
-                                    >
-                                        <Zap size={16} />
-                                        Initialize Defaults
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* Naming Standards */}
-                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
-                                            <Terminal size={14} />
-                                            Naming Conventions
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-gray-500 mb-2">SILVER PREFIX</label>
-                                                <input
-                                                    type="text"
-                                                    value={designRegistry.find(r => r.category === 'NAMING' && r.key === 'silver_prefix')?.value || ''}
-                                                    onChange={(e) => handleRegistryUpdate('NAMING', 'silver_prefix', e.target.value)}
-                                                    placeholder="stg_"
-                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-gray-500 mb-2">GOLD PREFIX</label>
-                                                <input
-                                                    type="text"
-                                                    value={designRegistry.find(r => r.category === 'NAMING' && r.key === 'gold_prefix')?.value || ''}
-                                                    onChange={(e) => handleRegistryUpdate('NAMING', 'gold_prefix', e.target.value)}
-                                                    placeholder="dim_"
-                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Infrastructure & Paths */}
-                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
-                                            <Database size={14} />
-                                            Target Storage
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-gray-500 mb-2">LAKEHOUSE ROOT PATH</label>
-                                                <input
-                                                    type="text"
-                                                    value={designRegistry.find(r => r.category === 'PATHS' && r.key === 'root_path')?.value || ''}
-                                                    onChange={(e) => handleRegistryUpdate('PATHS', 'root_path', e.target.value)}
-                                                    placeholder="abfss://..."
-                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Privacy Policies */}
-                                    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
-                                            <Shield size={14} />
-                                            Data Privacy (PII)
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-gray-500 mb-2">MASKING METHOD</label>
-                                                <select
-                                                    value={designRegistry.find(r => r.category === 'PRIVACY' && r.key === 'masking_method')?.value || 'sha256'}
-                                                    onChange={(e) => handleRegistryUpdate('PRIVACY', 'masking_method', e.target.value)}
-                                                    className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-sm px-4 py-2 focus:ring-primary"
-                                                >
-                                                    <option value="sha256">SHA-256 (Hashing)</option>
-                                                    <option value="redact">REDACT (Partial Mask)</option>
-                                                    <option value="null">NULL (Remove Column)</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* 3. PROMPT TAB */}
                     {activeTab === 'prompt' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-4xl mx-auto space-y-6">
+                            <div className="max-w-7xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center">
                                     <h2 className="text-xl font-bold flex items-center gap-2">
                                         <Terminal className="text-primary" /> System Prompt
@@ -957,7 +757,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                     {/* 4. USER INPUT TAB */}
                     {activeTab === 'context' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-4xl mx-auto space-y-10">
+                            <div className="max-w-7xl mx-auto space-y-10">
                                 {/* Global Context */}
                                 <div className="space-y-6">
                                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -997,16 +797,16 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                                     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-gray-400 uppercase">Nombre del Paso</label>
+                                                <label className="text-sm font-bold text-gray-400 uppercase">Nombre del Paso</label>
                                                 <input id="v-step-name" type="text" placeholder="Ej: Validación Manual" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-gray-400 uppercase">Depende de (Path)</label>
+                                                <label className="text-sm font-bold text-gray-400 uppercase">Depende de (Path)</label>
                                                 <input id="v-step-dep" type="text" placeholder="Ej: schema/table.sql" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-gray-400 uppercase">Instrucciones para el Agente</label>
+                                            <label className="text-sm font-bold text-gray-400 uppercase">Instrucciones para el Agente</label>
                                             <textarea id="v-step-desc" placeholder="Describe qué hace este paso y cómo se conecta..." className="w-full h-24 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                         </div>
                                         <div className="flex justify-end">
@@ -1033,7 +833,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
 
                     {/* 5. LOGS TAB */}
                     {activeTab === 'logs' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-950 text-gray-300 font-mono text-xs leading-relaxed">
+                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-950 text-gray-300 font-mono text-sm leading-relaxed">
                             <div className="max-w-5xl mx-auto">
                                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-white">
                                     <FileText className="text-primary" /> Log de Ejecución del Agente
@@ -1055,7 +855,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
                             <div>
                                 <h3 className="font-bold text-lg dark:text-white">Contexto de Negocio</h3>
-                                <p className="text-xs text-gray-500 truncate w-64">
+                                <p className="text-sm text-gray-500 truncate w-64">
                                     {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
                                 </p>
                             </div>
@@ -1066,7 +866,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
 
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">Descripción / Notas</label>
+                                <label className="text-sm font-bold text-gray-400 uppercase">Descripción / Notas</label>
                                 <textarea
                                     className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
                                     placeholder="Indica reglas específicas para este archivo..."
@@ -1076,7 +876,7 @@ export default function TriageView({ projectId, onStageChange }: { projectId: st
                             </div>
 
                             <div className="space-y-4">
-                                <label className="text-xs font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
+                                <label className="text-sm font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
                                 <div className="space-y-2">
                                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                                         <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />

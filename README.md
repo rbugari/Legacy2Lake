@@ -1,33 +1,45 @@
-# Legacy2Lake 🚀 (v3.5 - Configurable Architect)
+# Legacy2Lake 🚀 (Release 2.0 - The Style Master)
 
 **Legacy2Lake** is an AI-augmented modernization platform that automates the transition from legacy ETL ecosystems (SSIS, Informatica, SQL) to modern Cloud Lakehouse architectures (Databricks, Snowflake).
 
-## 🧠 Core Capabilities (Rel 3.5)
-- **Multi-Agent Orchestration**: Specialized agents (Detective, Cartographer, Interpreter, Critic) collaborating to build high-fidelity solutions.
-- **Admin Panel & Global Config**: Centralized management for AI Agents, Prompts, and LLM Providers.
-- **Database-First State**: Robust persistence using Supabase for all execution logs, file inventories, and settings.
-- **Design Registry**: Global policy engine to enforce senior-architect standards (naming, paths, security) across the entire codebase.
-- **Context Injection**: Incorporate "Tribal Knowledge" into the migration loop to generate **Virtual Steps**.
+## 🧠 Release 2.0 Highlights
+- **Contextual Configuration**: "Solution Config" tabs embedded directly in Drafting and Refinement stages.
+- **Technology Mixer**: Prominent UI to toggle between **PySpark**, **Pure SQL**, or **Mixed** generation modes.
+- **Design Registry**: Enforce architectural standards (naming conventions, masking rules) via a global policy engine.
+- **Expanded Workspace**: Optimized 80% width layout for engineering workflows.
+- **Stage 4 Governance**: Automated lineage mapping and certification reports.
 
-## 📖 Quick Links
-- **[Getting Started: Introduction](docs/INTRODUCTION.md)**
-- **[Project Roadmap & Versions](docs/FUTURE_RELEASES.md)**
-- **[Phase 1: Triage & Discovery](docs/PHASE_1_TRIAGE.md)**
+## 📖 Documentation
+- **[Getting Started](docs/INTRODUCTION.md)**
+- **[Roadmap & Future](docs/ROADMAP.md)**
+- **[Phase 1: Triage](docs/PHASE_1_TRIAGE.md)**
 - **[Phase 2: Drafting](docs/PHASE_2_DRAFTING.md)**
-- **[Phase 3: Refinement & Medallion](docs/PHASE_3_REFINEMENT.md)**
+- **[Phase 3: Refinement](docs/PHASE_3_REFINEMENT.md)**
 - **[Phase 4: Governance](docs/PHASE_4_GOVERNANCE.md)**
-- **[Technical Architecture](docs/SPECIFICATION.md)**
-- **[Admin Panel Walkthrough](docs/walkthrough_admin_panel.md)**
+- **[Technical Specification](docs/SPECIFICATION.md)**
 
-## ⚙️ General Configuration
-Manage the platform behavior via the new **Admin Panel** (`/settings`):
-- **Cartridges**: Enable/Disable generation engines (PySpark, dbt, SQL).
-- **LLM Providers**: Configure Azure OpenAI / Anthropic keys.
-- **Prompts**: Tune the system instructions for Agents A, C, F.
+## ⚙️ Key Features
+
+### 1. Technology Mixer
+Located in the **Solution Config** tab, this allows you to choose the target output dialect:
+- **PySpark Native**: Standard Delta Lake data engineering.
+- **Pure SQL**: Legacy-friendly stored procedures and DDL.
+- **Mixed / Dual**: Generate both dialects simultaneously for maximum flexibility.
+
+### 2. Design Registry
+Define your "Tribal Knowledge" once, apply it everywhere:
+- **NAMING**: Prefixes for Bronze/Silver/Gold tables.
+- **PATHS**: Root locations for ADLS/S3.
+- **PRIVACY**: Default masking strategies (SHA256, Partial).
+
+### 3. Multi-Agent Orchestration
+- **Agent A (Architect)**: Designing the Medallion architecture.
+- **Agent C (Coder)**: Generating high-fidelity PySpark/SQL code.
+- **Agent F (Fixer)**: Self-healing refinement loops.
 
 ## 🛠 Quick Start
 To launch the platform locally:
-1. Ensure your `.env` is configured with Azure OpenAI and Supabase credentials.
+1. Ensure your `.env` is configured.
 2. Run the unified launcher:
 ```bash
 python run.py

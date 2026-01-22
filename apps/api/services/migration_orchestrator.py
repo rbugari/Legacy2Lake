@@ -24,8 +24,10 @@ class MigrationOrchestrator:
     Orchestrates the hand-offs between Librarian, Topology, Developer, and Compliance agents.
     """
 
-    def __init__(self, project_id: str):
-        self.project_id = project_id
+    def __init__(self, project_id: str, project_uuid: str = None):
+        self.project_id = project_id # This acts as Project Name / Folder Name
+        self.project_uuid = project_uuid or project_id # Fallback if not provided, though DB will fail if not UUID
+        
         # Persistence Service should handle paths ideally, but keeping this for now
         # resolving absolute paths robustly
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # apps/api/services -> apps/api
@@ -63,27 +65,34 @@ class MigrationOrchestrator:
             elif "Compliance" in message: step = "Compliance"
             else: step = "Orchestrator"
             
-        await self.persistence.log_execution(self.project_id, "MIGRATION", message, step=step)
+        # Use UUID for DB logging if possible
+        target_id = self.project_uuid if len(str(self.project_uuid)) > 30 else self.project_id
+        await self.persistence.log_execution(target_id, "MIGRATION", message, step=step)
         
         # [Deprecated] File Persistence (Keeping for safety for now in migration.log)
         import datetime
         now = datetime.datetime.utcnow().isoformat()
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(f"[{now}] {message}\n")
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{now}] {message}\n")
+        except:
+            pass
 
     async def run_full_migration(self, limit: int = 0):
         """Executes the complete Shift-T loop."""
         # Clear previous log
-        with open(self.log_file, "w", encoding="utf-8") as f:
-            f.write(f"--- Migration Started for {self.project_id} ---\n")
+        try:
+            with open(self.log_file, "w", encoding="utf-8") as f:
+                f.write(f"--- Migration Started for {self.project_id} ---\n")
+        except:
+            pass
 
-        self._log_persistence(f"Starting Migration for {self.project_id}")
+        await self._log_persistence(f"Starting Migration for {self.project_id}")
         logger.info(f"Starting Migration for {self.project_id}", "Orchestrator")
         
         # 0. Governance Check
-        project_uuid = self.project_id
-        
-        status = await self.persistence.get_project_status(self.project_id)
+        # Use UUID for status check
+        status = await self.persistence.get_project_status(self.project_uuid)
         if status != "DRAFTING":
             logger.error(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.", "Orchestrator")
             await self._log_persistence(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.")

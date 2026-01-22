@@ -14,24 +14,31 @@ def main():
     frontend_dir = os.path.join(root_dir, "apps", "web")
     api_path = os.path.join(root_dir, "apps", "api")
 
+    # Load .env manually to be robust
+    env_vars = os.environ.copy()
+    env_file = os.path.join(root_dir, ".env")
+    if os.path.exists(env_file):
+        print("Loading .env file...")
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    env_vars[key] = value
+
     # Prepare environment for Backend (Inject PYTHONPATH)
-    backend_env = os.environ.copy()
-    current_pythonpath = backend_env.get("PYTHONPATH", "")
-    backend_env["PYTHONPATH"] = f"{api_path};{current_pythonpath}"
+    env_vars["PYTHONPATH"] = f"{api_path};{env_vars.get('PYTHONPATH', '')}"
 
     # Check for Windows
     if os.name == 'nt':
-        # Backend
-        # We explicitly activate the current python environment using sys.executable
-        # Note: 'start' command in Windows doesn't easily accept env vars directly for the new window
-        # unless we set them in the command string itself.
-        # My previous attempt failed because of syntax. Trying a cleaner approach:
-        # We launch a python script that sets the env and runs uvicorn.
+        supabase_url = env_vars.get("SUPABASE_URL", "")
+        supabase_key = env_vars.get("SUPABASE_SERVICE_ROLE_KEY", "")
         
-        # Command Construction:
-        # set PYTHONPATH=... && python -m uvicorn ...
-        
-        backend_cmd = f'start "Legacy2Lake API (Port 8085)" cmd /k "set PYTHONPATH={api_path};%PYTHONPATH% && {sys.executable} -m uvicorn apps.api.main:app --port 8085 --reload --reload-dir apps"'
+        # Backend Command
+        # Using default port 8085
+        backend_cmd = f'start "Legacy2Lake API (Port 8085)" cmd /k "set PYTHONPATH={api_path};%PYTHONPATH% && set SUPABASE_URL={supabase_url} && set SUPABASE_SERVICE_ROLE_KEY={supabase_key} && {sys.executable} -m uvicorn apps.api.main:app --port 8085 --reload --reload-dir apps"'
         
         subprocess.Popen(
             backend_cmd,
@@ -40,7 +47,6 @@ def main():
         )
         
         # Frontend
-        # Launching npm in a new window
         subprocess.Popen(
             'start "Legacy2Lake Web (Port 3005)" cmd /k "npm.cmd run dev -- -p 3005"',
             cwd=frontend_dir,
@@ -55,7 +61,7 @@ def main():
         # Fallback for Linux/Mac
         print("[WARN] Non-Windows OS detected. Running sequentially (blocking).")
         try:
-             subprocess.Popen([sys.executable, "-m", "uvicorn", "apps.api.main:app", "--port", "8085", "--reload"], cwd=root_dir, env=backend_env)
+             subprocess.Popen([sys.executable, "-m", "uvicorn", "apps.api.main:app", "--port", "8086", "--reload"], cwd=root_dir, env=env_vars)
              subprocess.Popen(["npm", "run", "dev", "--", "-p", "3005"], cwd=frontend_dir)
         except Exception as e:
             print(e)

@@ -7,8 +7,8 @@ from typing import List, Optional, Dict, Any
 router = APIRouter(prefix="/config", tags=["Configuration"])
 
 # Supabase Setup (Duplicate from main for now, ideal refactor: shared dependency)
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+url: str = os.getenv("SUPABASE_URL", "").strip()
+key: str = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
 supabase: Client = create_client(url, key)
 
 class SupportedTech(BaseModel):

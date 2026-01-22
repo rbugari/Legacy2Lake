@@ -1,4 +1,3 @@
-
 # Medallion Architecture Configuration
 import os
 

@@ -15,22 +15,22 @@ jdbc_url = dbutils.widgets.get("hr_jdbc_url")
 jdbc_user = dbutils.secrets.get("scope", "hr_user")
 jdbc_password = dbutils.secrets.get("scope", "hr_password")
 
-query = "SELECT empid,(firstname+' '+ lastname) as fullname,title,city,country,address,phone FROM HR.Employees where empid > ?"
-# For migration, parameterize empid > ? as needed. Here, we set to 0 for full load.
-query = query.replace('?', '0')
+query = "SELECT empid, (firstname + ' ' + lastname) as fullname, title, city, country, address, phone FROM HR.Employees WHERE empid > ?"
+param_empid_min = int(dbutils.widgets.get("empid_min", "0"))
+# Parameterize query
+sql_query = query.replace("?", str(param_empid_min))
 
-# Read source data
-source_df = (
-    spark.read.format("jdbc")
-    .option("url", jdbc_url)
-    .option("dbtable", f"({query}) as src")
-    .option("user", jdbc_user)
-    .option("password", jdbc_password)
+# Read from JDBC
+
+df_source = spark.read.format("jdbc") \
+    .option("url", jdbc_url) \
+    .option("user", jdbc_user) \
+    .option("password", jdbc_password) \
+    .option("dbtable", f"({sql_query}) as src") \
     .load()
-)
 
 # 3. Transformations (Apply Logic)
-# No lookups in this task. Business Key is empid.
+# No lookups in this task. Direct mapping.
 
 # 3.1 Surrogate Key Generation (STABLE & IDEMPOTENT)
 # SAFE MIGRATION PATTERN: Lookup existing keys, generate new ones only for new members.
@@ -42,15 +42,15 @@ sk_col = "EmployeeKey"
 try:
     df_target = spark.read.table(target_table_name).select(*bk_cols, sk_col)
     max_sk = df_target.agg(max(col(sk_col))).collect()[0][0] or 0
-except:
+except Exception:
     df_target = None
     max_sk = 0
 
 # 2. Join Source with Target to find existing SKs
-if df_target:
-    df_joined = source_df.join(df_target, on=bk_cols, how="left")
+if df_target is not None:
+    df_joined = df_source.join(df_target, on=bk_cols, how="left")
 else:
-    df_joined = source_df.withColumn(sk_col, lit(None).cast("integer"))
+    df_joined = df_source.withColumn(sk_col, lit(None).cast("integer"))
 
 # 3. Generate Keys for New Rows ONLY
 window_spec = Window.orderBy(*bk_cols)
@@ -59,13 +59,17 @@ df_new = df_joined.filter(col(sk_col).isNull()).drop(sk_col)
 df_new = df_new.withColumn(sk_col, row_number().over(window_spec) + max_sk)
 
 # 4. Union
-staged_df = df_existing.unionByName(df_new)
+from pyspark.sql import DataFrame
+if df_existing.count() > 0:
+    df_with_sk = df_existing.unionByName(df_new)
+else:
+    df_with_sk = df_new
 
 # 3.2 Unknown Member Handling (For Dimensions)
 def ensure_unknown_member(df):
-    # Define unknown row schema
+    # Define the schema for the unknown row
     unknown_row = {
-        "EmployeeKey": -1,
+        sk_col: -1,
         "empid": -1,
         "fullname": "Unknown",
         "title": "Unknown",
@@ -74,16 +78,17 @@ def ensure_unknown_member(df):
         "address": "Unknown",
         "phone": "Unknown"
     }
-    # Check if unknown exists
-    if df.filter(col("EmployeeKey") == -1).count() == 0:
-        unknown_df = spark.createDataFrame([unknown_row], df.schema)
-        df = df.unionByName(unknown_df)
+    # Check if unknown member exists
+    if df.filter(col(sk_col) == -1).count() == 0:
+        df_unknown = spark.createDataFrame([unknown_row], df.schema)
+        df = df.unionByName(df_unknown)
     return df
 
-staged_df = ensure_unknown_member(staged_df)
+df_final = ensure_unknown_member(df_with_sk)
 
 # 4. Mandatory Type Casting (STRICT)
-# Define target schema explicitly (as per platform rules)
+# Define target schema columns and types explicitly
+# (Assuming the following schema for DimEmployee)
 target_schema = [
     {"name": "EmployeeKey", "type": "INTEGER"},
     {"name": "empid", "type": "INTEGER"},
@@ -94,18 +99,16 @@ target_schema = [
     {"name": "address", "type": "STRING"},
     {"name": "phone", "type": "STRING"}
 ]
-
 for field in target_schema:
     col_name = field["name"]
     target_type = field["type"]
-    if col_name in staged_df.columns:
-        staged_df = staged_df.withColumn(col_name, col(col_name).cast(target_type))
+    if col_name in df_final.columns:
+        df_final = df_final.withColumn(col_name, col(col_name).cast(target_type))
 
 # 5. Writing to Silver/Gold (Apply Platform Pattern)
-# Overwrite/merge for idempotency
+# Overwrite/merge into DimEmployee table
 (
-    staged_df
-    .select([f["name"] for f in target_schema])
+    df_final
     .write
     .format("delta")
     .mode("overwrite")
@@ -113,5 +116,6 @@ for field in target_schema:
     .saveAsTable(target_table_name)
 )
 
-# Optional: Z-ORDER optimization (if supported)
-# spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY (empid)")
+# 6. Optimization (Z-ORDER)
+# Z-ORDER on empid for query performance
+spark.sql(f"OPTIMIZE {target_table_name} ZORDER BY (empid)")

@@ -1,36 +1,89 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #002D72;
-  /* Sopra Steria Navy */
-  --color-secondary: #00A9E0;
-  /* Sopra Steria Light Blue */
-  --color-accent: #E1E1E1;
+  --color-slate-950: #020617;
+  /* Deep Space Background */
 
-  --font-sans: "Inter", sans-serif;
+  /* Antigravity Palette */
+  --color-primary: #3b82f6;
+  /* Blue-500 */
+  --color-secondary: #10b981;
+  /* Emerald-500 */
+  --color-warning: #f59e0b;
+  /* Amber-500 */
+  --color-danger: #ef4444;
+  /* Red-500 */
+
+  /* Fonts */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  /* Radii */
+  --radius-lg: 0.5rem;
+  /* 8px */
+  --radius-xl: 0.75rem;
+  /* 12px */
 }
 
+/* CSS Variables for Semantic Usage */
 :root {
+  /* Light Mode (Pure White Preference) */
   --background: #ffffff;
-  --foreground: #101828;
+  --surface: #f8fafc;
+  /* Slight off-white for cards to differentiate, or just use white with border */
+  --border: #e2e8f0;
+  --text-primary: #020617;
+  /* Darker text for contrast */
+  --text-secondary: #475569;
+  /* Darker secondary */
 }
 
 [data-theme='dark'] {
-  --background: #0B0F19;
-  --foreground: #F9FAFB;
+  /* Antigravity Dark (Slate-950 Base) */
+  --background: #020617;
+  --surface: #0f172a;
+  --border: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  /* Lighter secondary for readability */
 }
 
 body {
   background-color: var(--background);
-  color: var(--foreground);
-  transition: background-color 0.3s, color 0.3s;
+  color: var(--text-primary);
+  /* Base font size bump */
+  font-size: 16px;
+  line-height: 1.5;
 }
 
-.card-premium {
-  @apply rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md;
+/* Utility Class Abstractions */
+.card-antigravity {
+  @apply rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 transition-all duration-200;
 }
 
-/* Specific dark mode override for apply since [data-theme] is used instead of media query */
-[data-theme='dark'] .card-premium {
-  @apply border-gray-800 bg-gray-900;
+.card-antigravity:hover {
+  @apply border-blue-500/30 shadow-lg shadow-blue-500/5;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Scrollbar Polish */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }

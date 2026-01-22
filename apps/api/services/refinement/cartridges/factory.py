@@ -21,9 +21,19 @@ class CartridgeFactory:
             from .dbt_cartridge import DbtCartridge
             return DbtCartridge(project_id, registry)
             
+        elif target == "snowflake":
+            from .snowflake_cartridge import SnowflakeCartridge
+            return SnowflakeCartridge(project_id, registry)
+
         elif target == "sql":
             # Placeholder for Pure SQL
             return PySparkCartridge(project_id, registry)
             
+        elif target == "both":
+            # Special mode: We use PySparkCartridge but we expect the prompt 
+            # (which includes the registry) to trigger dual generation.
+            # In a more advanced version, we might return a MultiCartridge.
+            return PySparkCartridge(project_id, registry)
+
         else:
             return PySparkCartridge(project_id, registry)

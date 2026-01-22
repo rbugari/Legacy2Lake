@@ -24,6 +24,23 @@ from apps.api.routers import config
 
 app = FastAPI(title="Legacy2Lake API")
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    err_msg = traceback.format_exc()
+    print(f"GLOBAL ERROR: {err_msg}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "traceback": err_msg},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3005",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
+
 app.include_router(config.router)
 
 app.add_middleware(
@@ -204,9 +221,137 @@ async def update_provider(payload: ProviderUpdate):
 
 
 
+
+# --- Source & Generator Config (Release 4.1) ---
+
+@app.get("/config/sources")
+async def list_sources():
+    """Returns configured source profiles (Knowledge Context)."""
+    db = SupabasePersistence()
+    
+    # 1. Fetch available source technologies from metadata
+    tech_res = supabase.table("utm_supported_techs").select("tech_id, label, description, version").eq("role", "SOURCE").eq("is_active", True).execute()
+    tech_map = {t["tech_id"]: t for t in tech_res.data}
+    
+    # 2. Fetch configured profiles
+    config = await db.get_global_config("sources") or {}
+    
+    # 3. Merge profile data with tech metadata
+    results = []
+    for sid, profile in config.items():
+        tech_type = profile.get("type", "").upper()
+        tech_info = tech_map.get(tech_type, {})
+        results.append({
+            **profile,
+            "tech_label": tech_info.get("label", profile["type"]),
+            "tech_description": tech_info.get("description"),
+            "tech_version": tech_info.get("version")
+        })
+        
+    return results
+
+class SourceConfig(BaseModel):
+    id: str
+    name: str # e.g. "Legacy CRM"
+    type: str # sqlserver, mysql, oracle, datastage
+    version: Optional[str] = None # e.g. "2008 R2"
+    description: Optional[str] = None 
+    context_prompt: Optional[str] = None # Instructions for Agent A
+
+@app.post("/config/sources")
+async def save_source(payload: SourceConfig):
+    """Saves a source profile."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("sources") or {}
+    
+    # Store
+    config[payload.id] = payload.dict()
+    await db.set_global_config("sources", config)
+    return {"success": True}
+
+@app.delete("/config/sources/{source_id}")
+async def delete_source(source_id: str):
+    """Deletes a source profile."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("sources") or {}
+    
+    if source_id in config:
+        del config[source_id]
+        await db.set_global_config("sources", config)
+        return {"success": True}
+    return {"success": False, "error": "Source not found"}
+
+class GeneratorConfig(BaseModel):
+    type: str # 'spark' or 'snowflake'
+    instruction_prompt: Optional[str] = None # User override for system prompt
+
+class GeneratorDefault(BaseModel):
+    default: str # 'spark' or 'snowflake'
+
+@app.get("/config/generators")
+async def get_generator_config():
+    """Returns generator configuration including defaults and overrides from DB metadata."""
+    db = SupabasePersistence()
+    
+    # 1. Fetch config from global store (internal overrides like instruction_prompt)
+    config = await db.get_global_config("generators") or {}
+    default_gen_type = config.get("default", "DATABRICKS") # Default to Databricks ID
+
+    # 2. Fetch all valid target technologies from metadata table
+    res = supabase.table("utm_supported_techs").select("tech_id, label, description, version").eq("role", "TARGET").eq("is_active", True).execute()
+    
+    # 3. Transform and Merge with user overrides
+    result_generators = []
+    for tech in res.data:
+        gen_type = tech["tech_id"]
+        # Check if specific user override exists for this type
+        gen_config = config.get(gen_type, {})
+        
+        result_generators.append({
+            "id": f"gen_{gen_type.lower()}",
+            "name": tech["label"],
+            "type": gen_type,
+            "version": tech["version"] or "Latest",
+            "description": tech["description"],
+            "instruction_prompt": gen_config.get("instruction_prompt", ""),
+            "status": "active" if gen_type == default_gen_type else "inactive"
+        })
+
+    return {
+        "default": default_gen_type,
+        "generators": result_generators
+    }
+
+@app.post("/config/generators/update")
+async def update_generator_config(payload: GeneratorConfig):
+    """Updates specific generator instructions."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("generators") or {}
+    
+    # Update specific generator config
+    if payload.type not in config: config[payload.type] = {}
+    
+    # Ensure it's a dict
+    if not isinstance(config[payload.type], dict):
+        config[payload.type] = {}
+
+    config[payload.type]["instruction_prompt"] = payload.instruction_prompt
+
+    await db.set_global_config("generators", config)
+    return {"success": True}
+
+@app.post("/config/generators/default")
+async def set_default_generator(payload: GeneratorDefault):
+    """Sets the default code generation engine."""
+    db = SupabasePersistence()
+    config = await db.get_global_config("generators") or {}
+    config["default"] = payload.default
+    await db.set_global_config("generators", config)
+    return {"success": True}
+
 # Supabase Setup
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+url: str = os.getenv("SUPABASE_URL", "").strip()
+key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 supabase: Client = create_client(url, key)
 
 @app.get("/")
@@ -406,17 +551,30 @@ async def get_layout(project_id: str):
     layout = await db.get_project_layout(project_id)
     return layout or {}
 
+@app.get("/projects")
+async def list_projects():
+    """Returns a list of all projects."""
+    db = SupabasePersistence()
+    return await db.list_projects()
+
 @app.get("/projects/{project_id}")
 async def get_project(project_id: str):
+    """Returns project details, handling both UUID and Name."""
     db = SupabasePersistence()
-    return await db.get_project_metadata(project_id)
-
-@app.get("/discovery/status/{project_id}")
-async def get_discovery_status(project_id: str):
-    """Returns the current status of the project (TRIAGE, DRAFTING, etc)."""
-    db = SupabasePersistence()
-    status = await db.get_project_status(project_id)
-    return {"status": status}
+    
+    # 1. Try to find by UUID first
+    metadata = await db.get_project_metadata(project_id)
+    if metadata:
+        return metadata
+    
+    # 2. Fallback: maybe the string passed is the project Name?
+    uuid = await db.get_project_id_by_name(project_id)
+    if uuid:
+        metadata = await db.get_project_metadata(uuid)
+        if metadata:
+            return metadata
+        
+    return {"error": "Project not found"}
 
 @app.get("/discovery/project/{project_id}")
 async def get_discovery_project(project_id: str):
@@ -430,10 +588,23 @@ async def get_discovery_project(project_id: str):
     assets = await db.get_project_assets(project_uuid)
     meta = await db.get_project_metadata(project_uuid)
     
+    # Fallback to default Triage prompt if not customized for project
+    prompt = meta.get("prompt") if meta else None
+    if not prompt:
+        agent_a = AgentAService()
+        prompt = agent_a._load_prompt()
+        
     return {
         "assets": assets,
-        "prompt": meta.get("prompt", "") if meta else ""
+        "prompt": prompt
     }
+
+@app.patch("/projects/{project_id}/prompt")
+async def update_project_prompt(project_id: str, payload: Dict[str, str]):
+    """Updates the customized system prompt for a project."""
+    db = SupabasePersistence()
+    success = await db.update_project_prompt(project_id, payload.get("prompt"))
+    return {"success": success}
 
 @app.patch("/assets/{asset_id}")
 async def patch_asset(asset_id: str, updates: Dict[str, Any]):
@@ -544,10 +715,31 @@ async def run_triage(project_id: str, params: TriageParams):
              _log(f"[ERROR] Agent A failed: {result['error']}")
              return {"log": "\n".join(log_lines), "error": result['error']}
              
-        rf_nodes = result.get("nodes", [])
-        rf_edges = result.get("edges", [])
+        rf_nodes = result.get("mesh_graph", {}).get("nodes", [])
+        rf_edges = result.get("mesh_graph", {}).get("edges", [])
         
-        _log(f"   > Analysis Complete. Discovered {len(rf_nodes)} functional nodes.")
+        # Auto-Promotion Fallback: Ensure CORE-likely physical assets are in the graph
+        for item in manifest["file_inventory"]:
+             # Explicitly exclude system files from being promoted as nodes
+             if item["name"].lower() in ['triage.log', 'thumbs.db', '.ds_store', 'desktop.ini']:
+                 continue
+                 
+             if not any(n["id"] == item["path"] for n in rf_nodes):
+                 ext = item["name"].split('.')[-1].lower() if '.' in item["name"] else ''
+                 # We promote SSIS, SQL and Python/Spark files to nodes by default
+                 # BUT only if they are likely CORE logic (as requested by user)
+                 if ext in ['dtsx', 'sql', 'py', 'spark', 'scala']:
+                     rf_nodes.append({
+                         "id": item["path"],
+                         "label": item["name"],
+                         "category": "CORE",
+                         "complexity": "LOW",
+                         "confidence": 0.5,
+                         "business_entity": "SYSTEM_INFERRED",
+                         "target_name": item["name"]
+                     })
+        
+        _log(f"   > Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}")
         
     except Exception as e:
         _log(f"[CRITICAL] Architecture Analysis Failed: {e}")
@@ -558,38 +750,9 @@ async def run_triage(project_id: str, params: TriageParams):
     
     # NEW: Persist the scanner inventory to DB
     db_assets = []
-    for f in manifest["file_inventory"]:
-        # Basic mapping
-        db_assets.append({
-            "name": f["name"],
-            "path": f["path"],
-            "type": "CORE" if f["path"].endswith((".py", ".js", ".ts", ".java")) else "SUPPORT",
-            "metadata": {"size": f["size"], "extension": f["extension"]}
-        })
-    
-    # We should merge agent intelligence (complexity, etc) into these assets
-    # For now, we utilize the layout nodes to update assets if they match?
-    # Or just rely on the 'nodes' being the source of truth for the graph.
-    
-    # Save Layout
-    # Ensure we use UUID
-    if not await db.get_project_name_by_id(project_uuid):
-        # Project might not exist in DB if created mostly offline?
-        # But we resolved ID earlier.
-        _log(f"[Warning] Project UUID {project_uuid} lookup check warned.")
-
-    # Save Assets (Optional, or just nodes)
-    # db.save_assets(project_uuid, db_assets) ...
-        
-    await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
-    _log("[Success] Graph and Assets saved to database.")
-    _log("[Step 3] Persisting Mesh Graph and Discovered Assets...")
-    
-    # NEW: Persist the scanner inventory to DB
-    db_assets = []
     for item in manifest["file_inventory"]:
-        # Find agent info for this file
-        agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), None) # Changed 'nodes' to 'rf_nodes'
+        # Find agent info for this file in Agent A nodes
+        agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), None)
         
         # Determine category (type in DB)
         category = agent_node["category"] if agent_node else "IGNORED" 
@@ -601,29 +764,27 @@ async def run_triage(project_id: str, params: TriageParams):
             "filename": item["name"],
             "type": category,
             "source_path": item["path"],
-            "metadata": item.get("metadata", {}),
-            # Important: Select any asset that is not IGNORED (matches graph eligibility)
+            "metadata": {**item.get("metadata", {}), "size": item["size"]},
             "selected": True if category != "IGNORED" else False
         })
     
     saved_assets = await db.batch_save_assets(project_uuid, db_assets)
     # Create lookup map for UUIDs: source_path -> id
-    asset_map = { a["source_path"]: a.get("id") or a.get("object_id") for a in saved_assets }
+    asset_map = { a["source_path"]: (a.get("id") or a.get("object_id")) for a in saved_assets }
 
-    
-    # Transform Agent Nodes to ReactFlow Nodes (basic)
-    rf_nodes = []
-    # Filter for graph: Only show CORE and SUPPORT nodes. IGNORED are for the inventory only.
-    graph_eligible = [n for n in nodes if n.get("category") != "IGNORED"]
+    # Transform Agent Nodes to ReactFlow Nodes
+    final_nodes = []
+    # Filter for graph: Only show CORE and SUPPORT nodes.
+    graph_eligible = [n for n in rf_nodes if n.get("category") != "IGNORED"]
     
     for i, n in enumerate(graph_eligible):
-        # Find UUID for this node
-        n_uuid = asset_map.get(n["id"], n["id"]) # Fallback to path if not found (shouldn't happen)
+        # Resolve UUID for this node
+        n_uuid = asset_map.get(n["id"], n["id"])
         
-        rf_nodes.append({
-            "id": n_uuid, # Use UUID for Graph Nodes too!
+        final_nodes.append({
+            "id": n_uuid,
             "type": "custom", 
-            "position": {"x": 200 + (i % 5 * 250), "y": 100 + (i // 5 * 150)}, # Better grid-like layout
+            "position": {"x": 200 + (i % 5 * 250), "y": 100 + (i // 5 * 150)},
             "data": { 
                 "label": n["label"], 
                 "category": n.get("category", "CORE"),
@@ -632,48 +793,121 @@ async def run_triage(project_id: str, params: TriageParams):
             }
         })
         
-    rf_edges = []
-    for e in edges:
-        # Resolve edge source/target to UUIDs if they mirror paths
+    final_edges = []
+    for e in rf_edges:
         src_uid = asset_map.get(e['from'], e['from'])
         tgt_uid = asset_map.get(e['to'], e['to'])
         
-        rf_edges.append({
+        final_edges.append({
             "id": f"e{src_uid}-{tgt_uid}",
             "source": src_uid,
             "target": tgt_uid,
             "label": e.get('type', 'SEQUENTIAL')
         })
         
-    await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
-    await db.save_project_layout(project_uuid, {"nodes": rf_nodes, "edges": rf_edges})
+    await db.save_project_layout(project_uuid, {"nodes": final_nodes, "edges": final_edges})
     _log("[Success] Graph and Assets saved to database.")
     
-    # Map back to assets list for the grid view
-    # We merge the scanner inventory with agent intelligence
+    # Map back to assets list for the frontend
     final_assets = []
     for item in manifest["file_inventory"]:
-        # Find agent info for this file
-        agent_node = next((n for n in nodes if n["id"] == item["path"]), None)
-        # Find UUID
+        agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), None)
         item_uuid = asset_map.get(item["path"])
         
         if item_uuid:
             final_assets.append({
-                "id": item_uuid, # THIS IS THE FIX: Return UUID
+                "id": item_uuid,
                 "name": item["name"],
-                "type": agent_node["category"] if agent_node else "CORE", # Use Agent category if available
+                "type": agent_node["category"] if agent_node else "CORE",
                 "status": "analyzed" if agent_node else "unlinked",
                 "tags": str(item["signatures"]),
                 "selected": True if (agent_node and agent_node["category"] != "IGNORED") else False,
-                "dependencies": [] # edges are in the graph now
+                "dependencies": []
             })
 
     return {
         "assets": final_assets,
-        "nodes": rf_nodes,
-        "edges": rf_edges,
+        "nodes": final_nodes,
+        "edges": final_edges,
         "log": "\n".join(log_lines)
+    }
+
+@app.get("/discovery/status/{project_id}")
+async def get_discovery_status(project_id: str):
+    """Returns the discovery/triage status for a project."""
+    db = SupabasePersistence()
+    metadata = await db.get_project_metadata(project_id)
+    if not metadata:
+        # Fallback to name
+        uuid = await db.get_project_id_by_name(project_id)
+        if uuid: metadata = await db.get_project_metadata(uuid)
+
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # If the project is in stage 1, discovery is either in progress or done but not approved.
+    # If status is TRIAGE and it has logs, it's 'active'.
+    # If it has assets, we can say it's 'complete'.
+    return {
+        "status": metadata.get("status", "TRIAGE"),
+        "stage": metadata.get("stage", "1"),
+        "is_ready": metadata.get("status") != "TRIAGE" or metadata.get("stage") != "1"
+    }
+
+@app.post("/projects/{project_id}/sync-graph")
+async def sync_project_graph(project_id: str):
+    """Rebuilds the graph layout based on assets currently marked as 'selected'."""
+    db = SupabasePersistence()
+    project_uuid = project_id
+    if len(project_id) < 32:
+        project_uuid = await db.get_project_id_by_name(project_id)
+
+    if not project_uuid:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 1. Fetch assets marked as selected
+    assets = await db.get_project_assets(project_uuid)
+    selected_assets = [a for a in assets if a.get("selected")]
+
+    # 2. Fetch current layout to preserve positions for existing nodes if possible
+    current_layout = await db.get_project_layout(project_uuid)
+    existing_nodes = {n["id"]: n for n in current_layout.get("nodes", [])}
+    existing_edges = current_layout.get("edges", [])
+
+    # 3. Build new node list
+    final_nodes = []
+    for i, asset in enumerate(selected_assets):
+        asset_id = asset["id"]
+        
+        if asset_id in existing_nodes:
+            # Preserve existing node
+            final_nodes.append(existing_nodes[asset_id])
+        else:
+            # Create new node
+            final_nodes.append({
+                "id": asset_id,
+                "type": "custom",
+                "position": {"x": 200 + (len(final_nodes) % 5 * 250), "y": 100 + (len(final_nodes) // 5 * 150)},
+                "data": {
+                    "label": asset["filename"],
+                    "category": asset.get("type", "CORE"),
+                    "complexity": asset.get("metadata", {}).get("complexity", "LOW"),
+                    "status": "pending"
+                }
+            })
+
+    # 4. Filter edges: Only keep edges where BOTH source and target exist in final_nodes
+    node_ids = {n["id"] for n in final_nodes}
+    final_edges = [e for e in existing_edges if e["source"] in node_ids and e["target"] in node_ids]
+
+    # 5. Save and return
+    new_layout = {"nodes": final_nodes, "edges": final_edges}
+    await db.save_project_layout(project_uuid, new_layout)
+
+    return {
+        "success": True,
+        "nodes": final_nodes,
+        "edges": final_edges
     }
 
 @app.post("/transpile/optimize")
@@ -698,30 +932,7 @@ async def export_solution(id: str):
     # ...
     return FileResponse(final_zip, media_type='application/zip', filename=f"{zip_filename}.zip")
 
-@app.get("/projects")
-async def list_projects():
-    """Returns a list of all projects."""
-    db = SupabasePersistence()
-    return await db.list_projects()
-
-@app.get("/projects/{project_id}")
-async def get_project_details(project_id: str):
-    """Returns project details (name, repo_url, etc.) by ID."""
-    db = SupabasePersistence()
-    
-    # 1. Try to find by ID first
-    metadata = await db.get_project_metadata(project_id)
-    if metadata:
-        return {"id": project_id, **metadata}
-    
-    # 2. Fallback: maybe ID passed IS the name?
-    uuid = await db.get_project_id_by_name(project_id)
-    if uuid:
-        metadata = await db.get_project_metadata(uuid)
-        if metadata:
-            return {"id": uuid, **metadata}
-        
-    return {"error": "Project not found"}
+# Consolidated Routes handled above
 
 @app.post("/projects/create")
 async def create_project(
@@ -852,8 +1063,8 @@ async def trigger_orchestration(payload: Dict[str, Any]):
         print(f"DEBUG: Resolved project name: {n}")
         if n: project_name = n
 
-    print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name}")
-    orchestrator = MigrationOrchestrator(project_name)
+    print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
+    orchestrator = MigrationOrchestrator(project_name, project_uuid=project_id)
     print("DEBUG: Running full migration...")
     result = await orchestrator.run_full_migration(limit=limit)
     print("DEBUG: Migration complete.")

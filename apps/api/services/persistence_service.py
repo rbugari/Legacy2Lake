@@ -199,8 +199,8 @@ class PersistenceService:
 
 class SupabasePersistence:
     def __init__(self):
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        url = os.getenv("SUPABASE_URL", "").strip()
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         self.client: Client = create_client(url, key)
 
     async def get_or_create_project(self, name: str, repo_url: str = None) -> str:
@@ -256,9 +256,9 @@ class SupabasePersistence:
         return None
 
     async def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Returns project metadata (name, repo_url, status, stage, prompt)."""
+        """Returns project metadata (name, repo_url, status, stage, prompt, settings, config)."""
         try:
-            res = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt").eq("project_id", project_id).execute()
+            res = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config").eq("project_id", project_id).execute()
             if res.data:
                 item = res.data[0]
                 item["id"] = item["project_id"]
@@ -438,17 +438,46 @@ class SupabasePersistence:
                 return None
         return None
 
+    async def update_project_prompt(self, project_id: str, prompt: str) -> bool:
+        """Updates the custom system prompt for a project."""
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await self.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+
+        try:
+            self.client.table("utm_projects").update({"prompt": prompt}).eq("project_id", project_uuid).execute()
+            return True
+        except Exception as e:
+            print(f"Error updating prompt for {project_id}: {e}")
+            return False
+
     async def reset_project_data(self, project_id: str) -> bool:
         """Clears all assets and resets stage/status for a project."""
         try:
-            # 1. Delete all assets for the project
+            # 1. Get object_ids for this project to handle nested deletions
+            obj_res = self.client.table("utm_objects").select("object_id").eq("project_id", project_id).execute()
+            object_ids = [o["object_id"] for o in obj_res.data]
+            
+            if object_ids:
+                # 2. Delete from dependent tables (satisfy foreign keys)
+                # utm_logical_steps -> utm_objects (object_id)
+                self.client.table("utm_logical_steps").delete().in_("object_id", object_ids).execute()
+                # [Release 4.2] utm_transformations -> utm_objects (asset_id)
+                self.client.table("utm_transformations").delete().in_("asset_id", object_ids).execute()
+            
+            # 2.5 Clean per-asset context overrides
+            self.client.table("utm_asset_context").delete().eq("project_id", project_id).execute()
+
+            # 3. Delete main assets (utm_objects)
             self.client.table("utm_objects").delete().eq("project_id", project_id).execute()
             
-            # [Release 3.5] Clean File Inventory and Logs
+            # 4. Clean File Inventory and Logs
             self.client.table("utm_execution_logs").delete().eq("project_id", project_id).execute()
             self.client.table("utm_file_inventory").delete().eq("project_id", project_id).execute()
             
-            # 2. Reset stage to 1 and status to TRIAGE
+            # 5. Reset stage to 1 and status to TRIAGE
             self.client.table("utm_projects").update({
                 "stage": "1",
                 "status": "TRIAGE",
@@ -457,7 +486,11 @@ class SupabasePersistence:
             
             return True
         except Exception as e:
-            print(f"Error resetting project {project_id}: {e}")
+            import traceback
+            err_msg = traceback.format_exc()
+            with open("reset_error.log", "w", encoding="utf-8") as f:
+                f.write(f"ERROR resetting project {project_id}:\n{err_msg}\n")
+            print(f"ERROR resetting project {project_id}: {err_msg}")
             return False
 
     async def update_project_status(self, project_id: str, status: str) -> bool:
@@ -587,8 +620,14 @@ class SupabasePersistence:
     async def log_execution(self, project_id: str, phase: str, message: str, step: str = None, level: str = "INFO"):
         """Persists a log entry to the database."""
         try:
+            # Resolve UUID if project_id is a name
+            resolved_id = project_id
+            if "-" not in project_id:
+                uuid = await self.get_project_id_by_name(project_id)
+                if uuid: resolved_id = uuid
+            
             data = {
-                "project_id": project_id,
+                "project_id": resolved_id,
                 "phase": phase,
                 "step": step,
                 "message": message,
@@ -607,19 +646,27 @@ class SupabasePersistence:
         from .persistence_service import PersistenceService
         
         project_uuid = project_id
+        folder_key = project_id
+
         if "-" not in project_id:
              resolved = await self.get_project_id_by_name(project_id)
              if resolved: project_uuid = resolved
+             folder_key = project_id
+        else:
+             # Input is UUID, find name for folder lookup
+             name = await self.get_project_name_by_id(project_id)
+             if name: folder_key = name
         
         try:
             # 1. Get real path
-            project_dir = PersistenceService.ensure_solution_dir(project_id)
+            project_dir = PersistenceService.ensure_solution_dir(folder_key)
+            import datetime
             if not os.path.exists(project_dir):
                 return False
 
             # 2. Walk and Collect
             inventory = []
-            now = "now()" # In SQL, or use python datetime
+            # now = "now()" # In SQL, or use python datetime
             
             for root, dirs, files in os.walk(project_dir):
                 rel_root = os.path.relpath(root, project_dir)
@@ -633,7 +680,9 @@ class SupabasePersistence:
                         "project_id": project_uuid,
                         "file_path": d_path,
                         "is_directory": True,
-                        "last_modified": now
+                        "file_path": d_path,
+                        "is_directory": True,
+                        "last_modified": None
                     })
 
                 # Add Files
@@ -646,12 +695,15 @@ class SupabasePersistence:
                     
                     size = os.path.getsize(full_path)
                     
+                    mtime = os.path.getmtime(full_path)
+                    mtime_iso = datetime.datetime.fromtimestamp(mtime).isoformat()
+                    
                     inventory.append({
                         "project_id": project_uuid,
                         "file_path": rel_path,
                         "is_directory": False,
                         "size_bytes": size,
-                        "last_modified": now
+                        "last_modified": mtime_iso
                     })
             
             # 3. Simple Refresh: Delete all and re-insert
@@ -728,7 +780,9 @@ class SupabasePersistence:
                               # 'read_file_content' in persistence_service (lines 175+) handles relative paths!
                               # So returning relative path is actually safer/better.
                 "type": "folder" if item["is_directory"] else "file",
-                "children": [] if item["is_directory"] else None
+                "type": "folder" if item["is_directory"] else "file",
+                "children": [] if item["is_directory"] else None,
+                "last_modified": item.get("last_modified")
             }
             nodes_by_path[path] = node
 

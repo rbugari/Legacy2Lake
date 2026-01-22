@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown } from "lucide-react";
+import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain } from "lucide-react";
 import { API_BASE_URL } from "../../lib/config";
 import PromptsExplorer from "../PromptsExplorer";
+import DesignRegistryPanel from "./DesignRegistryPanel";
+import TechnologyMixer from "./TechnologyMixer";
 
 // --- Types ---
 interface FileNode {
@@ -13,14 +15,17 @@ interface FileNode {
     last_modified?: number;
 }
 
+import StageHeader from "../StageHeader";
+
 interface DraftingViewProps {
     projectId: string;
     onStageChange: (stage: number) => void;
     onCompletion?: (completed: boolean) => void;
+    isReadOnly?: boolean;
 }
 
-export default function DraftingView({ projectId, onStageChange, onCompletion }: DraftingViewProps) {
-    const [activeTab, setActiveTab] = useState<"execution" | "prompts" | "files">("execution");
+export default function DraftingView({ projectId, onStageChange, onCompletion, isReadOnly }: DraftingViewProps) {
+    const [activeTab, setActiveTab] = useState<"execution" | "files" | "config">("execution");
     const [isRunning, setIsRunning] = useState(false);
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
@@ -74,7 +79,7 @@ export default function DraftingView({ projectId, onStageChange, onCompletion }:
             const res = await fetch(`${API_BASE_URL}/transpile/orchestrate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ project_id: projectId, limit: 5 }) // Limit 5 for demo speed
+                body: JSON.stringify({ project_id: projectId, limit: 0 }) // Unlimited processing
             });
             const data = await res.json();
 
@@ -111,63 +116,54 @@ export default function DraftingView({ projectId, onStageChange, onCompletion }:
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-            {/* Top Operational Bar (Toolbar) */}
-            <div className="flex items-center justify-between px-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 shadow-sm z-10 transition-all">
-                {/* Left: Tabs */}
-                <div className="flex">
-                    <TabButton
-                        active={activeTab === "execution"}
-                        onClick={() => setActiveTab("execution")}
-                        icon={<Play size={16} />}
-                        label="Orchestration"
-                    />
-                    <TabButton
-                        active={activeTab === "prompts"}
-                        onClick={() => setActiveTab("prompts")}
-                        icon={<Terminal size={16} />}
-                        label="Agent Prompts"
-                    />
-                    <TabButton
-                        active={activeTab === "files"}
-                        onClick={() => setActiveTab("files")}
-                        icon={<FolderOpen size={16} />}
-                        label="Output Explorer"
-                    />
-                </div>
+            <StageHeader
+                title="Generación (Drafting)"
+                subtitle="Traducción de lógica legacy a PySpark/SQL Nativo"
+                icon={<FileCode className="text-primary" />}
+                isReadOnly={isReadOnly}
+                isApproveDisabled={progress < 100}
+                isExecuting={isRunning}
+                onApprove={() => handleApprove()}
+                approveLabel="Aprobar y Refinar"
+                onRestart={async () => {
+                    if (window.confirm("¿Reiniciar Drafting? Se borrará el código generado.")) {
+                        onStageChange(2); // In this case, just resetting to same stage might be enough or call reset
+                    }
+                }}
+            >
+                <button
+                    onClick={handleRunMigration}
+                    disabled={isRunning || isReadOnly}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning || isReadOnly
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-primary hover:bg-primary/90 text-white"
+                        }`}
+                >
+                    <Play size={12} className={isRunning ? "animate-spin" : ""} />
+                    {isRunning ? "Running..." : "Ejecutar Pipeline"}
+                </button>
+            </StageHeader>
 
-                {/* Right: Operational Controls */}
-                <div className="flex items-center gap-4">
-                    {/* Group A: View/State Controls */}
-                    <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
-                        <span className="text-[10px] uppercase font-bold text-gray-400 px-2 select-none">Pipeline Ops</span>
-                    </div>
-
-                    <div className="h-8 w-px bg-gray-200 dark:bg-gray-800" />
-
-                    {/* Group B: Actions */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleRunMigration}
-                            disabled={isRunning}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning
-                                    ? "bg-gray-400 cursor-not-allowed"
-                                    : "bg-primary hover:bg-primary/90 text-white shadow-blue-200 dark:shadow-none"
-                                }`}
-                        >
-                            <Play size={14} className={isRunning ? "animate-spin" : ""} />
-                            {isRunning ? "Running..." : "Execute Pipeline"}
-                        </button>
-
-                        {progress === 100 && (
-                            <button
-                                onClick={handleApprove}
-                                className="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none"
-                            >
-                                <CheckCircle size={14} /> Approve & Refine
-                            </button>
-                        )}
-                    </div>
-                </div>
+            {/* Tab Navigation Area */}
+            <div className="flex bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4">
+                <TabButton
+                    active={activeTab === "execution"}
+                    onClick={() => setActiveTab("execution")}
+                    icon={<Terminal size={16} />}
+                    label="Orchestration"
+                />
+                <TabButton
+                    active={activeTab === "files"}
+                    onClick={() => setActiveTab("files")}
+                    icon={<FolderOpen size={16} />}
+                    label="Output Explorer"
+                />
+                <TabButton
+                    active={activeTab === "config"}
+                    onClick={() => setActiveTab("config")}
+                    icon={<Settings size={16} />}
+                    label="Solution Config"
+                />
             </div>
 
             {/* Content Area */}
@@ -179,8 +175,28 @@ export default function DraftingView({ projectId, onStageChange, onCompletion }:
                         progress={progress}
                     />
                 )}
-                {activeTab === "prompts" && <div className="h-full bg-white dark:bg-gray-950 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm"><PromptsExplorer /></div>}
                 {activeTab === "files" && <FileManagerTab projectId={projectId} />}
+                {activeTab === "config" && (
+                    <div className="h-full flex flex-col gap-6 overflow-y-auto">
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <TechnologyMixer projectId={projectId} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Settings size={20} className="text-primary" />
+                                Estándares de Arquitectura
+                            </h3>
+                            <DesignRegistryPanel projectId={projectId} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Brain size={20} className="text-primary" />
+                                Configuración de Inteligencia
+                            </h3>
+                            <PromptsExplorer />
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -204,7 +220,7 @@ function TabButton({ active, onClick, icon, label }: any) {
 
 function ExecutionTab({ isRunning, logs, progress }: any) {
     return (
-        <div className="h-full flex flex-col gap-6 max-w-4xl mx-auto">
+        <div className="h-full flex flex-col gap-6 max-w-7xl mx-auto">
             {/* Control Panel (Info Only now) */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <div>

@@ -1,49 +1,29 @@
-# Phase 3: Refinement & Medallion Architecture (Complete Guide)
+# Phase 3: Refinement (The Builder)
 
-## 📌 Introduction
-The **Refinement (Stage 3)** phase is the final step of technical transformation in Legacy2Lake. It takes the code generated during Drafting and organizes it into a structured **Medallion Architecture (Bronze/Silver/Gold)**.
+The **Refinement Phase** is where the actual code generation happens. It takes the plan from Drafting and produces production-ready code.
 
----
+## 🎯 Goal
+Generate, Validate, and Refine high-fidelity code artifacts (PySpark, SQL).
 
-## 👨‍💻 For the User: The "Modernization Loop"
-The system applies a layer of "Super-Engineering" to your scripts, ensuring an architecture that scales.
+## 🧠 Key Components
 
-### Benefits of Refinement
-1.  **Medallion Organization**:
-    *   **Bronze**: Raw ingestion and history preservation.
-    *   **Silver**: Cleaning, strict typing, and deduplication.
-    *   **Gold**: Business aggregations and final BI tables.
-2.  **Design Registry Execution (Rel 1.3)**:
-    *   The system uses the **Design Registry** (Knowledge Base) to apply custom naming conventions (e.g., `stg_` prefix), standard paths (Azure/AWS), and privacy policies across all layers.
-3.  **Automatic Optimization**: Corrects inefficient patterns (shuffles, small files).
-4.  **Security Hardening**: Injects access controls and validates against vulnerabilities.
+### 1. Orchestration Hub
+- **Live Logs**: Watch the "Refinement Loop" in action.
+- **Metrics**: See file counts for Bronze/Silver/Gold layers.
 
----
+### 2. Workbench
+- **Diff Viewer**: Compare generated code against previous versions.
+- **Code Inspection**: Syntax-highlighted view of the generated artifacts.
 
-## ⚙️ For the Technical Team: The Refinement Orchestrator
+### 3. Solution Config (NEW)
+- **Technology Mixer**: Toggle between PySpark and SQL generation.
+- **Design Registry**: Adjust architectural rules (e.g., change a prefix) and re-run refinement to apply them instantly.
 
-### 1. Profiler (Agent P)
-Performs static analysis of the "Draft" solution, identifying cross-dependencies and preparing context for structural architects.
+## 🔄 The Refinement Loop
+1. **Generate**: The system produces the initial V1 code.
+2. **Critique**: Agent F (Fixer) reviews the code against the **Design Registry** rules.
+3. **Refine**: Issues are fixed automatically.
+4. **Verify**: The loop continues until the quality gate is met or max retries reached.
 
-### 2. Architect (Agent A)
-Responsible for segmentation. Creates the physical directory structure and distributes logic based on data purpose.
-
-### 3. Refactoring (Agent R)
-Applies low-level transformations: vectorization (native Spark), security injection (Secret Scopes), and mandatory schema validation.
-
-### 4. Ops Auditor: Governance and Quality
-Guarantees the code meets the **Legacy2Lake Golden Rules**:
-- **Idempotency**: Strict `MERGE` implementation in Silver/Gold layers.
-- **Dynamic Key Detection**: Auto-detection of composite keys for precise merge conditions.
-- **Optimization**: Injection of `OPTIMIZE` and `ZORDER` based on cardinality.
-
----
-
-## 🚀 Results
-The `Refinement` directory will contain:
-- `Bronze/`, `Silver/`, `Gold/` folders.
-- `refinement.log` for full traceability.
-- `profile_metadata` for statistics.
-
----
-*Legacy2Lake Documentation Framework v2.0 - Stage 3*
+## 💡 Technology Mixer
+Select **"Mixed / Dual"** mode to generate both PySpark notebooks (for Data Engineering) and SQL Stored Procedures (for legacy compatibility) in the same run.

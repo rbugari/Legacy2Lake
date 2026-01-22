@@ -16,8 +16,8 @@ In this stage, the system performs an "intelligent scan" of your project to help
 ### Tools at your disposal
 1.  **Graph View:** An interactive visualization of your architecture. You can drag assets, delete nodes, and auto-order the mesh (Vertical/Horizontal).
 2.  **Inventory (Grid):** A detailed list where you can batch-edit categories for every file.
-3.  **Context Injection (User Input):** **Rel 1.1** Feature. Add "Tribal Knowledge" (notes, business rules) to specific assets. Agent A will use this to generate **Virtual Steps**—logic that doesn't exist in the source but is required for the business.
-4.  **Operational intelligence:** **Rel 1.2** Feature. The agent automatically infers:
+3.  **Context Injection (User Input):** Add "Tribal Knowledge" (notes, business rules) to specific assets. Agent A will use this to generate **Virtual Steps**—logic that doesn't exist in the source but is required for the business.
+4.  **Operational intelligence:** The agent automatically infers:
     - **Soberanía (Security):** PII detection and masking rules.
     - **Strategy:** Optimal load strategy (Full, Incremental, SCD 2).
     - **Criticality:** Business impact classification (P1/P2/P3).

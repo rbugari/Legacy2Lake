@@ -120,24 +120,24 @@ export default function Dashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 relative">
+        <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] relative transition-colors duration-300">
             <div className="max-w-7xl mx-auto p-8">
                 <header className="flex justify-between items-center mb-10">
                     <div>
-                        <h1 className="text-3xl font-bold">Consola de Soluciones</h1>
-                        <p className="text-gray-500">Gestiona tus proyectos de modernización.</p>
+                        <h1 className="text-3xl font-bold tracking-tight">Consola de Soluciones</h1>
+                        <p className="text-[var(--text-secondary)]">Gestiona tus proyectos de modernización.</p>
                     </div>
                     <div className="flex items-center gap-4">
                         <Link
                             href="/settings"
-                            className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                            className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors"
                             title="Configuración Global (Admin)"
                         >
                             <Settings size={24} />
                         </Link>
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="bg-primary text-white px-6 py-2 rounded-lg font-bold hover:bg-secondary transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
+                            className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-500 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
                         >
                             <FolderPlus size={18} /> Nueva Solución
                         </button>
@@ -160,27 +160,27 @@ export default function Dashboard() {
                             const displayOrigin = originMap[p.origin] || (p.origin === "Unknown" ? "" : p.origin);
 
                             return (
-                                <div key={p.id} className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-primary/50 hover:shadow-xl transition-all h-full flex flex-col justify-between overflow-hidden">
-                                    <Link href={`/workspace/${p.id}`} className="block p-6 flex-grow">
+                                <div key={p.id} className="group card-antigravity h-full flex flex-col justify-between overflow-hidden hover:-translate-y-1">
+                                    <Link href={`/workspace/${p.id}`} className="block flex-grow">
                                         <div className="flex justify-between items-start mb-4">
-                                            <span className="text-gray-400 text-xs font-mono uppercase tracking-wider flex items-center gap-1">
-                                                {displayOrigin === "GitHub" && <Github size={12} />}
-                                                {displayOrigin === "Local ZIP" && <FolderPlus size={12} />}
+                                            <span className="text-[var(--text-secondary)] text-xs font-mono uppercase tracking-wider flex items-center gap-2">
+                                                {displayOrigin === "GitHub" && <Github size={14} />}
+                                                {displayOrigin === "Local ZIP" && <FolderPlus size={14} />}
                                                 {displayOrigin}
                                             </span>
-                                            <div className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border ${getStageColor(displayStage)}`}>
+                                            <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border border-transparent ${getStageColor(displayStage)}`}>
                                                 {displayStage}
                                             </div>
                                         </div>
-                                        <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{p.name}</h3>
-                                        <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 mb-4 overflow-hidden">
-                                            <div className="bg-primary h-full rounded-full transition-all duration-1000" style={{ width: `${p.progress}%` }}></div>
+                                        <h3 className="text-xl font-bold mb-2 group-hover:text-blue-500 transition-colors">{p.name}</h3>
+                                        <div className="w-full bg-[var(--border)] rounded-full h-1.5 mb-4 overflow-hidden">
+                                            <div className="bg-blue-500 h-full rounded-full transition-all duration-1000" style={{ width: `${p.progress}%` }}></div>
                                         </div>
                                     </Link>
 
-                                    <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-800 px-6 py-4 bg-gray-50/50 dark:bg-gray-800/20">
-                                        <div className="text-xs text-gray-500">
-                                            <span className="block font-bold text-lg text-gray-900 dark:text-white">
+                                    <div className="flex justify-between items-center border-t border-[var(--border)] pt-4 mt-2">
+                                        <div className="text-xs text-[var(--text-secondary)]">
+                                            <span className="block font-bold text-lg text-[var(--text-primary)]">
                                                 {p.assets_count !== undefined ? p.assets_count : p.progress + "%"}
                                             </span>
                                             {p.assets_count !== undefined ? "Paques / Assets" : "Completado"}
@@ -196,7 +196,7 @@ export default function Dashboard() {
                                                         await fetch(`${API_BASE_URL}/projects/${p.id}/reset`, { method: "POST" });
                                                         window.location.reload(); // Simple reload to refresh state
                                                     }}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors z-10"
+                                                    className="p-2 text-[var(--text-secondary)] hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors z-10"
                                                     title="Reiniciar a Triage (Rollback)"
                                                 >
                                                     <RefreshCw size={16} /> {/* Using Refresh as Reset icon */}
@@ -205,14 +205,14 @@ export default function Dashboard() {
 
                                             <Link
                                                 href={`/workspace/${p.id}/settings`}
-                                                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors z-10"
+                                                className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-lg transition-colors z-10"
                                                 title="Configuración"
                                             >
                                                 <Settings size={16} />
                                             </Link>
                                             <button
                                                 onClick={(e) => handleDeleteProject(e, p.id)}
-                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors z-10"
+                                                className="p-2 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors z-10"
                                                 title="Eliminar Solución"
                                             >
                                                 <Trash2 size={16} />
@@ -227,11 +227,11 @@ export default function Dashboard() {
 
                 {/* Create Project Modal */}
                 {isModalOpen && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-800">
-                            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                        <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)]">
+                            <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-[var(--background)]">
                                 <h2 className="text-lg font-bold">Crear Nueva Solución</h2>
-                                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <button onClick={() => setIsModalOpen(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                                     <X size={20} />
                                 </button>
                             </div>
@@ -244,7 +244,7 @@ export default function Dashboard() {
                                         required
                                         value={projectName}
                                         onChange={(e) => setProjectName(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                                        className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-[var(--text-secondary)]"
                                         placeholder="Ej: Migración CRM Legacy"
                                     />
                                 </div>
@@ -345,10 +345,10 @@ export default function Dashboard() {
 
 function getStageColor(stage: string) {
     switch (stage) {
-        case 'TRIAGE': return 'bg-purple-100 text-purple-700 border-purple-200';
-        case 'DRAFT': return 'bg-blue-100 text-blue-700 border-blue-200';
-        case 'REFINEMENT': return 'bg-orange-100 text-orange-700 border-orange-200';
-        case 'GOVERNANCE': return 'bg-green-100 text-green-700 border-green-200';
-        default: return 'bg-gray-100 text-gray-700';
+        case 'TRIAGE': return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+        case 'DRAFT': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+        case 'REFINEMENT': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
+        case 'GOVERNANCE': return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+        default: return 'bg-[var(--text-primary)]/5 text-[var(--text-secondary)] border-[var(--border)]';
     }
 }

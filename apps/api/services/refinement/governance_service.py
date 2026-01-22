@@ -20,7 +20,7 @@ class GovernanceService:
 
     def get_certification_report(self, project_id: str) -> dict:
         """
-        Generates a modernization certificate with project metrics.
+        Generates a modernization certificate with real project metrics.
         """
         project_path = PersistenceService.ensure_solution_dir(project_id)
         refined_dir = Path(project_path) / PersistenceService.STAGE_REFINEMENT
@@ -42,56 +42,86 @@ class GovernanceService:
                     with open(os.path.join(root, file), "r", encoding="utf-8") as f:
                         stats["total_lines"] += len(f.readlines())
 
-        # 2. Lineage Mapping (Heuristic)
+        # 2. Lineage Mapping (SSIS -> Bronze -> Silver -> Gold)
         lineage = self._generate_lineage(project_id)
 
-        # 3. Compliance Logs (from refinement.log)
+        # 3. Compliance Logs
         compliance_logs = self._fetch_compliance_logs(project_path)
+
+        # 4. Dynamic Score
+        # Start at 70, +10 for each medallion layer present, +5 for lineage coverage
+        score = 70
+        if stats["bronze_count"] > 0: score += 10
+        if stats["silver_count"] > 0: score += 10
+        if stats["gold_count"] > 0: score += 10
+        if stats["total_lines"] > 1000: score = min(100, score + 5)
 
         return {
             "project_id": project_id,
             "certified_at": datetime.now().isoformat(),
-            "score": 100 if stats["gold_count"] > 0 else 80,
+            "score": score,
             "stats": stats,
             "lineage": lineage,
             "compliance_logs": compliance_logs
         }
 
     def _generate_lineage(self, project_id: str) -> list:
+        """Determines traceability from legacy source to medallion targets."""
         project_path = PersistenceService.ensure_solution_dir(project_id)
-        input_dir = Path(project_path) / PersistenceService.STAGE_DRAFTING
+        refined_dir = Path(project_path) / PersistenceService.STAGE_REFINEMENT
         lineage = []
 
-        if input_dir.exists():
-            for file in input_dir.glob("*.py"):
-                source = file.name
-                table_name = file.stem
+        # We look into the Bronze layer as the anchor for source-to-target mapping
+        bronze_dir = refined_dir / "Bronze"
+        if bronze_dir.exists():
+            for file in bronze_dir.glob("*.py"):
+                # SSIS Package name is usually part of the generated filename or metadata
+                # Heuristic: file_bronze.py -> file.dtsx
+                source_name = file.stem.replace("_bronze", "") + ".dtsx"
+                table_name = file.stem.replace("_bronze", "")
+                
                 lineage.append({
-                    "source": source,
+                    "source": source_name,
                     "targets": {
                         "bronze": f"main.bronze_raw.{table_name}",
                         "silver": f"main.silver_curated.{table_name}",
                         "gold": f"main.gold_business.{table_name}"
                     }
                 })
-        return lineage
+        
+        # Fallback if no Bronze files but we have Drafting files
+        if not lineage:
+            drafting_dir = Path(project_path) / PersistenceService.STAGE_DRAFTING
+            if drafting_dir.exists():
+                for file in drafting_dir.glob("*.py"):
+                    table_name = file.stem
+                    lineage.append({
+                        "source": f"{table_name}.dtsx",
+                        "targets": {
+                            "bronze": f"main.bronze_raw.{table_name}",
+                            "silver": f"main.silver_curated.{table_name}",
+                            "gold": f"main.gold_business.{table_name}"
+                        }
+                    })
+                    
+        return lineage[:10] # Cap for UI performance
 
     def _fetch_compliance_logs(self, project_path: str) -> list:
-        log_path = os.path.join(project_path, "refinement.log")
+        # Check both refinement.log and refinement_verbose.log
         logs = []
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                # Focus on OpsAuditor and Refactoring tags
-                for line in lines:
-                    if "[OpsAuditor]" in line or "[Refactoring]" in line:
-                        status = "PASSED" if "OK" in line or "Added" in line or "Validated" in line else "INFO"
-                        logs.append({
-                            "status": status,
-                            "message": line.strip(),
-                            "time": "Final Audit"
-                        })
-        return logs[:10] # Return last 10 relevant entries
+        for log_name in ["refinement.log", "refinement_verbose.log", "triage.log"]:
+            log_path = os.path.join(project_path, log_name)
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8") as f:
+                    for line in f.readlines()[-20:]: # Last 20 lines
+                        if any(tag in line for tag in ["[OpsAuditor]", "[Refactorer]", "[Architect]", "[Agent G]"]):
+                            status = "PASSED" if any(kw in line for kw in ["OK", "Complete", "Success", "Saved"]) else "INFO"
+                            logs.append({
+                                "status": status,
+                                "message": line.strip(),
+                                "time": datetime.now().strftime("%H:%M") # placeholder time
+                            })
+        return logs[-15:] # Return 15 most recent entries
 
     def create_export_bundle(self, project_id: str) -> io.BytesIO:
         """

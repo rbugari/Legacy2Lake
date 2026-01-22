@@ -80,7 +80,7 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
     if (loading) return <div className="p-8 text-center text-gray-500 animate-pulse">Loading Registry...</div>;
 
     return (
-        <div className="max-w-4xl mx-auto p-6 space-y-8">
+        <div className="max-w-7xl mx-auto p-6 space-y-8">
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                     <div>
@@ -105,6 +105,7 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {grouped[cat].map((item: any) => {
+                                    if (item.key === 'target_stack') return null; // Handled by TechnologyMixer
                                     const editKey = `${cat}-${item.key}`;
                                     const value = edits[editKey] !== undefined ? edits[editKey] : item.value;
                                     const isDirty = edits[editKey] !== undefined && edits[editKey] !== item.value;
@@ -113,24 +114,12 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
                                         <div key={item.key} className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col gap-2">
                                             <label className="text-xs font-bold text-gray-500">{item.key.replace(/_/g, ' ').toUpperCase()}</label>
                                             <div className="flex gap-2">
-                                                {item.key === 'target_stack' ? (
-                                                    <select
-                                                        value={value}
-                                                        onChange={(e) => handleChange(cat, item.key, e.target.value)}
-                                                        className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer"
-                                                    >
-                                                        <option value="pyspark">PySpark (Data Engineering)</option>
-                                                        <option value="dbt">dbt (Analytics Engineering)</option>
-                                                        <option value="sql">Pure SQL (Stored Procs)</option>
-                                                    </select>
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        value={value}
-                                                        onChange={(e) => handleChange(cat, item.key, e.target.value)}
-                                                        className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                                    />
-                                                )}
+                                                <textarea
+                                                    value={value}
+                                                    onChange={(e) => handleChange(cat, item.key, e.target.value)}
+                                                    className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all h-20 resize-y"
+                                                    rows={2}
+                                                />
                                                 {isDirty && (
                                                     <button
                                                         onClick={() => handleSave(cat, item.key)}

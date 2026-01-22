@@ -1,4 +1,3 @@
-[Profiler] Starting analysis...
 [Profiler] Target Project Directory: C:\proyectos_dev\UTM\solutions\base
 [Profiler] Found 5 Python files in Drafting.
 [Profiler] Analyzing file: DimCategory.py...
@@ -12,67 +11,19 @@
 [Profiler] Analyzing file: DimShipper.py...
 [Profiler]   > Detected PK candidates for DimShipper.py (DIMENSION): ['shipperid']
 [Profiler] Profile metadata saved to C:\proyectos_dev\UTM\solutions\base\Refinement\profile_metadata.json
-[Profiler] Complete. Analyzed 5 files.
-[Architect] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...
 [Architect] Solutions Directory: C:\proyectos_dev\UTM\solutions\base
+[Architect] Using Cartridge: PySparkCartridge
 [Architect] Ensuring Medallion folder structure (Bronze/Silver/Gold)...
-[Architect] Generated: config.py
-[Architect] Generated: utils.py
-[Architect] Processing 5 source files for Medallion segmentation...
-[Architect] Transforming DimCategory.py -> Bronze & Silver layers
-[Architect] Transforming DimCustomers.py -> Bronze & Silver layers
-[Architect] Transforming DimEmployee.py -> Bronze & Silver layers
-[Architect] Transforming DimProduct.py -> Bronze & Silver layers
-[Architect] Transforming DimShipper.py -> Bronze & Silver layers
-[Architect] Medallion structure created.
-[Refactoring] Applying Spark Optimizations and Security Controls...
+[Architect] Generated Scaffolding: config.py
+[Architect] Generated Scaffolding: utils.py
+[Architect] Processing 5 source files with .py extension...
 [Refactoring] Scanning generated files for optimization candidates...
-[Refactoring] Optimizing BRONZE layer (5 files)...
-[Refactoring]   > DimCategory_bronze.py: Added Z-Order hint
-[Refactoring]   > DimCategory_bronze.py: Validated Secret Scope usage
-[Refactoring]   > DimCustomers_bronze.py: Added Z-Order hint
-[Refactoring]   > DimCustomers_bronze.py: Validated Secret Scope usage
-[Refactoring]   > DimEmployee_bronze.py: Added Z-Order hint
-[Refactoring]   > DimEmployee_bronze.py: Validated Secret Scope usage
-[Refactoring]   > DimProduct_bronze.py: Added Z-Order hint
-[Refactoring]   > DimProduct_bronze.py: Validated Secret Scope usage
-[Refactoring]   > DimShipper_bronze.py: Added Z-Order hint
-[Refactoring]   > DimShipper_bronze.py: Validated Secret Scope usage
-[Refactoring] Optimizing SILVER layer (5 files)...
-[Refactoring]   > DimCategory_silver.py: Added Z-Order hint
-[Refactoring]   > DimCategory_silver.py: Validated Secret Scope usage
-[Refactoring]   > DimCustomers_silver.py: Added Z-Order hint
-[Refactoring]   > DimCustomers_silver.py: Validated Secret Scope usage
-[Refactoring]   > DimEmployee_silver.py: Added Z-Order hint
-[Refactoring]   > DimEmployee_silver.py: Validated Secret Scope usage
-[Refactoring]   > DimProduct_silver.py: Added Z-Order hint
-[Refactoring]   > DimProduct_silver.py: Validated Secret Scope usage
-[Refactoring]   > DimShipper_silver.py: Added Z-Order hint
-[Refactoring]   > DimShipper_silver.py: Validated Secret Scope usage
-[Refactoring] Optimizing GOLD layer (5 files)...
-[Refactoring]   > DimCategory_gold.py: Added Z-Order hint
-[Refactoring]   > DimCategory_gold.py: Validated Secret Scope usage
-[Refactoring]   > DimCustomers_gold.py: Added Z-Order hint
-[Refactoring]   > DimCustomers_gold.py: Validated Secret Scope usage
-[Refactoring]   > DimEmployee_gold.py: Added Z-Order hint
-[Refactoring]   > DimEmployee_gold.py: Validated Secret Scope usage
-[Refactoring]   > DimProduct_gold.py: Added Z-Order hint
-[Refactoring]   > DimProduct_gold.py: Validated Secret Scope usage
-[Refactoring]   > DimShipper_gold.py: Added Z-Order hint
-[Refactoring]   > DimShipper_gold.py: Validated Secret Scope usage
-[Refactoring] Optimized 15 files.
-[OpsAuditor] Validating operational readiness and generating DevOps assets...
-[OpsAuditor] Starting Operational Audit...
-[OpsAuditor] OK: BRONZE layer contains 5 files.
-[OpsAuditor] OK: SILVER layer contains 5 files.
-[OpsAuditor] OK: GOLD layer contains 5 files.
-[OpsAuditor] OK: DimCategory_silver.py uses PK '['categoryid']' for MERGE.
-[OpsAuditor] OK: DimCustomers_silver.py uses PK '['custid']' for MERGE.
-[OpsAuditor] OK: DimEmployee_silver.py uses PK '['empid']' for MERGE.
-[OpsAuditor] OK: DimProduct_silver.py uses PK '['ProductID']' for MERGE.
-[OpsAuditor] OK: DimShipper_silver.py uses PK '['shipperid']' for MERGE.
-[OpsAuditor] Generating Infrastructure-as-Code (IaC) manifests...
-[OpsAuditor] Generating Operational Handbook (README_DEVOPS.md)...
-[OpsAuditor] Audit Complete.
-[OpsAuditor] Audit result: COMPLETED
-[Refinement] Pipeline Complete.
+Pipeline failed: type object 'PersistenceService' has no attribute 'get_persistence'
+Traceback (most recent call last):
+  File "C:\proyectos_dev\UTM\apps\api\services\refinement\refinement_orchestrator.py", line 71, in start_pipeline
+    refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\proyectos_dev\UTM\apps\api\services\refinement\refactoring_service.py", line 32, in refactor_project
+    db = PersistenceService.get_persistence()
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'PersistenceService' has no attribute 'get_persistence'

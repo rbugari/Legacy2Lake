@@ -1,0 +1,9 @@
+ERROR resetting project 2f28aa44-b44e-4f9f-bf35-db93d38fb1e1:
+Traceback (most recent call last):
+  File "C:\proyectos_dev\UTM\apps\api\services\persistence_service.py", line 457, in reset_project_data
+    self.client.table("utm_execution_logs").delete().eq("project_id", project_id).execute()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\rfbugari\AppData\Local\Programs\Python\Python313\Lib\site-packages\postgrest\_sync\request_builder.py", line 53, in execute
+    raise APIError(dict(json_obj))
+postgrest.exceptions.APIError: {'message': 'permission denied for table utm_execution_logs', 'code': '42501', 'hint': None, 'details': None}
+

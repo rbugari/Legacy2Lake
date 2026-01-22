@@ -1,0 +1,25 @@
+{
+  "status": "REJECTED",
+  "score": 70,
+  "violations": [
+    {
+      "severity": "CRITICAL",
+      "rule": "Identity/Surrogate Keys",
+      "description": "Surrogate key generation for FactSalesID uses row_number() over business keys, but this is not stable or idempotent if the input order changes. The platform rule requires resetting the sequence to MAX(id) + 1 and only assigning new IDs to genuinely new records. The current logic may assign different IDs on re-runs if the input data changes order or content.",
+      "suggestion": "Implement a deterministic surrogate key assignment: For new records (not present in target), assign FactSalesID = MAX(FactSalesID) + row_number() OVER (ORDER BY business keys). Ensure that only new records get new IDs, and existing records retain their IDs."
+    },
+    {
+      "severity": "WARNING",
+      "rule": "Type Safety",
+      "description": "The code attempts to cast columns to target types, but does not handle cases where the source column is missing or has incompatible types. This may cause runtime errors.",
+      "suggestion": "Add error handling or explicit checks to ensure all columns exist and are castable to the target type. Consider using try_cast or similar logic."
+    },
+    {
+      "severity": "WARNING",
+      "rule": "Hardcoded Paths",
+      "description": "The code does not contain hardcoded file paths, but the use of 'dw..V_DimProduct' in the SQL query is a hardcoded schema reference.",
+      "suggestion": "Parameterize schema/database names to avoid hardcoding."
+    }
+  ],
+  "fixed_code": "# 5. Surrogate Key Generation (STABLE & IDEMPOTENT)\ntarget_table_name = \"base.dbo.FactSales\"\nbk_cols = [\"orderid\", \"productid\"]  # Example business keys, adjust as per schema\nsk_col = \"FactSalesID\"\n\ntry:\n    df_target = spark.read.table(target_table_name).select(*bk_cols, sk_col)\n    max_sk = df_target.agg(max(col(sk_col))).collect()[0][0] or 0\nexcept:\n    df_target = None\n    max_sk = 0\n\nif df_target:\n    df_joined = df_tempstage.join(df_target, on=bk_cols, how=\"left\")\nelse:\n    df_joined = df_tempstage.withColumn(sk_col, lit(None).cast(\"integer\"))\n\n# Only assign new IDs to records not present in target (sk_col is null)\ndf_existing = df_joined.filter(col(sk_col).isNotNull())\ndf_new = df_joined.filter(col(sk_col).isNull()).drop(sk_col)\ndf_new = df_new.withColumn(sk_col, row_number().over(Window.orderBy(*bk_cols)) + max_sk)\ndf_with_sk = df_existing.unionByName(df_new)\n\n# This ensures that only new records get new IDs, and existing records retain their IDs.\n"
+}

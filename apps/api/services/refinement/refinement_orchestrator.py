@@ -31,7 +31,7 @@ class RefinementOrchestrator:
 
     async def start_pipeline(self, project_id: str):
         # Release 3.5: DB Persistence
-        db = PersistenceService.get_persistence() 
+        # db = PersistenceService.get_persistence() 
         # Note: PersistenceService doesn't have get_persistence factory, it has SupabasePersistence class.
         # Let's import SupabasePersistence.
         
@@ -68,7 +68,7 @@ class RefinementOrchestrator:
             
             # 3. Refactoring (Agent R)
             await _log("Applying Spark Optimizations and Security Controls...", "Refactoring")
-            refactor_out = self.refactorer.refactor_project(project_id, architect_out, local_log)
+            refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log)
             await _log(f"Optimized {refactor_out.get('optimized_files_count', 0)} files.", "Refactoring")
             
             # 4. Ops Auditor (Agent O)
@@ -77,13 +77,14 @@ class RefinementOrchestrator:
             await _log(f"Audit result: {ops_out['status']}", "OpsAuditor")
             
             await _log("Pipeline Complete.", "Orchestrator")
+            local_log.append("Pipeline Complete.")
 
             # [Deprecated] File Persistence removed in favor of DB
             # But we might want to keep writing the detailed local_log to a file for deeper debug
             # if the inner services aren't converted yet.
             # Let's keep file writing for granular logs until inner services are refactored.
             project_path = PersistenceService.ensure_solution_dir(project_id)
-            with open(os.path.join(project_path, "refinement_verbose.log"), "w", encoding="utf-8") as f:
+            with open(os.path.join(project_path, "refinement.log"), "w", encoding="utf-8") as f:
                 f.write("\n".join(local_log))
 
             return {
@@ -93,28 +94,23 @@ class RefinementOrchestrator:
                 "ops_audit": ops_out
             }
 
-            return {
-                "status": "COMPLETED",
-                "log": log,
-                "artifacts": architect_out,
-                "ops_audit": ops_out
-            }
+
             
         except Exception as e:
             import traceback
             error_msg = f"Pipeline failed: {str(e)}\n{traceback.format_exc()}"
-            log.append(error_msg)
+            local_log.append(error_msg)
             
             # Try to save error log too
             try:
                 project_path = PersistenceService.ensure_solution_dir(project_id)
                 with open(os.path.join(project_path, "refinement.log"), "w", encoding="utf-8") as f:
-                    f.write("\n".join(log))
+                    f.write("\n".join(local_log))
             except: 
                 pass
 
             return {
                 "status": "FAILED",
-                "log": log,
+                "log": local_log,
                 "error": str(e)
             }
