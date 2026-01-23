@@ -152,7 +152,7 @@ class PersistenceService:
                         
                         node = {
                             "name": entry.name,
-                            "path": entry.path, # Absolute path, maybe dangerous to expose but needed for read
+                            "path": entry.path.replace("\\", "/"), # Normalize to forward slashes
                             "type": "folder" if entry.is_dir() else "file",
                             "last_modified": entry.stat().st_mtime
                         }
@@ -183,12 +183,11 @@ class PersistenceService:
         if not os.path.isabs(file_path):
             file_path = os.path.join(project_root, file_path)
             
-        abs_path = os.path.abspath(file_path)
-        abs_root = os.path.abspath(project_root)
+        abs_path = os.path.abspath(file_path).replace("\\", "/")
+        abs_root = os.path.abspath(project_root).replace("\\", "/")
         
-        if not abs_path.startswith(abs_root):
-            # Debug info in case of error
-            # print(f"[Security] Denied access to {abs_path} (limit: {abs_root})")
+        # On Windows, drive letters might be C: or c:, normalize to lower for security check
+        if not abs_path.lower().startswith(abs_root.lower()):
             raise ValueError("Access Denied: File is outside project directory")
             
         if not os.path.exists(abs_path):
@@ -198,10 +197,12 @@ class PersistenceService:
             return f.read()
 
 class SupabasePersistence:
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         self.client: Client = create_client(url, key)
+        self.tenant_id = tenant_id
+        self.client_id = client_id
 
     async def get_or_create_project(self, name: str, repo_url: str = None) -> str:
         """Finds or creates a project by name and returns its UUID."""
@@ -215,13 +216,21 @@ class SupabasePersistence:
         data = {"name": name, "stage": "1"}
         if repo_url:
             data["repo_url"] = repo_url
+        
+        # Inject Identity
+        if self.tenant_id: data["tenant_id"] = self.tenant_id
+        if self.client_id: data["client_id"] = self.client_id
             
         res = self.client.table("utm_projects").insert(data).execute()
         return res.data[0]["project_id"]
 
     async def list_projects(self) -> List[Dict[str, Any]]:
-        """Returns a list of all projects."""
-        res = self.client.table("utm_projects").select("*").execute()
+        """Returns a list of all projects, filtered by tenant if set."""
+        query = self.client.table("utm_projects").select("*")
+        if self.tenant_id:
+            query = query.eq("tenant_id", self.tenant_id)
+            
+        res = query.execute()
         if res.data:
             for item in res.data:
                 item["id"] = item["project_id"]
@@ -256,9 +265,14 @@ class SupabasePersistence:
         return None
 
     async def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Returns project metadata (name, repo_url, status, stage, prompt, settings, config)."""
+        """Returns project metadata (name, repo_url, status, stage, prompt, settings, config, is_active)."""
         try:
-            res = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config").eq("project_id", project_id).execute()
+            query = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", project_id)
+            if self.tenant_id:
+
+                query = query.eq("tenant_id", self.tenant_id)
+                
+            res = query.execute()
             if res.data:
                 item = res.data[0]
                 item["id"] = item["project_id"]
@@ -274,8 +288,12 @@ class SupabasePersistence:
             "source_name": filename,
             "raw_content": content,
             "type": asset_type,
+            "type": asset_type,
             "hash": file_hash
         }
+        if self.tenant_id: data["tenant_id"] = self.tenant_id
+        if self.client_id: data["client_id"] = self.client_id
+            
         if source_path:
             data["source_path"] = source_path
             
@@ -342,6 +360,8 @@ class SupabasePersistence:
                 "business_entity": asset.get("business_entity"),
                 "target_name": asset.get("target_name")
             })
+            if self.tenant_id: insert_data[-1]["tenant_id"] = self.tenant_id
+            if self.client_id: insert_data[-1]["client_id"] = self.client_id
             
         try:
             res = self.client.table("utm_objects").upsert(insert_data, on_conflict="project_id, source_path").execute()
@@ -832,5 +852,81 @@ class SupabasePersistence:
         except Exception as e:
             print(f"Error saving global config {key}: {e}")
             return False
+
+    # --- Project Settings (v1.5) ---
+    async def get_project_settings(self, project_id: str) -> Dict[str, Any]:
+        """Retrieves settings for a specific project."""
+        try:
+            res = self.client.table("utm_projects").select("settings").eq("project_id", project_id).execute()
+            if res.data:
+                return res.data[0].get("settings") or {}
+            return {}
+        except Exception as e:
+            print(f"Error fetching settings for project {project_id}: {e}")
+            return {}
+
+    async def update_project_settings(self, project_id: str, settings: Dict[str, Any]) -> bool:
+        """Updates (merges) settings for a specific project."""
+        try:
+            # First get current to merge
+            current = await self.get_project_settings(project_id)
+            updated = {**current, **settings}
+            
+            self.client.table("utm_projects").update({
+                "settings": updated
+            }).eq("project_id", project_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error updating settings for project {project_id}: {e}")
+            return False
+
+    async def resolve_llm_for_agent(self, agent_id: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Dynamically resolves LLM configuration for a specific agent.
+        Logic: 
+        1. Query matrix to find assigned model_id.
+        2. Query model_catalog for technical specs.
+        3. Query vault for provider credentials.
+        """
+        try:
+            # 1. Get Model Assignment from Matrix
+            matrix_res = self.client.table("utm_agent_matrix").select("model_id").eq("agent_id", agent_id).execute()
+            if not matrix_res.data:
+                return {"error": f"No model assigned to {agent_id} in matrix"}
+            
+            model_id = matrix_res.data[0]["model_id"]
+
+            # 2. Get Technical Specs from Catalog
+            catalog_res = self.client.table("utm_model_catalog").select("*").eq("model_id", model_id).execute()
+            if not catalog_res.data:
+                return {"error": f"Model {model_id} not found in catalog"}
+            
+            model = catalog_res.data[0]
+            provider_type = model.get("provider", "openai").lower()
+
+            # 3. Get Credentials from Vault (Context Aware)
+            vault_query = self.client.table("utm_provider_vault").select("*").ilike("provider_name", provider_type)
+            if self.tenant_id:
+                vault_query = vault_query.eq("tenant_id", self.tenant_id)
+            
+            vault_res = vault_query.execute()
+            creds = vault_res.data[0] if vault_res.data else {}
+
+            # 4. Build Standardized Config
+            config = {
+                "provider": provider_type,
+                "model_name": model.get("model_id"), # e.g. "gpt-4"
+                "deployment_id": model.get("deployment_id"),
+                "api_version": model.get("api_version"),
+                "api_url": model.get("api_url") or creds.get("base_url"),
+                "api_key": creds.get("api_key"),
+                "temperature": 0
+            }
+
+            return config
+            
+        except Exception as e:
+            print(f"Error resolving LLM for {agent_id}: {e}")
+            return {"error": str(e)}
 
 

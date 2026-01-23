@@ -20,7 +20,8 @@ class RefinementOrchestrator:
     Sequence: Profiler -> Architect -> Refactoring -> Ops -> Workflow
     """
 
-    def __init__(self):
+    def __init__(self, tenant_id: str = None, client_id: str = None):
+
         # Services are instantiated once.
         # They handle project path resolution internally/per request if needed, 
         # or we pass project_id to their methods.
@@ -28,6 +29,8 @@ class RefinementOrchestrator:
         self.architect = ArchitectService()
         self.refactorer = RefactoringService()
         self.ops_auditor = OpsAuditorService()
+        self.tenant_id = tenant_id
+        self.client_id = client_id
 
     async def start_pipeline(self, project_id: str):
         # Release 3.5: DB Persistence
@@ -36,7 +39,8 @@ class RefinementOrchestrator:
         # Let's import SupabasePersistence.
         
         from apps.api.services.persistence_service import SupabasePersistence
-        persistence = SupabasePersistence()
+        persistence = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+
         
         async def _log(msg: str, step: str = None):
              await persistence.log_execution(project_id, "REFINEMENT", msg, step=step)

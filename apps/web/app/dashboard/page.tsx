@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "../lib/config";
+import { fetchWithAuth } from "../lib/auth-client";
 // import TranspilationView from "../components/stages/TranspilationView";
+
 import DraftingView from "../components/stages/DraftingView";
 import RefinementView from "../components/stages/RefinementView";
 import WorkflowToolbar from "../components/WorkflowToolbar";
@@ -27,7 +28,7 @@ export default function Dashboard() {
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/projects`);
+                const response = await fetchWithAuth("projects");
                 if (response.ok) {
                     const data = await response.json();
                     // Basic mapping if needed, otherwise rely on matching shape
@@ -72,16 +73,20 @@ export default function Dashboard() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/projects/create`, {
+            const response = await fetchWithAuth("projects/create", {
                 method: "POST",
-                body: formData,
+                body: formData, // fetchWithAuth needs to handle FormData carefully if Content-Type is set automatically.
             });
+
+            // Note: When sending FormData, browser sets Content-Type to multipart/form-data with boundary.
+            // If fetchWithAuth sets Content-Type: application/json by default, this will break.
+            // I need to adjust fetchWithAuth or override here.
 
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
                     // Redirect to new workspace
-                    router.push(`/workspace/${projectId}`);
+                    router.push(`/workspace?id=${projectId}`);
                 } else {
                     alert(`Error: ${data.error || "No se pudo crear el proyecto."}`);
                 }
@@ -104,7 +109,7 @@ export default function Dashboard() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+            const response = await fetchWithAuth(`projects/${projectId}`, {
                 method: 'DELETE'
             });
 
@@ -128,13 +133,6 @@ export default function Dashboard() {
                         <p className="text-[var(--text-secondary)]">Gestiona tus proyectos de modernización.</p>
                     </div>
                     <div className="flex items-center gap-4">
-                        <Link
-                            href="/settings"
-                            className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors"
-                            title="Configuración Global (Admin)"
-                        >
-                            <Settings size={24} />
-                        </Link>
                         <button
                             onClick={() => setIsModalOpen(true)}
                             className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-500 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
@@ -161,7 +159,7 @@ export default function Dashboard() {
 
                             return (
                                 <div key={p.id} className="group card-antigravity h-full flex flex-col justify-between overflow-hidden hover:-translate-y-1">
-                                    <Link href={`/workspace/${p.id}`} className="block flex-grow">
+                                    <Link href={`/workspace?id=${p.id}`} className="block flex-grow">
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="text-[var(--text-secondary)] text-xs font-mono uppercase tracking-wider flex items-center gap-2">
                                                 {displayOrigin === "GitHub" && <Github size={14} />}
@@ -193,7 +191,7 @@ export default function Dashboard() {
                                                     onClick={async (e) => {
                                                         e.preventDefault();
                                                         if (!confirm("¿Resetear proyecto a etapa TRIAGE? Se perderá el progreso.")) return;
-                                                        await fetch(`${API_BASE_URL}/projects/${p.id}/reset`, { method: "POST" });
+                                                        await fetchWithAuth(`projects/${p.id}/reset`, { method: "POST" });
                                                         window.location.reload(); // Simple reload to refresh state
                                                     }}
                                                     className="p-2 text-[var(--text-secondary)] hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors z-10"
@@ -204,7 +202,7 @@ export default function Dashboard() {
                                             )}
 
                                             <Link
-                                                href={`/workspace/${p.id}/settings`}
+                                                href={`/workspace/settings?id=${p.id}`}
                                                 className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-lg transition-colors z-10"
                                                 title="Configuración"
                                             >

@@ -1,0 +1,10 @@
+--- Triage Started for 0eb5cfd6-0bb3-4e5e-831d-2cb128dcfe8d ---
+[Start] Initializing Shift-T Triage Agent for Project: 0eb5cfd6-0bb3-4e5e-831d-2cb128dcfe8d
+[Step 1] Running Deep Scanner (Python Engine)...
+   > Scanned 1 files.
+   > Tech Stack Detected: {'log': 1}
+[Step 2] Invoking Agent A (Mesh Architect)...
+   > Applying custom System Prompt override.
+   > Analysis Complete. Total Nodes (AI + Inferred): 1
+[Step 3] Persisting Mesh Graph and Discovered Assets...
+[Success] Graph and Assets saved to database.

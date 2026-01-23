@@ -23,6 +23,7 @@ You are a Principal Data Engineer specialized in Modern Cloud Architectures (e.g
 ## Output Format
 Return a JSON object with:
 - `pyspark_code`: The generated PySpark script (Professional grade).
+- `sql_code`: (Optional) The equivalent ANSI SQL code if requested by the configuration.
 - `explanation`: Architectural rationale (why MERGE? why certain casts?).
 - `assumptions`: Critical assumptions about business keys or data types.
 - `requirements`: Specific configurations (e.g., `spark.databricks.delta.schema.autoMerge.enabled`).
@@ -35,6 +36,7 @@ Return a JSON object with:
 ```json
 {
   "pyspark_code": "...",
+  "sql_code": "...",
   "explanation": "...",
   "assumptions": [],
   "requirements": []

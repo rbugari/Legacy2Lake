@@ -163,3 +163,52 @@ df_gold.write.format("delta").mode("overwrite").option("overwriteSchema", "true"
 
 print(f"Gold Layer updated: {{target_gold_table}}")
 """
+
+    def generate_bronze_sql(self, table_metadata: Dict[str, Any]) -> str:
+        source_path = Path(table_metadata.get("source_path", "unknown_source.py"))
+        return f"""-- BRONZE LAYER (ANSI SQL)
+-- Source: {source_path.name}
+-- Logic: Create or replace raw table representing the source data.
+
+CREATE OR REPLACE TABLE bronze_{source_path.stem}
+USING DELTA
+AS SELECT *, current_timestamp() as _ingestion_timestamp
+FROM {table_metadata.get("source_path", "source_table")};
+"""
+
+    def generate_silver_sql(self, table_metadata: Dict[str, Any]) -> str:
+        output_table_name = table_metadata.get("output_table_name", "silver_table")
+        pk_columns = table_metadata.get("pk_columns", ["id"])
+        merge_condition = " AND ".join([f"target.{pk} = source.{pk}" for pk in pk_columns])
+        
+        return f"""-- SILVER LAYER (ANSI SQL)
+-- Target: {output_table_name}
+-- Logic: Upsert from Bronze to Silver with deduplication.
+
+MERGE INTO silver_{output_table_name} AS target
+USING (
+    SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY {", ".join(pk_columns)} ORDER BY _ingestion_timestamp DESC) as _rn
+        FROM bronze_{output_table_name.replace("stg_", "")}
+    ) WHERE _rn = 1
+) AS source
+ON {merge_condition}
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *;
+"""
+
+    def generate_gold_sql(self, table_metadata: Dict[str, Any]) -> str:
+        output_table_name = table_metadata.get("output_table_name", "gold_table")
+        table_type = table_metadata.get("table_type", "DIMENSION")
+        
+        return f"""-- GOLD LAYER (ANSI SQL)
+-- Target: {output_table_name} ({table_type})
+-- Logic: Business view with optional calculated measures.
+
+CREATE OR REPLACE VIEW gold_{output_table_name}
+AS
+SELECT 
+    * 
+    {', (qty * unitprice) AS total_amount' if table_type == 'FACT' else ''}
+FROM silver_{output_table_name.replace("dim_", "stg_").replace("fact_", "stg_")};
+"""

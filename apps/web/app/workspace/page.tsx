@@ -1,38 +1,25 @@
 "use client";
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, Suspense } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import MeshGraph from "../../components/MeshGraph";
-import CodeDiffViewer from "../../components/CodeDiffViewer";
-import TriageView from "../../components/stages/TriageView";
-import DraftingView from "../../components/stages/DraftingView";
-import GovernanceView from "../../components/stages/GovernanceView";
-import RefinementView from "../../components/stages/RefinementView";
-import WorkflowToolbar from "../../components/WorkflowToolbar";
+import { useAuth } from "../context/AuthContext";
+import { useSearchParams } from "next/navigation"; // [NEW]
+import TriageView from "../components/stages/TriageView";
+import DraftingView from "../components/stages/DraftingView";
+import GovernanceView from "../components/stages/GovernanceView";
+import RefinementView from "../components/stages/RefinementView";
+import WorkflowToolbar from "../components/WorkflowToolbar";
 
-import { API_BASE_URL } from "../../lib/config";
+import { API_BASE_URL } from "../lib/config";
 import {
-    Activity,
-    ArrowRight,
-    CheckCircle,
-    Code,
-    FileText,
-    GitCommit,
-    GitPullRequest,
-    Layout,
-    Play,
-    Save,
-    Settings,
-    Share2,
-    Terminal,
-    Download,
-    ArrowLeft,
-    RefreshCw,
-    Users
+    Activity, ArrowRight, CheckCircle, Code, FileText, GitCommit,
+    GitPullRequest, Layout, Play, Save, Settings, Share2,
+    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye
 } from "lucide-react";
 
-export default function WorkspacePage({ params }: { params: Promise<{ id: string }> }) {
-    const resolvedParams = React.use(params);
-    const id = resolvedParams.id;
+function WorkspaceContent() {
+    const { user } = useAuth();
+    const searchParams = useSearchParams(); // [NEW]
+    const id = searchParams.get('id') || '';
 
     const [nodes, setNodes] = useState<any[]>([]);
     const [edges, setEdges] = useState<any[]>([]);
@@ -49,7 +36,8 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
 
     useEffect(() => {
         if (!id || id === 'undefined') {
-            window.location.href = '/dashboard';
+            // Wait for hydration or redirect if truly missing
+            // window.location.href = '/dashboard'; 
             return;
         }
     }, [id]);
@@ -61,6 +49,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
     // Initial Load
     const [projectName, setProjectName] = useState<string | null>(null);
     const [repoUrl, setRepoUrl] = useState<string | null>(null);
+    const [ghostTenantId, setGhostTenantId] = useState<string | null>(null);
 
     // Initial Load & Project Details
     useEffect(() => {
@@ -75,7 +64,12 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
                 if (data.stage) {
                     const s = parseInt(data.stage);
                     setProjectStage(s);
-                    setActiveView(s); // Initially view the latest stage
+                    setActiveView(s);
+                }
+
+                // Ghost Mode Detection
+                if (user?.role === 'ADMIN' && data.tenant_id && data.tenant_id !== user.tenant_id) {
+                    setGhostTenantId(data.tenant_id);
                 }
             })
             .catch(err => console.error("Failed to fetch project details", err));
@@ -209,6 +203,13 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
                                 )}
                             </div>
                             <div className="flex items-center gap-3">
+                                {/* Ghost Badge */}
+                                {ghostTenantId && (
+                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-full text-xs font-bold animate-pulse">
+                                        <Eye size={12} />
+                                        <span>Viewing as Tenant</span>
+                                    </div>
+                                )}
                                 {isSaving && <span className="text-xs text-gray-400 animate-pulse flex items-center gap-1"><Save size={12} /> Saving...</span>}
                                 {!isSaving && lastSaved && <span className="text-xs text-gray-400">Saved</span>}
                                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
@@ -270,6 +271,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
                                 onStageChange={(s) => handleApproveStage(s)}
                                 onCompletion={(completed) => setIsStageComplete(completed)}
                                 isReadOnly={activeView < projectStage}
+                                activeTenantId={ghostTenantId || undefined}
                             />
                         )}
                         {activeView === 3 && (
@@ -304,5 +306,13 @@ function NavItem({ icon, label, active, onClick }: any) {
             {icon}
             <span className="hidden md:block text-sm">{label}</span>
         </button>
+    );
+}
+
+export default function WorkspacePage() {
+    return (
+        <Suspense fallback={<div>Loading Workspace...</div>}>
+            <WorkspaceContent />
+        </Suspense>
     );
 }

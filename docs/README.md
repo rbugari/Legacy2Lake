@@ -3,6 +3,8 @@
 Welcome to the **Legacy2Lake** Documentation Center. This directory contains detailed guides for every phase of the intelligent data modernization process.
 
 ## 🚀 Getting Started
+- **[Installation Guide](INSTALL.md)**: Setup instructions for Backend and Frontend.
+- **[Release Notes](RELEASE_NOTES.md)**: What's new in the latest version.
 - **[Introduction to Legacy2Lake](INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
 
 ## 🔄 Project Lifecycle (Phase-by-Phase)

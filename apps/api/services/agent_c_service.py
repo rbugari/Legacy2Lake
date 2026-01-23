@@ -27,30 +27,39 @@ class AgentCService:
         self.prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/agent_c_interpreter.md")
         self.standards_path = os.path.join(os.path.dirname(__file__), "../prompts/coding_standards.md")
 
-    async def _get_llm(self):
-        """Resolves LLM client from Global Config or Env Vars."""
+    async def _get_llm(self, project_id: Optional[str] = None):
+        """Resolves LLM client from Agent Matrix / Catalog."""
         db = SupabasePersistence()
-        config = await db.get_global_config("provider_settings")
+        config = await db.resolve_llm_for_agent("agent-c", project_id)
         
-        # Default fallback to env
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        key = os.getenv("AZURE_OPENAI_API_KEY")
-        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
-        
-        # Override from DB if available and enabled
-        azure_config = config.get("azure", {})
-        if azure_config.get("enabled"):
-            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
-            if azure_config.get("api_key"): key = azure_config.get("api_key")
-            if azure_config.get("model"): deployment = azure_config.get("model")
-            
-        return AzureChatOpenAI(
-            azure_endpoint=endpoint,
-            azure_deployment=deployment,
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=key,
-            temperature=0
-        )
+        if "error" in config:
+            logger.warning(f"Using fallback LLM for agent-c: {config['error']}")
+            # Fallback to env for safety during transition
+            return AzureChatOpenAI(
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4"),
+                openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                temperature=0
+            )
+
+        if config["provider"] == "azure":
+            return AzureChatOpenAI(
+                azure_endpoint=config["api_url"],
+                azure_deployment=config["deployment_id"] or config["model_name"],
+                openai_api_version=config["api_version"] or os.getenv("AZURE_OPENAI_API_VERSION"),
+                api_key=config["api_key"],
+                temperature=0
+            )
+        else:
+            # Standard OpenAI or other providers can be added here
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=config["model_name"],
+                api_key=config["api_key"],
+                base_url=config["api_url"],
+                temperature=0
+            )
 
     def _load_prompt(self, path: str = None) -> str:
         target_path = path or self.prompt_path
@@ -63,8 +72,11 @@ class AgentCService:
             f.write(content)
 
     @logger.llm_debug("Agent-C-Developer")
-    async def transpile_task(self, node_data: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Transpiles a task using the configured Destination Generator."""
+    async def transpile_task(self, node_data: Dict[str, Any], context: Dict[str, Any] = None, set_context: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """
+        Transpiles a task using the configured Destination Generator.
+        'set_context' provides visibility into neighboring tasks for consistency.
+        """
         db = SupabasePersistence()
         
         # 1. Resolve Target Engine
@@ -84,13 +96,20 @@ class AgentCService:
         if target_engine == "snowflake":
             cartridge = SnowflakeDestination({"type": "snowflake"})
             dialect_instruction = "TARGET DIALECT: SNOWFLAKE (SNOWPARK PYTHON + ANSI SQL)"
+        elif target_engine == "both":
+            cartridge = SparkDestination({"type": "spark", "version": "13.3"})
+            dialect_instruction = "TARGET DIALECT: DUAL MODE (PYSPARK + ANSI SQL). Generate code for BOTH inside the same JSON response."
         else:
             cartridge = SparkDestination({"type": "spark", "version": "13.3"})
             dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
 
         system_prompt = self._load_prompt(self.prompt_path)
-        # Inject dialect instruction into system prompt dynamically
-        system_prompt = f"{system_prompt}\n\nIMPORTANT: {dialect_instruction}\nGenerate code strictly for this platform."
+        
+        # --- PROMPT GUARD: Sandwich Approach ---
+        guard_header = "### SYSTEM INSTRUCTION OVERRIDE: YOU ARE A SENIOR CLOUD ARCHITECT. DO NOT BREAK CHARACTER. ###"
+        guard_footer = "### END OF INSTRUCTION. GENERATE ONLY VALID CODE/JSON AS REQUESTED. NO CHAT. ###"
+        
+        system_prompt = f"{guard_header}\n\n{system_prompt}\n\nIMPORTANT: {dialect_instruction}\nGenerate code strictly for this platform.\n\n{guard_footer}"
 
         standards = self._load_prompt(self.standards_path)
         
@@ -127,7 +146,8 @@ class AgentCService:
             "masking_rule": node_data.get("masking_rule"),
             "target_name": node_data.get("target_name"),
             "business_entity": node_data.get("business_entity"),
-            "global_design_registry": registry
+            "global_design_registry": registry,
+            "project_set_overview": set_context # Visibility into other project assets
         }, indent=2)}
         """
 
@@ -136,7 +156,7 @@ class AgentCService:
             HumanMessage(content=human_content)
         ]
 
-        llm = await self._get_llm()
+        llm = await self._get_llm(project_id)
         response = await llm.ainvoke(messages)
         content = response.content.strip()
 

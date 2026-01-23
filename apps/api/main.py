@@ -20,12 +20,81 @@ from supabase import create_client, Client
 
 load_dotenv()
 
-from apps.api.routers import config
+from apps.api.routers import config, system
 
 app = FastAPI(title="Legacy2Lake API")
 
-from fastapi import Request
+from fastapi import Request, Header, Depends
 from fastapi.responses import JSONResponse
+
+# --- Identity & Antigravity (Release 1.1) ---
+async def get_identity(
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"), 
+    x_client_id: Optional[str] = Header(None, alias="X-Client-ID")
+):
+    return {"tenant_id": x_tenant_id, "client_id": x_client_id}
+
+async def get_db(identity: dict = Depends(get_identity)) -> SupabasePersistence:
+    return SupabasePersistence(tenant_id=identity["tenant_id"], client_id=identity["client_id"])
+
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+@app.get("/ping-antigravity")
+async def ping_antigravity():
+    return {"message": "pong-antigravity"}
+
+@app.post("/login")
+async def login(request: Request):
+    """Simple Login for MVP Antigravity. Supports JSON or Form safely."""
+    # 1. Parse Body based on Content-Type
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            data = await request.json()
+            u = data.get("username")
+            p = data.get("password")
+        elif "form" in content_type: # urlencoded or multipart
+            form = await request.form()
+            u = form.get("username")
+            p = form.get("password")
+        else:
+            # Fallback or error
+            raise HTTPException(status_code=400, detail="Unsupported Content-Type. Use 'application/json'.")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Request Body")
+
+    if not u or not p:
+         raise HTTPException(status_code=400, detail="Username and Password required")
+    
+    db = SupabasePersistence(tenant_id=None) # Admin Mode
+    
+    # 2. Fetch Tenant
+    res = db.client.table("utm_tenants").select("tenant_id, client_id, password_hash, role").eq("username", u).execute()
+    if not res.data:
+         print(f"DEBUG LOGIN: User {u} not found")
+         raise HTTPException(status_code=401, detail=f"Invalid Credentials")
+    
+    user = res.data[0]
+    
+    # 3. Verify Password (SHA256)
+    import hashlib
+    input_hash = hashlib.sha256(p.encode()).hexdigest()
+    
+    if input_hash != user["password_hash"]:
+         print(f"DEBUG LOGIN: Hash mismatch. Input: {input_hash}, DB: {user['password_hash']}")
+         raise HTTPException(status_code=401, detail=f"Invalid Credentials - Hash mismatch")
+         
+    # 3. Return IDs (Frontend should store these in X-Tenant-ID headers)
+    return {
+        "success": True,
+        "tenant_id": user["tenant_id"],
+        "client_id": user["client_id"],
+        "role": user["role"],
+        "message": f"Welcome {u}"
+    }
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -42,14 +111,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 app.include_router(config.router)
+app.include_router(system.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3005", "http://localhost:3000", "*"],
+    allow_origins=["http://localhost:3005", "http://localhost:3000", "http://127.0.0.1:3005", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
+
 
 @app.get("/prompts/agent-a")
 async def get_agent_a_prompt():
@@ -115,9 +187,16 @@ async def list_cartridges():
     
     # Defaults
     defaults = {
-        "pyspark": {"id": "pyspark", "name": "PySpark (Databricks)", "version": "v3.2", "desc": "Generates PySpark code optimized for Databricks Photon engine.", "enabled": True, "beta": False},
-        "dbt": {"id": "dbt", "name": "dbt Core (Snowflake)", "version": "v1.8", "desc": "Generates dbt models, sources.yml, and generic tests.", "enabled": True, "beta": False},
-        "sql": {"id": "sql", "name": "Pure SQL (Postgres/Redshift)", "version": "v1.0", "desc": "Generates Standard SQL scripts for ELT pipelines.", "enabled": False, "beta": True}
+        # --- Extraction (Input) ---
+        "mysql": {"id": "mysql", "name": "MySQL Extraction", "version": "v8.0", "desc": "Extracts schemas and data from MySQL databases.", "enabled": True, "category": "extraction", "beta": False},
+        "oracle": {"id": "oracle", "name": "Oracle Extraction", "version": "v19c", "desc": "Extracts PL/SQL packages and schemas from Oracle.", "enabled": True, "category": "extraction", "beta": False},
+        "sqlserver": {"id": "sqlserver", "name": "SQL Server Extraction", "version": "v2019", "desc": "Extracts T-SQL stored procedures and schemas.", "enabled": True, "category": "extraction", "beta": False},
+        
+        # --- Refinement (Output) ---
+        "pyspark": {"id": "pyspark", "name": "PySpark (Databricks)", "version": "v3.2", "desc": "Generates PySpark code optimized for Databricks Photon engine.", "enabled": True, "category": "refinement", "beta": False},
+        "dbt": {"id": "dbt", "name": "dbt Core (Snowflake)", "version": "v1.8", "desc": "Generates dbt models, sources.yml, and generic tests.", "enabled": True, "category": "refinement", "beta": False},
+        "snowflake": {"id": "snowflake", "name": "Snowflake Native", "version": "v1.0", "desc": "Generates Snowflake SQL Stored Procedures.", "enabled": True, "category": "refinement", "beta": True},
+        "sql": {"id": "sql", "name": "Pure SQL (Postgres/Redshift)", "version": "v1.0", "desc": "Generates Standard SQL scripts for ELT pipelines.", "enabled": False, "category": "refinement", "beta": True}
     }
     
     if not config:
@@ -527,44 +606,46 @@ async def generate_governance(project_name: str, mesh: Dict[str, Any], context: 
     }
 
 @app.post("/projects/{project_id}/stage")
-async def update_stage(project_id: str, payload: Dict[str, str]):
-    db = SupabasePersistence()
+async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePersistence = Depends(get_db)):
+
     success = await db.update_project_stage(project_id, payload.get("stage"))
     return {"success": success}
 
 @app.patch("/projects/{project_id}/settings")
-async def update_project_settings(project_id: str, settings: Dict[str, Any]):
+async def update_project_settings(project_id: str, settings: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Updates project-level settings (e.g. Source/Target Tech)."""
-    db = SupabasePersistence()
+
     success = await db.update_project_settings(project_id, settings)
     return {"success": success}
 
 @app.post("/projects/{project_id}/layout")
-async def save_layout(project_id: str, layout: Dict[str, Any]):
-    db = SupabasePersistence()
+async def save_layout(project_id: str, layout: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
+
     asset_id = await db.save_project_layout(project_id, layout)
     return {"success": True, "asset_id": asset_id}
 
 @app.get("/projects/{project_id}/layout")
-async def get_layout(project_id: str):
-    db = SupabasePersistence()
+async def get_layout(project_id: str, db: SupabasePersistence = Depends(get_db)):
+
     layout = await db.get_project_layout(project_id)
     return layout or {}
 
 @app.get("/projects")
-async def list_projects():
+async def list_projects(db: SupabasePersistence = Depends(get_db)):
     """Returns a list of all projects."""
-    db = SupabasePersistence()
+
     return await db.list_projects()
 
 @app.get("/projects/{project_id}")
-async def get_project(project_id: str):
+async def get_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns project details, handling both UUID and Name."""
-    db = SupabasePersistence()
+
     
     # 1. Try to find by UUID first
     metadata = await db.get_project_metadata(project_id)
     if metadata:
+        if metadata.get("is_active") is False:
+             raise HTTPException(status_code=403, detail="Project Access Suspended (Kill-switch Active)")
         return metadata
     
     # 2. Fallback: maybe the string passed is the project Name?
@@ -572,14 +653,16 @@ async def get_project(project_id: str):
     if uuid:
         metadata = await db.get_project_metadata(uuid)
         if metadata:
+            if metadata.get("is_active") is False:
+                 raise HTTPException(status_code=403, detail="Project Access Suspended (Kill-switch Active)")
             return metadata
         
     return {"error": "Project not found"}
 
 @app.get("/discovery/project/{project_id}")
-async def get_discovery_project(project_id: str):
+async def get_discovery_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns all assets and the system prompt for a project."""
-    db = SupabasePersistence()
+
     project_uuid = project_id
     if "-" not in project_id:
         u = await db.get_project_id_by_name(project_id)
@@ -600,23 +683,23 @@ async def get_discovery_project(project_id: str):
     }
 
 @app.patch("/projects/{project_id}/prompt")
-async def update_project_prompt(project_id: str, payload: Dict[str, str]):
+async def update_project_prompt(project_id: str, payload: Dict[str, str], db: SupabasePersistence = Depends(get_db)):
     """Updates the customized system prompt for a project."""
-    db = SupabasePersistence()
+
     success = await db.update_project_prompt(project_id, payload.get("prompt"))
     return {"success": success}
 
 @app.patch("/assets/{asset_id}")
-async def patch_asset(asset_id: str, updates: Dict[str, Any]):
+async def patch_asset(asset_id: str, updates: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Updates asset metadata (type, selected status)."""
-    db = SupabasePersistence()
+
     success = await db.update_asset_metadata(asset_id, updates)
     return {"success": success}
 
 @app.get("/projects/{project_id}/assets")
-async def get_project_assets(project_id: str):
+async def get_project_assets(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns a scanned inventory of project assets."""
-    db = SupabasePersistence()
+
     # We return the PERSISTED assets from the DB.
     resolved_uuid = project_id
     if "-" not in project_id: # Heuristic for UUID
@@ -631,9 +714,9 @@ class TriageParams(BaseModel):
     user_context: Optional[str] = None
 
 @app.post("/projects/{project_id}/triage")
-async def run_triage(project_id: str, params: TriageParams):
+async def run_triage(project_id: str, params: TriageParams, db: SupabasePersistence = Depends(get_db)):
     """Re-runs the triage (discovery) process using agentic reasoning."""
-    db = SupabasePersistence()
+
     
     # Resolve UUID and Name correctly
     project_uuid = project_id
@@ -833,9 +916,9 @@ async def run_triage(project_id: str, params: TriageParams):
     }
 
 @app.get("/discovery/status/{project_id}")
-async def get_discovery_status(project_id: str):
+async def get_discovery_status(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the discovery/triage status for a project."""
-    db = SupabasePersistence()
+
     metadata = await db.get_project_metadata(project_id)
     if not metadata:
         # Fallback to name
@@ -855,9 +938,9 @@ async def get_discovery_status(project_id: str):
     }
 
 @app.post("/projects/{project_id}/sync-graph")
-async def sync_project_graph(project_id: str):
+async def sync_project_graph(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Rebuilds the graph layout based on assets currently marked as 'selected'."""
-    db = SupabasePersistence()
+
     project_uuid = project_id
     if len(project_id) < 32:
         project_uuid = await db.get_project_id_by_name(project_id)
@@ -941,12 +1024,13 @@ async def create_project(
     source_type: str = Form(...),
     github_url: str = Form(None),
     overwrite: bool = Form(False),
-    file: UploadFile = File(None)
+    file: UploadFile = File(None),
+    db: SupabasePersistence = Depends(get_db)
 ):
     """Creates a new project and initializes it from source."""
     
     # 1. Register in Database (Supabase)
-    db = SupabasePersistence()
+
     real_id = await db.get_or_create_project(name, github_url) # Pass github_url
     # Note: get_or_create_project returns ID based on name. 
     # For this demo, we assume the user-generated 'project_id' matches or we just use the ID returned by DB for folder.
@@ -974,9 +1058,9 @@ async def create_project(
         return {"success": False, "error": "Failed to initialize project"}
 
 @app.delete("/projects/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Deletes a project from both DB and Filesystem."""
-    db = SupabasePersistence()
+
     
     # 1. Fetch Project Name for Folder Deletion
     project_name = await db.get_project_name_by_id(project_id)
@@ -1001,21 +1085,21 @@ async def delete_project(project_id: str):
     }
 
 @app.get("/projects/{project_id}/files")
-async def list_project_files(project_id: str):
+async def list_project_files(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the file tree for the project's output directory."""
     # Release 3.5: DB First Inventory
-    db = SupabasePersistence()
+
     
     # get_project_files_from_db checks DB, if empty syncs from Project Name/ID
-    tree = await db.get_project_files_from_db(project_id)
-    
-    # We need to determine the root folder name. 
-    # If project_id is a UUID, we might want the friendly name back for the root node.
+    # Resolve Project Name first (FS requires Folder Name)
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
         if n: project_name = n
-        
+
+    # Use direct FS scanning for real-time updates (Fixes 'Bronze' folder visibility)
+    tree = PersistenceService.get_project_files(project_name)
+    
     # Wrap in a root node for the frontend FileExplorer
     return {
         "name": project_name,
@@ -1025,10 +1109,10 @@ async def list_project_files(project_id: str):
     }
 
 @app.get("/projects/{project_id}/files/content")
-async def get_file_content(project_id: str, path: str):
+async def get_file_content(project_id: str, path: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the content of a specific file."""
     # Resolve Project Name if ID is UUID
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
@@ -1045,7 +1129,7 @@ async def get_file_content(project_id: str, path: str):
 from services.migration_orchestrator import MigrationOrchestrator
 
 @app.post("/transpile/orchestrate")
-async def trigger_orchestration(payload: Dict[str, Any]):
+async def trigger_orchestration(payload: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Triggers the full Migration Orchestrator (Agents C -> F -> G)."""
     print(f"DEBUG: Entering trigger_orchestration with payload: {payload}")
     project_id = payload.get("project_id")
@@ -1055,7 +1139,7 @@ async def trigger_orchestration(payload: Dict[str, Any]):
         return {"error": "project_id is required"}
         
     # 1. Resolve Project Name (Orchestrator expects Name/Folder currently)
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         print(f"DEBUG: Resolving project name for ID: {project_id}")
@@ -1064,16 +1148,22 @@ async def trigger_orchestration(payload: Dict[str, Any]):
         if n: project_name = n
 
     print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
-    orchestrator = MigrationOrchestrator(project_name, project_uuid=project_id)
+    orchestrator = MigrationOrchestrator(
+        project_name, 
+        project_uuid=project_id, 
+        tenant_id=db.tenant_id, 
+        client_id=db.client_id
+    )
+
     print("DEBUG: Running full migration...")
     result = await orchestrator.run_full_migration(limit=limit)
     print("DEBUG: Migration complete.")
     return result
 
 @app.get("/projects/{project_id}/logs")
-async def get_project_logs(project_id: str):
+async def get_project_logs_simple(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the orchestration logs for the project."""
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
@@ -1086,16 +1176,16 @@ async def get_project_logs(project_id: str):
         return {"logs": ""}
 
 @app.post("/projects/{project_id}/reset")
-async def reset_project(project_id: str):
+async def reset_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Clears triage results for a project, resetting it to stage 1."""
-    db = SupabasePersistence()
+
     success = await db.reset_project_data(project_id)
     return {"success": success}
 
 @app.post("/projects/{project_id}/approve")
-async def approve_triage(project_id: str):
+async def approve_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Locks the project scope and transitions to DRAFTING state."""
-    db = SupabasePersistence()
+
     
     # Heuristic: verify UUID vs Name
     project_uuid = project_id
@@ -1110,9 +1200,9 @@ async def approve_triage(project_id: str):
     return {"success": success_status and success_stage, "status": "DRAFTING"}
 
 @app.post("/projects/{project_id}/unlock")
-async def unlock_triage(project_id: str):
+async def unlock_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Unlocks the project scope and transitions back to TRIAGE state."""
-    db = SupabasePersistence()
+
     
     project_uuid = project_id
     if "-" not in project_id:
@@ -1122,13 +1212,13 @@ async def unlock_triage(project_id: str):
     success = await db.update_project_status(project_uuid, "TRIAGE")
     return {"success": success, "status": "TRIAGE"}
 
-@app.get("/projects/{project_id}/logs")
-async def get_project_logs(project_id: str, type: str = "Triage"):
+@app.get("/projects/{project_id}/execution-logs")
+async def get_project_execution_logs(project_id: str, type: str = "Triage", db: SupabasePersistence = Depends(get_db)):
     """
     Fetches execution logs from the database.
     Release 3.5: Moved to 'utm_execution_logs'.
     """
-    db = SupabasePersistence()
+
     
     # Map frontend type to DB phase
     phase_map = {
@@ -1155,14 +1245,14 @@ async def get_project_logs(project_id: str, type: str = "Triage"):
 from services.refinement.refinement_orchestrator import RefinementOrchestrator
 
 @app.post("/refine/start")
-async def start_refinement(payload: dict):
+async def start_refinement(payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Triggers the Refinement Phase (Profiler -> Architect -> Refactor -> Ops)."""
     project_id = payload.get("project_id")
     if not project_id:
         return {"error": "Project ID required"}
     
     # Resolve Project Name for File System Access
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         # Resolve UUID to Name (e.g. "c522..." -> "base")
@@ -1172,17 +1262,18 @@ async def start_refinement(payload: dict):
     print(f"DEBUG: Starting Refinement for {project_id} (Resolved Folder: {project_name})")
     
     # Orchestrator is now natively async (Release 2.0)
-    orchestrator = RefinementOrchestrator()
+    orchestrator = RefinementOrchestrator(tenant_id=db.tenant_id, client_id=db.client_id)
     result = await orchestrator.start_pipeline(project_name)
+
     
     print(f"DEBUG: Refinement Complete for {project_id}")
     return result
 
 
 @app.get("/projects/{project_id}/refinement/state")
-async def get_refinement_state(project_id: str):
+async def get_refinement_state(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the persisted state of Phase 3 (logs and profile)."""
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
@@ -1214,9 +1305,9 @@ async def get_refinement_state(project_id: str):
 
 
 @app.get("/projects/{project_id}/status")
-async def get_project_status(project_id: str):
+async def get_project_status_gov(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the current governance status."""
-    db = SupabasePersistence()
+
     
     project_uuid = project_id
     if "-" not in project_id:
@@ -1228,9 +1319,9 @@ async def get_project_status(project_id: str):
 
 
 @app.get("/projects/{project_id}/governance")
-async def get_governance(project_id: str):
+async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns the certification report and lineage for the project."""
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
@@ -1251,9 +1342,9 @@ class AssetContextPayload(BaseModel):
     rules: Optional[Dict[str, Any]] = None
 
 @app.post("/projects/{project_id}/context")
-async def save_context(project_id: str, payload: AssetContextPayload):
+async def save_context(project_id: str, payload: AssetContextPayload, db: SupabasePersistence = Depends(get_db)):
     """Saves human context for an asset."""
-    db = SupabasePersistence()
+
     project_uuid = project_id
     if "-" not in project_id:
         u = await db.get_project_id_by_name(project_id)
@@ -1268,9 +1359,9 @@ async def save_context(project_id: str, payload: AssetContextPayload):
     return {"success": success}
 
 @app.get("/projects/{project_id}/context")
-async def get_context(project_id: str):
+async def get_context(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Retrieves all context entries for a project."""
-    db = SupabasePersistence()
+
     project_uuid = project_id
     if "-" not in project_id:
         u = await db.get_project_id_by_name(project_id)
@@ -1281,9 +1372,9 @@ async def get_context(project_id: str):
 
 
 @app.get("/projects/{project_id}/export")
-async def export_project(project_id: str):
+async def export_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Streams the project solution as a ZIP bundle."""
-    db = SupabasePersistence()
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
@@ -1305,43 +1396,38 @@ async def export_project(project_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8005)
-@app.get("/projects/{project_id}/registry")
-async def get_project_registry(project_id: str):
-    """Retrieves all global design rules for a project."""
-    db = SupabasePersistence()
-    registry = await db.get_design_registry(project_id)
-    return {"registry": registry}
-
-@app.post("/projects/{project_id}/registry")
-async def update_project_registry(project_id: str, entry: RegistryEntry):
-    """Upserts a specific design rule."""
-    db = SupabasePersistence()
-    success = await db.update_design_registry(
-        project_id, 
-        entry.category, 
-        entry.key, 
-        entry.value
-    )
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to update registry")
-    return {"status": "success"}
+# Old Registry endpoints removed in favor of Release 1.5 versions below
 
 @app.post("/projects/{project_id}/registry/initialize")
-async def initialize_project_registry(project_id: str):
+async def initialize_project_registry(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Seeds default design standards for a new project."""
-    db = SupabasePersistence()
     success = await db.initialize_design_registry(project_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to initialize registry")
+    return {"status": "success"}
+
+@app.get("/projects/{project_id}/settings")
+async def get_project_settings(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Retrieves project-level settings."""
+    settings = await db.get_project_settings(project_id)
+    return {"settings": settings}
+
+@app.patch("/projects/{project_id}/settings")
+async def update_project_settings(project_id: str, payload: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
+    """Updates project-level settings."""
+    settings = payload.get("settings", {})
+    success = await db.update_project_settings(project_id, settings)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update settings")
     return {"status": "success"}
 
 # --- Release v1.5: Executable Governance (Design Registry) ---
 from services.knowledge_service import KnowledgeService
 
 @app.get("/projects/{project_id}/registry")
-async def get_project_registry(project_id: str):
+async def get_project_registry_v15(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Fetches the Design Registry (Governance Rules) for a project."""
-    db = SupabasePersistence()
+
     
     # Resolve Name -> ID if needed (Endpoints usually take ID, but robust handling is good)
     # The get_design_registry function in DB handles robust lookup if we pass strictly UUID?
@@ -1378,10 +1464,28 @@ async def get_project_registry(project_id: str):
         
     return {"registry": registry}
 
+@app.get("/projects/{project_id}")
+async def get_project_details(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Fetches key metadata for a project."""
+    
+    # 1. Try to get by UUID directly
+    metadata = await db.get_project_metadata(project_id)
+    
+    # 2. Fallback: Lookup by Name
+    if not metadata:
+        uuid = await db.get_project_id_by_name(project_id)
+        if uuid: 
+            metadata = await db.get_project_metadata(uuid)
+            if metadata: metadata["id"] = uuid
+
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return metadata
+
 @app.post("/projects/{project_id}/registry")
-async def update_project_registry(project_id: str, payload: dict):
+async def update_project_registry(project_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Updates a specific Design Rule."""
-    db = SupabasePersistence()
     
     category = payload.get("category")
     key = payload.get("key")
@@ -1390,12 +1494,6 @@ async def update_project_registry(project_id: str, payload: dict):
     if not category or not key:
         return {"success": False, "error": "Category and Key are required"}
         
-    # Resolve Name -> ID for update
-    # update_design_registry takes project_id. 
-    # Let's ensure we find the UUID first to be safe, as DB method might expect UUID for FKs?
-    # The DB method `update_design_registry` takes project_id and internally upserts.
-    # It doesn't seem to have name resolution inside. Let's do it here.
-    
     project_uuid = project_id
     if "-" not in project_id:
          u = await db.get_project_id_by_name(project_id)
@@ -1403,3 +1501,272 @@ async def update_project_registry(project_id: str, payload: dict):
          
     success = await db.update_design_registry(project_uuid, category, key, value)
     return {"success": success}
+
+# --- Release 2.0: Advanced Consoles Endpoints ---
+
+@app.get("/catalog")
+async def get_model_catalog(db: SupabasePersistence = Depends(get_db)):
+    """Fetches the global model catalog."""
+    res = db.client.table("utm_model_catalog").select("*").order("provider").execute()
+    return {"catalog": res.data}
+
+@app.post("/catalog")
+async def create_custom_model(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Adds a custom model to the catalog."""
+    # Payload: model_id, label, provider, context_window
+    model_id = payload.get("id") or payload.get("model_id")
+    
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Model ID required")
+
+    existing = db.client.table("utm_model_catalog").select("model_id").eq("model_id", model_id).execute()
+    if existing.data:
+         raise HTTPException(status_code=400, detail="Model ID already exists")
+         
+    data = {
+        "model_id": model_id,
+        "label": payload.get("name") or payload.get("label"),
+        "provider": payload.get("provider_id") or payload.get("provider"),
+        "context_window": int(payload.get("context") or payload.get("context_window") or 0),
+        "deployment_id": payload.get("deployment_id"),
+        "api_version": payload.get("api_version"),
+        "api_url": payload.get("api_url"),
+        "is_active": True
+    }
+    
+    db.client.table("utm_model_catalog").insert(data).execute()
+    return {"success": True}
+
+@app.post("/catalog/{id}/update")
+async def update_model(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Updates an existing model in the catalog."""
+    data = {}
+    if "name" in payload or "label" in payload:
+        data["label"] = payload.get("name") or payload.get("label")
+    if "provider_id" in payload or "provider" in payload:
+        data["provider"] = payload.get("provider_id") or payload.get("provider")
+    if "context" in payload or "context_window" in payload:
+        data["context_window"] = int(payload.get("context") or payload.get("context_window") or 0)
+    
+    # Azure specific updates
+    if "deployment_id" in payload:
+        data["deployment_id"] = payload.get("deployment_id")
+    if "api_version" in payload:
+        data["api_version"] = payload.get("api_version")
+    if "api_url" in payload:
+        data["api_url"] = payload.get("api_url")
+    
+    if not data:
+        return {"success": True, "message": "No changes to apply"}
+
+    db.client.table("utm_model_catalog").update(data).eq("model_id", id).execute()
+    return {"success": True}
+
+@app.post("/catalog/{id}/toggle")
+async def toggle_model_status(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Toggles model active status."""
+    is_active = payload.get("is_active")
+    db.client.table("utm_model_catalog").update({"is_active": is_active}).eq("model_id", id).execute()
+    return {"success": True}
+
+@app.delete("/catalog/{id}")
+async def delete_model(id: str, db: SupabasePersistence = Depends(get_db)):
+    """Deletes a model from the catalog."""
+    db.client.table("utm_model_catalog").delete().eq("model_id", id).execute()
+    return {"success": True}
+
+@app.get("/matrix")
+async def get_tenant_matrix(request: Request, db: SupabasePersistence = Depends(get_db)):
+    """Fetches the Agent Matrix for the current tenant."""
+    # Since matrix is global for the single-tenant UTM (or filtered by tenant if multi-tenant)
+    # The table structure I saw earlier has `agent_id`, `provider`, `model_id`.
+    # It seems to be a simple mapping.
+    
+    res = db.client.table("utm_agent_matrix").select("*").execute()
+    
+    # Map to frontend expected format if needed, but frontend expects array of objects.
+    # Frontend AgentMatrix expects: { agent: string, provider: string, model: string }
+    # DB columns: agent_id, provider, model_id.
+    
+    matrix = []
+    for row in res.data:
+        matrix.append({
+            "agent": row["agent_id"], # DB column is agent_id
+            "provider": row["provider"],
+            "model": row["model_id"]
+        })
+        
+    # If DB is empty, maybe return default? Or let frontend handle it.
+    # For now return what is in DB.
+    return {"matrix": matrix}
+
+@app.post("/matrix")
+async def update_tenant_matrix(request: Request, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Updates the matrix for a specific agent."""
+    agent = payload.get("agent")
+    provider = payload.get("provider")
+    model = payload.get("model")
+    
+    if not agent:
+         raise HTTPException(status_code=400, detail="Missing Agent ID")
+         
+    # Upsert logic
+    # Check if exists
+    existing = db.client.table("utm_agent_matrix").select("id").eq("agent_id", agent).execute()
+    
+    data = {
+        "agent_id": agent,
+        "provider": provider,
+        "model_id": model
+    }
+    
+    if existing.data:
+        db.client.table("utm_agent_matrix").update(data).eq("id", existing.data[0]["id"]).execute()
+    else:
+        db.client.table("utm_agent_matrix").insert(data).execute()
+    
+    return {"success": True}
+
+@app.get("/system/prompts")
+async def get_system_prompts(request: Request):
+    """Fetches all system prompts for the studio."""
+    # Use existing services to load prompts
+    from services.agent_a_service import AgentAService
+    from services.agent_c_service import AgentCService
+    from services.agent_f_service import AgentFService
+    
+    return {"prompts": [
+        {"id": "agent-a", "name": "Agent A (Triage)", "content": AgentAService()._load_prompt()},
+        {"id": "agent-c", "name": "Agent C (Coder)", "content": AgentCService()._load_prompt()},
+        {"id": "agent-f", "name": "Agent F (Compliance)", "content": AgentFService()._load_prompt()},
+        {"id": "agent-b", "name": "Agent B (Refinement)", "content": "SYSTEM: You are the Refinement Agent... (Mock)"}, 
+        {"id": "agent-g", "name": "Agent G (Governance)", "content": "SYSTEM: You are the Governance Agent... (Mock)"},
+    ]}
+
+# --- Release 1.4: Vault Management Endpoints ---
+
+@app.get("/vault")
+async def get_vault(
+    request: Request,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Fetches credential status (masked) for the current tenant."""
+    # Note: X-Tenant-ID is handled by middleware but we need it from DB state or header
+    # Ideally credentials are ONLY for the current tenant.
+    
+    tenant_id = request.headers.get("x-tenant-id")
+    if not tenant_id:
+        # Fallback to Admin or Fail?
+        # For now, return empty or error.
+        return {"credentials": []}
+        
+    res = db.client.table("utm_provider_vault")\
+        .select("provider_name, is_active, base_url")\
+        .eq("tenant_id", tenant_id)\
+        .execute()
+        
+    # We do NOT return the API Key, only validation status
+    return {"credentials": res.data}
+
+@app.post("/vault/update")
+async def update_vault(
+    request: Request, 
+    payload: dict, # {provider, api_key, base_url}
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Updates API Key for a provider."""
+    tenant_id = request.headers.get("x-tenant-id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="Missing Tenant Context")
+        
+    provider = payload.get("provider")
+    api_key = payload.get("api_key")
+    base_url = payload.get("base_url") 
+    
+    if not provider or not api_key:
+        raise HTTPException(status_code=400, detail="Provider and API Key required")
+        
+    # Check existence
+    existing = db.client.table("utm_provider_vault")\
+        .select("id")\
+        .eq("tenant_id", tenant_id)\
+        .eq("provider_name", provider)\
+        .execute()
+        
+    data = {
+        "tenant_id": tenant_id,
+        "provider_name": provider,
+        "api_key": api_key,
+        "is_active": True
+    }
+    if base_url:
+        data["base_url"] = base_url
+        
+    if existing.data:
+        db.client.table("utm_provider_vault").update(data).eq("id", existing.data[0]["id"]).execute()
+    else:
+        db.client.table("utm_provider_vault").insert(data).execute()
+        
+    return {"success": True}
+
+@app.post("/vault/delete")
+async def delete_vault_entry(
+    request: Request,
+    payload: dict,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Deletes a provider credential."""
+    tenant_id = request.headers.get("x-tenant-id")
+    provider = payload.get("provider")
+    
+    if not tenant_id or not provider:
+         raise HTTPException(status_code=400, detail="Missing Context")
+         
+    db.client.table("utm_provider_vault")\
+        .delete()\
+        .eq("tenant_id", tenant_id)\
+        .eq("provider_name", provider)\
+        .execute()
+        
+    return {"success": True}
+
+# --- Release 1.6: System Cartridges (Origins & Destinations) ---
+
+@app.get("/system/origins")
+async def get_system_origins(db: SupabasePersistence = Depends(get_db)):
+    """Fetches all Origin Cartridges."""
+    res = db.client.table("utm_system_cartridges").select("*").eq("type", "origin").order("name").execute()
+    return {"origins": res.data}
+
+@app.get("/system/destinations")
+async def get_system_destinations(db: SupabasePersistence = Depends(get_db)):
+    """Fetches all Destination Cartridges."""
+    res = db.client.table("utm_system_cartridges").select("*").eq("type", "destination").order("name").execute()
+    return {"destinations": res.data}
+
+@app.post("/system/cartridges")
+async def create_cartridge(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Creates a new System Cartridge (Origin or Destination)."""
+    # Payload: name, type, subtype, version, config
+    res = db.client.table("utm_system_cartridges").insert(payload).execute()
+    return {"success": True, "data": res.data}
+
+@app.post("/system/cartridges/{id}/toggle")
+async def toggle_cartridge(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Toggles status active/disabled."""
+    status = payload.get("status") # 'active' or 'disabled'
+    db.client.table("utm_system_cartridges").update({"status": status}).eq("id", id).execute()
+    return {"success": True}
+
+@app.post("/system/cartridges/{id}/config")
+async def update_cartridge_config(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Updates configuration JSON."""
+    config = payload.get("config")
+    db.client.table("utm_system_cartridges").update({"config": config}).eq("id", id).execute()
+    return {"success": True}
+
+@app.delete("/system/cartridges/{id}")
+async def delete_cartridge(id: str, db: SupabasePersistence = Depends(get_db)):
+    """Deletes a cartridge."""
+    db.client.table("utm_system_cartridges").delete().eq("id", id).execute()
+    return {"success": True}

@@ -12,7 +12,7 @@
     "table_metadata": {
         "DimCategory.py": {
             "pk": [
-                "categoryid"
+                "empid"
             ],
             "type": "DIMENSION"
         },
@@ -56,7 +56,7 @@
     },
     "primary_keys": {
         "DimCategory.py": [
-            "categoryid"
+            "empid"
         ],
         "DimCustomers.py": [
             "custid"

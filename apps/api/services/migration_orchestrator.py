@@ -6,8 +6,8 @@ from typing import Dict, Any, List
 # Import all agents
 from services.librarian_service import LibrarianService
 from services.topology_service import TopologyService
-from services.developer_service import DeveloperService
-from services.compliance_service import ComplianceService
+from services.agent_c_service import AgentCService
+from services.agent_f_service import AgentFService
 
 from services.persistence_service import PersistenceService, SupabasePersistence
 try:
@@ -24,7 +24,8 @@ class MigrationOrchestrator:
     Orchestrates the hand-offs between Librarian, Topology, Developer, and Compliance agents.
     """
 
-    def __init__(self, project_id: str, project_uuid: str = None):
+    def __init__(self, project_id: str, project_uuid: str = None, tenant_id: str = None, client_id: str = None):
+
         self.project_id = project_id # This acts as Project Name / Folder Name
         self.project_uuid = project_uuid or project_id # Fallback if not provided, though DB will fail if not UUID
         
@@ -48,9 +49,10 @@ class MigrationOrchestrator:
         # Initialize Agents
         self.librarian = LibrarianService(project_id)
         self.topology = TopologyService(project_id)
-        self.developer = DeveloperService()
-        self.compliance = ComplianceService()
-        self.persistence = SupabasePersistence()
+        self.agent_c = AgentCService()
+        self.agent_f = AgentFService()
+        self.persistence = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
+
         
         # Log Persistence
         self.log_file = os.path.join(self.base_path, "migration.log")
@@ -136,13 +138,19 @@ class MigrationOrchestrator:
         metadata_map = { pm["package_name"]: pm for pm in package_metadatas }
 
         for phase in orchestration["dag_execution"]:
+            if limit > 0 and len(results["succeeded"]) + len(results["failed"]) >= limit:
+                break
+
             logger.info(f"Entering Phase: {phase['phase']}", "Orchestrator")
             await self._log_persistence(f"Entering Phase: {phase['phase']}")
             
+            # Resolve models once per phase for logging clarity
+            config_c = await self.persistence.resolve_llm_for_agent("agent-c", self.project_uuid)
+            config_f = await self.persistence.resolve_llm_for_agent("agent-f", self.project_uuid)
+            model_c = config_c.get("model_name", "Unknown")
+            model_f = config_f.get("model_name", "Unknown")
             for pkg_name in phase["packages"]:
                 if limit > 0 and len(results["succeeded"]) + len(results["failed"]) >= limit:
-                    logger.warning(f"Limit Reached: Stopping after {limit} packages.", "Orchestrator")
-                    await self._log_persistence(f"Limit Reached: Stopping after {limit} packages.")
                     break
                 
                 logger.info(f"Processing: {pkg_name}", "Orchestrator")
@@ -151,31 +159,46 @@ class MigrationOrchestrator:
                 # A. Prepare Task Context
                 pm = metadata_map.get(pkg_name, {})
                 task_def = {
+                    "project_id": self.project_uuid,
                     "package_name": pkg_name,
                     "inputs": pm.get("inputs", []),
                     "outputs": pm.get("outputs", []),
                     "lookups": pm.get("lookups", [])
                 }
                 
-                # B. DEVELOPER (Write)
-                code_result = await self.developer.generate_code(task_def, self.platform_spec, schema_ref)
-                notebook_content = code_result.get("notebook_content", "")
+                # B. AGENT-C: DEVELOPER (Write)
+                logger.info(f"Agent-C ({model_c}) generating code...", "Orchestrator")
+                await self._log_persistence(f"Agent-C ({model_c}) generating code...", step="Developer")
                 
-                if not notebook_content:
-                    logger.error(f"Developer failed to generate code for {pkg_name}", "Orchestrator")
-                    await self._log_persistence(f"Developer: Failed to generate code for {pkg_name}")
+                # Set-based Operations: Provide context of other packages
+                set_context = package_metadatas if len(package_metadatas) < 50 else [] # Limit size for tokens
+                code_result = await self.agent_c.transpile_task(task_def, set_context=set_context)
+                
+                notebook_content = code_result.get("pyspark_code", "")
+                sql_content = code_result.get("sql_code", "")
+                
+                if not notebook_content and not sql_content:
+                    logger.error(f"Agent-C failed to generate code for {pkg_name}", "Orchestrator")
+                    await self._log_persistence(f"Agent-C: Failed to generate code for {pkg_name}")
                     results["failed"].append({"package": pkg_name, "reason": "Empty code response"})
                     continue
 
-                # C. COMPLIANCE (Audit)
-                audit_report = await self.compliance.audit_code(notebook_content, self.platform_spec)
+                # C. AGENT-F: COMPLIANCE (Audit)
+                logger.info(f"Agent-F ({model_f}) auditing code...", "Orchestrator")
+                await self._log_persistence(f"Agent-F ({model_f}) auditing code...", step="Compliance")
+                
+                audit_report = await self.agent_f.review_code(task_def, notebook_content, project_id=self.project_uuid)
                 
                 status = audit_report.get("status", "UNKNOWN")
                 logger.info(f"Audit Status: {status} (Score: {audit_report.get('score', 0)})", "Compliance")
                 
                 # Save Artifacts
                 clean_name = pkg_name.replace(".dtsx", "")
-                self._save_artifact(f"{clean_name}.py", notebook_content)
+                if notebook_content:
+                    self._save_artifact(f"{clean_name}.py", notebook_content)
+                if sql_content:
+                    self._save_artifact(f"{clean_name}.sql", sql_content)
+                
                 self._save_artifact(f"{clean_name}_audit.json", json.dumps(audit_report, indent=2))
                 
                 if status == "APPROVED":
@@ -188,6 +211,10 @@ class MigrationOrchestrator:
                         "reason": "Audit Rejected", 
                         "violations": audit_report.get("violations")
                     })
+
+        if limit > 0 and len(results["succeeded"]) + len(results["failed"]) >= limit:
+            logger.warning(f"Limit Reached: Stopping after {limit} packages.", "Orchestrator")
+            await self._log_persistence(f"Limit Reached: Stopping after {limit} packages.")
 
         logger.info(f"Migration Complete. Succeeded: {len(results['succeeded'])}, Failed: {len(results['failed'])}", "Orchestrator")
         await self._log_persistence("Migration Complete.")

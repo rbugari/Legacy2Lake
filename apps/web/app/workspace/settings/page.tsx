@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "../../../lib/config";
+import React, { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { API_BASE_URL } from "../../lib/config";
 import { ArrowLeft, Save, Loader2, CheckCircle, Settings, ShieldCheck, Terminal } from "lucide-react";
 import Link from "next/link";
-import DesignRegistryPanel from "../../../components/stages/DesignRegistryPanel";
-import PromptsExplorer from "../../../components/PromptsExplorer";
+import DesignRegistryPanel from "../../components/stages/DesignRegistryPanel";
+import PromptsExplorer from "../../components/PromptsExplorer";
 
-export default function ProjectSettings({ params }: { params: Promise<{ id: string }> }) {
-    const resolvedParams = React.use(params);
-    const id = resolvedParams.id;
+function ProjectSettingsContent() {
+    const searchParams = useSearchParams();
+    const id = searchParams.get('id') || '';
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [config, setConfig] = useState<{ source_tech: string; target_tech: string }>({
@@ -22,6 +23,8 @@ export default function ProjectSettings({ params }: { params: Promise<{ id: stri
     const [project, setProject] = useState<any>(null);
 
     useEffect(() => {
+        if (!id) return;
+
         const loadData = async () => {
             try {
                 // 1. Fetch Tech Options
@@ -91,7 +94,7 @@ export default function ProjectSettings({ params }: { params: Promise<{ id: stri
         <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-8">
             <div className="max-w-4xl mx-auto">
                 <div className="mb-6 flex items-center gap-4">
-                    <Link href={`/workspace/${id}`} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
+                    <Link href={`/workspace?id=${id}`} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
                         <ArrowLeft size={20} />
                     </Link>
                     <div>
@@ -182,5 +185,13 @@ export default function ProjectSettings({ params }: { params: Promise<{ id: stri
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function ProjectSettings() {
+    return (
+        <Suspense fallback={<div>Loading Settings...</div>}>
+            <ProjectSettingsContent />
+        </Suspense>
     );
 }

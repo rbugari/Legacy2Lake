@@ -8,6 +8,7 @@ type Asset = {
     type: 'package' | 'script' | 'config' | 'unused' | 'documentation';
     status: 'pending' | 'connected' | 'obsolete';
     tags: string[];
+    path?: string;
 };
 
 export default function AssetsInventory({ assets, onDragStart, isLoading }: { assets: Asset[], onDragStart: (event: React.DragEvent, asset: Asset) => void, isLoading?: boolean }) {

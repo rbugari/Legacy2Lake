@@ -1,10 +1,10 @@
-"use client";
 import { useState, useEffect } from "react";
 import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain } from "lucide-react";
-import { API_BASE_URL } from "../../lib/config";
+import { fetchWithAuth } from "../../lib/auth-client";
 import PromptsExplorer from "../PromptsExplorer";
 import DesignRegistryPanel from "./DesignRegistryPanel";
 import TechnologyMixer from "./TechnologyMixer";
+import ProjectSettingsPanel from "./ProjectSettingsPanel";
 
 // --- Types ---
 interface FileNode {
@@ -22,18 +22,22 @@ interface DraftingViewProps {
     onStageChange: (stage: number) => void;
     onCompletion?: (completed: boolean) => void;
     isReadOnly?: boolean;
+    activeTenantId?: string; // [NEW] Contextual Execution
 }
 
-export default function DraftingView({ projectId, onStageChange, onCompletion, isReadOnly }: DraftingViewProps) {
+export default function DraftingView({ projectId, onStageChange, onCompletion, isReadOnly, activeTenantId }: DraftingViewProps) {
     const [activeTab, setActiveTab] = useState<"execution" | "files" | "config">("execution");
     const [isRunning, setIsRunning] = useState(false);
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
+    const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
 
     // Helper: Fetch Logs
     const fetchLogs = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs`);
+            const res = await fetchWithAuth(`projects/${projectId}/logs`, {
+                headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+            });
             const data = await res.json();
             if (data.logs) {
                 const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
@@ -50,9 +54,21 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
         }
     };
 
-    // Load logs on mount
+    // Load base data on mount
     useEffect(() => {
         fetchLogs();
+
+        // Fetch Project Settings to sync migration limit
+        const loadSettings = async () => {
+            try {
+                const res = await fetchWithAuth(`projects/${projectId}/settings`);
+                const data = await res.json();
+                if (data.settings && data.settings.migration_limit !== undefined) {
+                    setMigrationLimit(data.settings.migration_limit);
+                }
+            } catch (e) { console.error("Error syncing settings", e); }
+        };
+        loadSettings();
     }, [projectId]);
 
     // Poll logs when running
@@ -76,10 +92,12 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
         setProgress(10);
 
         try {
-            const res = await fetch(`${API_BASE_URL}/transpile/orchestrate`, {
+            const res = await fetchWithAuth("transpile/orchestrate", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ project_id: projectId, limit: 0 }) // Unlimited processing
+                headers: {
+                    ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
+                },
+                body: JSON.stringify({ project_id: projectId, limit: migrationLimit }) // Dynamic limit from state
             });
             const data = await res.json();
 
@@ -100,9 +118,11 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
 
     const handleApprove = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
+            const res = await fetchWithAuth(`projects/${projectId}/stage`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
+                },
                 body: JSON.stringify({ stage: "3" })
             });
             const data = await res.json();
@@ -173,9 +193,11 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                         isRunning={isRunning}
                         logs={logs}
                         progress={progress}
+                        limit={migrationLimit}
+                        setLimit={setMigrationLimit}
                     />
                 )}
-                {activeTab === "files" && <FileManagerTab projectId={projectId} />}
+                {activeTab === "files" && <FileManagerTab projectId={projectId} activeTenantId={activeTenantId} />}
                 {activeTab === "config" && (
                     <div className="h-full flex flex-col gap-6 overflow-y-auto">
                         <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
@@ -187,6 +209,12 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                                 Estándares de Arquitectura
                             </h3>
                             <DesignRegistryPanel projectId={projectId} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+                            <ProjectSettingsPanel
+                                projectId={projectId}
+                                onSettingsChange={(s) => setMigrationLimit(s.migration_limit || 0)}
+                            />
                         </div>
                         <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
                             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -218,16 +246,25 @@ function TabButton({ active, onClick, icon, label }: any) {
     );
 }
 
-function ExecutionTab({ isRunning, logs, progress }: any) {
+function ExecutionTab({ isRunning, logs, progress, limit }: any) {
     return (
         <div className="h-full flex flex-col gap-6 max-w-7xl mx-auto">
-            {/* Control Panel (Info Only now) */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <div>
+            {/* Control Panel: Shows current persistence status */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-8">
+                <div className="flex-1">
                     <h2 className="text-xl font-bold flex items-center gap-2"><Play className="text-primary" /> Start Migration</h2>
                     <p className="text-gray-500 text-sm mt-1">Execute the full pipeline: Librarian → Topology → Developer → Compliance.</p>
                 </div>
-                {/* Actions moved to Top Toolbar */}
+
+                <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="text-right">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Persistent Batch Limit</label>
+                        <span className="text-lg font-mono font-bold text-primary">{limit === 0 ? "UNLIMITED" : limit}</span>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                        <Lock size={16} className="text-gray-400" />
+                    </div>
+                </div>
             </div>
 
             {/* Console Output */}
@@ -250,7 +287,7 @@ function ExecutionTab({ isRunning, logs, progress }: any) {
 
 // --- Tab 3: File Explorer with Preview ---
 
-function FileManagerTab({ projectId }: { projectId: string }) {
+function FileManagerTab({ projectId, activeTenantId }: { projectId: string; activeTenantId?: string }) {
     const [tree, setTree] = useState<FileNode | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [fileContent, setFileContent] = useState<string>("");
@@ -258,7 +295,9 @@ function FileManagerTab({ projectId }: { projectId: string }) {
 
     const loadFiles = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/files`);
+            const res = await fetchWithAuth(`projects/${projectId}/files`, {
+                headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+            });
             const data = await res.json();
             setTree(data);
         } catch (e) {
@@ -275,7 +314,9 @@ function FileManagerTab({ projectId }: { projectId: string }) {
 
         try {
             // Encode path to handle slashes correctly
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/files/content?path=${encodeURIComponent(node.path)}`);
+            const res = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(node.path)}`, {
+                headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+            });
             const data = await res.json();
             if (data.content !== undefined) {
                 setFileContent(data.content);

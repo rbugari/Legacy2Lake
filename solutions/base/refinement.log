@@ -1,7 +1,8 @@
 [Profiler] Target Project Directory: C:\proyectos_dev\UTM\solutions\base
-[Profiler] Found 5 Python files in Drafting.
+[Profiler] Found 7 Python files in Drafting.
 [Profiler] Analyzing file: DimCategory.py...
-[Profiler]   > Detected PK candidates for DimCategory.py (DIMENSION): ['categoryid']
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[Profiler]   > Detected PK candidates for DimCategory.py (DIMENSION): ['empid']
 [Profiler] Analyzing file: DimCustomers.py...
 [Profiler]   > Detected PK candidates for DimCustomers.py (DIMENSION): ['custid']
 [Profiler] Analyzing file: DimEmployee.py...
@@ -10,20 +11,167 @@
 [Profiler]   > Detected PK candidates for DimProduct.py (DIMENSION): ['ProductID']
 [Profiler] Analyzing file: DimShipper.py...
 [Profiler]   > Detected PK candidates for DimShipper.py (DIMENSION): ['shipperid']
+[Profiler] Analyzing file: DimSupplier.py...
+[Profiler]   > Detected PK candidates for DimSupplier.py (DIMENSION): ['supplierid']
+[Profiler] Analyzing file: FactSales.py...
+[Profiler]   > Detected PK candidates for FactSales.py (FACT): ['orderid', 'productid']
 [Profiler] Profile metadata saved to C:\proyectos_dev\UTM\solutions\base\Refinement\profile_metadata.json
 [Architect] Solutions Directory: C:\proyectos_dev\UTM\solutions\base
 [Architect] Using Cartridge: PySparkCartridge
 [Architect] Ensuring Medallion folder structure (Bronze/Silver/Gold)...
 [Architect] Generated Scaffolding: config.py
 [Architect] Generated Scaffolding: utils.py
-[Architect] Processing 5 source files with .py extension...
+[Architect] Processing 7 source files with .py extension...
 [Refactoring] Scanning generated files for optimization candidates...
-Pipeline failed: type object 'PersistenceService' has no attribute 'get_persistence'
-Traceback (most recent call last):
-  File "C:\proyectos_dev\UTM\apps\api\services\refinement\refinement_orchestrator.py", line 71, in start_pipeline
-    refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\proyectos_dev\UTM\apps\api\services\refinement\refactoring_service.py", line 32, in refactor_project
-    db = PersistenceService.get_persistence()
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: type object 'PersistenceService' has no attribute 'get_persistence'
+[Refactoring] Target Stack: BOTH
+[Refactoring] Optimizing BRONZE layer (14 files)...
+[Refactoring]   > DimCategory_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimCategory_bronze.py: Validated Security Scopes
+[Refactoring]   > DimCategory_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimCategory_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimCategory_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimCategory_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > DimCustomers_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimCustomers_bronze.py: Validated Security Scopes
+[Refactoring]   > DimCustomers_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimCustomers_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimCustomers_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimCustomers_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > DimEmployee_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimEmployee_bronze.py: Validated Security Scopes
+[Refactoring]   > DimEmployee_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimEmployee_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimEmployee_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimEmployee_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > DimProduct_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimProduct_bronze.py: Validated Security Scopes
+[Refactoring]   > DimProduct_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimProduct_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimProduct_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimProduct_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > DimShipper_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimShipper_bronze.py: Validated Security Scopes
+[Refactoring]   > DimShipper_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimShipper_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimShipper_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimShipper_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > DimSupplier_bronze.py: Added Optimization hint for both
+[Refactoring]   > DimSupplier_bronze.py: Validated Security Scopes
+[Refactoring]   > DimSupplier_bronze.py: Validated Secret Scope usage
+[Refactoring]   > DimSupplier_bronze.sql: Added Optimization hint for both
+[Refactoring]   > DimSupplier_bronze.sql: Validated Security Scopes
+[Refactoring]   > DimSupplier_bronze.sql: Validated Secret Scope usage
+[Refactoring]   > FactSales_bronze.py: Added Optimization hint for both
+[Refactoring]   > FactSales_bronze.py: Validated Security Scopes
+[Refactoring]   > FactSales_bronze.py: Validated Secret Scope usage
+[Refactoring]   > FactSales_bronze.sql: Added Optimization hint for both
+[Refactoring]   > FactSales_bronze.sql: Validated Security Scopes
+[Refactoring]   > FactSales_bronze.sql: Validated Secret Scope usage
+[Refactoring] Optimizing SILVER layer (14 files)...
+[Refactoring]   > stg_DimCategory.py: Added Optimization hint for both
+[Refactoring]   > stg_DimCategory.py: Validated Security Scopes
+[Refactoring]   > stg_DimCategory.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimCategory.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimCategory.sql: Validated Security Scopes
+[Refactoring]   > stg_DimCategory.sql: Validated Secret Scope usage
+[Refactoring]   > stg_DimCustomers.py: Added Optimization hint for both
+[Refactoring]   > stg_DimCustomers.py: Validated Security Scopes
+[Refactoring]   > stg_DimCustomers.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimCustomers.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimCustomers.sql: Validated Security Scopes
+[Refactoring]   > stg_DimCustomers.sql: Validated Secret Scope usage
+[Refactoring]   > stg_DimEmployee.py: Added Optimization hint for both
+[Refactoring]   > stg_DimEmployee.py: Validated Security Scopes
+[Refactoring]   > stg_DimEmployee.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimEmployee.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimEmployee.sql: Validated Security Scopes
+[Refactoring]   > stg_DimEmployee.sql: Validated Secret Scope usage
+[Refactoring]   > stg_DimProduct.py: Added Optimization hint for both
+[Refactoring]   > stg_DimProduct.py: Validated Security Scopes
+[Refactoring]   > stg_DimProduct.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimProduct.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimProduct.sql: Validated Security Scopes
+[Refactoring]   > stg_DimProduct.sql: Validated Secret Scope usage
+[Refactoring]   > stg_DimShipper.py: Added Optimization hint for both
+[Refactoring]   > stg_DimShipper.py: Validated Security Scopes
+[Refactoring]   > stg_DimShipper.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimShipper.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimShipper.sql: Validated Security Scopes
+[Refactoring]   > stg_DimShipper.sql: Validated Secret Scope usage
+[Refactoring]   > stg_DimSupplier.py: Added Optimization hint for both
+[Refactoring]   > stg_DimSupplier.py: Validated Security Scopes
+[Refactoring]   > stg_DimSupplier.py: Validated Secret Scope usage
+[Refactoring]   > stg_DimSupplier.sql: Added Optimization hint for both
+[Refactoring]   > stg_DimSupplier.sql: Validated Security Scopes
+[Refactoring]   > stg_DimSupplier.sql: Validated Secret Scope usage
+[Refactoring]   > stg_FactSales.py: Added Optimization hint for both
+[Refactoring]   > stg_FactSales.py: Validated Security Scopes
+[Refactoring]   > stg_FactSales.py: Validated Secret Scope usage
+[Refactoring]   > stg_FactSales.sql: Added Optimization hint for both
+[Refactoring]   > stg_FactSales.sql: Validated Security Scopes
+[Refactoring]   > stg_FactSales.sql: Validated Secret Scope usage
+[Refactoring] Optimizing GOLD layer (14 files)...
+[Refactoring]   > dim_DimCategory.py: Added Optimization hint for both
+[Refactoring]   > dim_DimCategory.py: Validated Security Scopes
+[Refactoring]   > dim_DimCategory.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimCategory.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimCategory.sql: Validated Security Scopes
+[Refactoring]   > dim_DimCategory.sql: Validated Secret Scope usage
+[Refactoring]   > dim_DimCustomers.py: Added Optimization hint for both
+[Refactoring]   > dim_DimCustomers.py: Validated Security Scopes
+[Refactoring]   > dim_DimCustomers.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimCustomers.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimCustomers.sql: Validated Security Scopes
+[Refactoring]   > dim_DimCustomers.sql: Validated Secret Scope usage
+[Refactoring]   > dim_DimEmployee.py: Added Optimization hint for both
+[Refactoring]   > dim_DimEmployee.py: Validated Security Scopes
+[Refactoring]   > dim_DimEmployee.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimEmployee.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimEmployee.sql: Validated Security Scopes
+[Refactoring]   > dim_DimEmployee.sql: Validated Secret Scope usage
+[Refactoring]   > dim_DimProduct.py: Added Optimization hint for both
+[Refactoring]   > dim_DimProduct.py: Validated Security Scopes
+[Refactoring]   > dim_DimProduct.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimProduct.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimProduct.sql: Validated Security Scopes
+[Refactoring]   > dim_DimProduct.sql: Validated Secret Scope usage
+[Refactoring]   > dim_DimShipper.py: Added Optimization hint for both
+[Refactoring]   > dim_DimShipper.py: Validated Security Scopes
+[Refactoring]   > dim_DimShipper.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimShipper.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimShipper.sql: Validated Security Scopes
+[Refactoring]   > dim_DimShipper.sql: Validated Secret Scope usage
+[Refactoring]   > dim_DimSupplier.py: Added Optimization hint for both
+[Refactoring]   > dim_DimSupplier.py: Validated Security Scopes
+[Refactoring]   > dim_DimSupplier.py: Validated Secret Scope usage
+[Refactoring]   > dim_DimSupplier.sql: Added Optimization hint for both
+[Refactoring]   > dim_DimSupplier.sql: Validated Security Scopes
+[Refactoring]   > dim_DimSupplier.sql: Validated Secret Scope usage
+[Refactoring]   > dim_FactSales.py: Added Optimization hint for both
+[Refactoring]   > dim_FactSales.py: Validated Security Scopes
+[Refactoring]   > dim_FactSales.py: Validated Secret Scope usage
+[Refactoring]   > dim_FactSales.sql: Added Optimization hint for both
+[Refactoring]   > dim_FactSales.sql: Validated Security Scopes
+[Refactoring]   > dim_FactSales.sql: Validated Secret Scope usage
+[OpsAuditor] Starting Operational Audit...
+[OpsAuditor] OK: BRONZE layer contains 14 files.
+[OpsAuditor] OK: SILVER layer contains 14 files.
+[OpsAuditor] OK: GOLD layer contains 14 files.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCategory.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCategory.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCustomers.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimCustomers.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimEmployee.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimEmployee.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimProduct.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimProduct.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimShipper.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimShipper.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimSupplier.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_DimSupplier.sql missing explicit MERGE logic.
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_FactSales.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[OpsAuditor] WARNING: COMPLIANCE WARNING: stg_FactSales.sql missing explicit MERGE logic.
+[OpsAuditor] Generating Infrastructure-as-Code (IaC) manifests...
+[OpsAuditor] Generating Operational Handbook (README_DEVOPS.md)...
+[OpsAuditor] Audit Complete.
+Pipeline Complete.

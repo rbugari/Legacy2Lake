@@ -180,7 +180,7 @@ class ArchitectService:
                 sql_name = bronze_name.replace(ext, ".sql")
                 with open(bronze_dir / sql_name, "w", encoding="utf-8") as f:
                      f.write(sql_content)
-                refined_files["bronze"].append(str(bronze_dir / sql_name))
+                refined_files["bronze"].append((bronze_dir / sql_name).as_posix())
 
             # Silver SQL
             if hasattr(cartridge, "generate_silver_sql"):
@@ -188,7 +188,7 @@ class ArchitectService:
                 sql_name = silver_name.replace(ext, ".sql")
                 with open(silver_dir / sql_name, "w", encoding="utf-8") as f:
                      f.write(sql_content)
-                refined_files["silver"].append(str(silver_dir / sql_name))
+                refined_files["silver"].append((silver_dir / sql_name).as_posix())
 
             # Gold SQL
             if hasattr(cartridge, "generate_gold_sql"):
@@ -196,7 +196,7 @@ class ArchitectService:
                 sql_name = gold_name.replace(ext, ".sql")
                 with open(gold_dir / sql_name, "w", encoding="utf-8") as f:
                      f.write(sql_content)
-                refined_files["gold"].append(str(gold_dir / sql_name))
+                refined_files["gold"].append((gold_dir / sql_name).as_posix())
 
         return {
             "status": "COMPLETED",
