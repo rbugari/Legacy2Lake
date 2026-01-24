@@ -21,17 +21,24 @@ To resolve the $N \times M$ complexity problem, Legacy2Lake implements a total d
 - **Components**: Technology **Output Cartridges** based on Jinja2 templates (e.g., `DatabricksCartridge`).
 - **Output**: Executable source code (Notebooks, SQL Scripts).
 
-## 2. Agentic Orchestration
+## 2. Multi-Agent System (MAS v3.0)
 
-The system operates via specialized agents interacting through the metadata store:
+The system operates via specialized AI agents interacting through the metadata store and the file system:
 
-| Agent | Responsibility |
-| :--- | :--- |
-| **Detective** | Identifies new files in the source repository and registers them. |
-| **Parser** | Deconstructs the XML/SQL and extracts raw processing logic. |
-| **Kernel** | Translates raw logic to the Universal IR grammar and resolves functions. |
-| **Critic (QA)** | Validates that the logical flow is consistent and flags incompatibilities. |
-| **Generator** | Takes the approved IR and the selected cartridge to produce final code. |
+| Agent | Name | Role | Responsibility |
+| :--- | :--- | :--- | :--- |
+| **A** | **The Architect** | Inference & Triage | Scans the repo, identifies assets, and builds the dependency graph (`READS_FROM`, `SEQUENTIAL`). Inference of business intent from file names. |
+| **C** | **The Interpreter** | Code Generation | Converts legacy logic (XML/SQL) into modern PySpark/SQL code. This is the "Compiler" working on individual units. |
+| **F** | **The Fixer** | QA & Refinement | Reviews Agent C's output. Checks for syntax errors and applies "Design Registry" patterns (e.g. naming conventions). |
+| **G** | **The Guardian** | Governance | Generates technical documentation, data lineage, and deployment artifacts (ZIP bundles, DAGs). |
+| **D** | **The Auditor** | Compliance (New) | Performs deep architectural reviews. Scores code on Idempotency, Medallion Compliance, and PII Security. |
+
+### Interaction Model
+1. **Agent A** builds the map.
+2. **Agent C** drafts the code for each node.
+3. **Agent F** refines the code iteratively.
+4. **Agent D** audits the final artifact.
+5. **Agent G** packages everything for deployment.
 
 ## 3. System Data Flow
 

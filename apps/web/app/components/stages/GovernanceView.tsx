@@ -18,10 +18,14 @@ import {
     Maximize2,
     Minimize2,
     RotateCcw,
-    ArrowLeft
+    ArrowLeft,
+    Share2, // Added for Phase B
+    Zap,
+    Shield
 } from 'lucide-react';
 import { API_BASE_URL } from '../../lib/config';
 import DesignRegistryPanel from './DesignRegistryPanel'; // Added for v1.5
+import OrchestrationPanel from './OrchestrationPanel'; // Added for Phase B
 
 interface GovernanceViewProps {
     projectId: string;
@@ -30,9 +34,24 @@ interface GovernanceViewProps {
 export default function GovernanceView({ projectId }: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<"report" | "registry">("report");
+    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration">("report");
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isPushing, setIsPushing] = useState(false);
+    const [auditReport, setAuditReport] = useState<any>(null);
+    const [isAuditing, setIsAuditing] = useState(false);
+
+    const runAudit = async () => {
+        setIsAuditing(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/audit`);
+            const data = await res.json();
+            setAuditReport(data);
+        } catch (e) {
+            console.error("Audit failed", e);
+        } finally {
+            setIsAuditing(false);
+        }
+    };
 
     const handlePush = () => {
         setIsPushing(true);
@@ -66,7 +85,7 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
         );
     }
 
-    const auditScore = report?.score ?? 0;
+    const auditScore = auditReport?.score ?? report?.score ?? 0;
     const stats = report?.stats ?? {
         bronze_count: 0,
         silver_count: 0,
@@ -83,18 +102,24 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
             <div className="sticky top-0 z-20 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shadow-sm">
 
                 {/* Left: Functional Tabs */}
-                <div className="flex gap-1 bg-gray-100/50 dark:bg-gray-900/50 p-1 rounded-xl border border-gray-200/50 dark:border-gray-800">
+                <div className="flex gap-1 bg-gray-100/50 dark:bg-gray-900/50 p-1.5 rounded-2xl border border-gray-200/50 dark:border-gray-800">
                     <button
                         onClick={() => setActiveTab("report")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === "report" ? "bg-white dark:bg-gray-800 shadow-sm text-blue-600 border border-gray-200 dark:border-gray-700" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "report" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <ShieldCheck size={14} className="mb-0.5" /> Certification
+                        <ShieldCheck size={16} /> Certification
                     </button>
                     <button
                         onClick={() => setActiveTab("registry")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === "registry" ? "bg-white dark:bg-gray-800 shadow-sm text-blue-600 border border-gray-200 dark:border-gray-700" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "registry" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <Settings size={14} className="mb-0.5" /> Design Standards
+                        <Settings size={16} /> Design Standards
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("orchestration")}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "orchestration" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                    >
+                        <Share2 size={16} /> Orchestration
                     </button>
                 </div>
 
@@ -134,7 +159,13 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
 
             <div className="p-8 max-w-7xl mx-auto space-y-8">
                 {activeTab === "registry" ? (
-                    <DesignRegistryPanel projectId={projectId} />
+                    <div className="card-glass border-none shadow-2xl">
+                        <DesignRegistryPanel projectId={projectId} />
+                    </div>
+                ) : activeTab === "orchestration" ? (
+                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
+                        <OrchestrationPanel projectId={projectId} />
+                    </div>
                 ) : (
                     <>
                         {/* Hero Success Section */}
@@ -170,6 +201,22 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                             ) : (
                                                 <>
                                                     <Github size={18} /> Push to Repository
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={runAudit}
+                                            disabled={isAuditing}
+                                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-xl font-bold shadow-lg shadow-[var(--accent)]/20 hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            {isAuditing ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                    Auditing Logic...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <ShieldCheck size={18} /> Run AI Audit
                                                 </>
                                             )}
                                         </button>
@@ -226,13 +273,38 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                     <StatCard label="Idempotency" value="100%" icon={<ShieldCheck className="text-indigo-500" />} />
                                 </div>
 
-                                {/* Recent Governance Logs */}
+                                {/* Recent AI Findings or Governance Logs */}
                                 <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
                                     <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                                        <CheckCircle className="text-green-500" /> Compliance Audit Trail
+                                        {auditReport ? <ShieldCheck className="text-primary" /> : <CheckCircle className="text-green-500" />}
+                                        {auditReport ? "AI Audit Findings" : "Compliance Audit Trail"}
                                     </h3>
                                     <div className="space-y-4">
-                                        {report?.compliance_logs?.length > 0 ? (
+                                        {auditReport ? (
+                                            auditReport.findings?.map((finding: any, idx: number) => (
+                                                <div key={idx} className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 group transition-all hover:border-primary/20">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${finding.type === 'CRITICAL' ? 'bg-red-500 text-white' :
+                                                            finding.type === 'WARNING' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'
+                                                            }`}>
+                                                            {finding.type}
+                                                        </span>
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">{finding.category}</span>
+                                                    </div>
+                                                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">{finding.message}</p>
+                                                    {finding.suggestion && (
+                                                        <div className="mt-3 p-3 bg-white dark:bg-gray-950 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                                                            <div className="flex items-center gap-2 mb-1 text-[10px] font-black text-primary uppercase">
+                                                                <Zap size={10} /> Suggestion
+                                                            </div>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono italic">
+                                                                {finding.suggestion}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : report?.compliance_logs?.length > 0 ? (
                                             report.compliance_logs.map((log: any, idx: number) => (
                                                 <LogItem
                                                     key={idx}
@@ -242,8 +314,13 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                                 />
                                             ))
                                         ) : (
-                                            <div className="text-center py-4 text-gray-400 text-sm italic">
-                                                No certification logs found.
+                                            <div className="text-center py-10">
+                                                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-full inline-block mb-4">
+                                                    <Shield size={40} className="text-gray-300" />
+                                                </div>
+                                                <p className="text-sm text-gray-400 italic">
+                                                    No audit data available. Run AI Audit to certify this project.
+                                                </p>
                                             </div>
                                         )}
                                     </div>

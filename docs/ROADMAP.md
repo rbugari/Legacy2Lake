@@ -1,28 +1,33 @@
 # Project Roadmap 🗺️
 
-## 🚀 Upcoming Features (Post-Rel 2.0)
+## 🚀 Upcoming Features (v3.x & Beyond)
 
-### Phase 5: Deployment & CI/CD
-- [ ] **Git Integration**: Direct push to GitHub/GitLab from the Governance view.
-- [ ] **Terraform Generation**: Auto-generate IaC for the required cloud infrastructure (Storage Accounts, Databricks Workspaces).
+### Phase E: Infrastructure as Code (IaC)
+- [ ] **Terraform/Bicep Generation**: Auto-generate IaC for Cloud Storage, Databricks Clusters, and Secrets Managers.
+- [ ] **Network & Security Provisioning**: Automate VNet injection and private link setups for modernization landing zones.
 
-### Advanced Refinement
-- [ ] **Interactive SQL Editor**: A real-time Monaco editor for tweaking generated SQL before approval.
-- [ ] **dbt Cartridge**: Full support for dbt project generation (models, YAMLs).
-- [ ] **Unit Test Generation**: Auto-generate `pytest` or `dbt test` suites for the new pipelines.
+### Phase F: Data Observability & Quality
+- [ ] **Data Quality Contracts**: Auto-generate Soda/Great Expectations suites based on the *Column Mapping* metadata.
+- [ ] **Active Lineage Integration**: Direct push to Unity Catalog or Microsoft Purview.
 
-### Enterprise Features
-- [ ] **RBAC**: Role-based access control for large teams.
-- [ ] **Multi-Tenancy**: Support for multiple organizations in a single deployment.
-- [ ] **Audit Logs**: Comprehensive logging of who changed what rule and when.
+### Phase G: Real-time Modernization
+- [ ] **Delta Live Tables (DLT)**: Evolution of batch PySpark into streaming-ready DLT pipelines.
+- [ ] **CDC Pattern Automation**: Converting legacy change-tracking logic into modern Merge/Upsert patterns.
 
-## 🐛 Known Issues / Backlog
-- **Validation**: The prompt editor validation currently fails with a 500 error (postponed fix).
-- **Frontend**: `http-server` is used for serving; migrate to a robust Node.js server (planned).
+### Phase H: Multi-Dialect Expansion
+- [ ] **Informatica/DataStage**: Native support for XML exports from additional ETL legacy tools.
+- [ ] **PL/SQL Modernization**: Converting Oracle packages into Python-based functional services.
 
 ## 📅 Release History
 
-### v2.0 (The Style Master) - CURRENT
+### v3.0 (The Enterprise Compliance Hub) - CURRENT
+- **AI Audit Engine**: Automated architectural reviews with scoring and suggestions.
+- **Column Mapping Editor**: Detailed field-level mapping with business context.
+- **Universal Orchestration**: Airflow, Databricks, and YAML DAG generation.
+- **Project Export**: ZIP bundle generation with all modernization artifacts.
+- **Glassmorphism UI**: Premium visual overhaul (Purple accent theme).
+
+### v2.0 (The Style Master)
 - **Contextual Config**: Embedded "Solution Config" tabs in Drafting and Refinement.
 - **Technology Mixer**: UI toggles for PySpark, Pure SQL, or Mixed generation.
 - **Design Registry**: Global policy engine for naming and paths.

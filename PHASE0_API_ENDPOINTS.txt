@@ -1,0 +1,54 @@
+# Phase 0 Implementation - Solution Context Management
+# Added after line 191 in main.py
+
+from services.context_service import ContextService
+
+# --- Solution Context Management (Phase 0 - Z1) ---
+
+class ContextPayload(BaseModel):
+    context_type: str  # 'agent_a', 'agent_c', 'agent_f', 'agent_g', 'global'
+    user_context: str
+
+@app.get("/projects/{project_id}/context")
+async def get_project_contexts(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get all user contexts for a project"""
+    context_service = ContextService(db.client)
+    contexts = await context_service.get_all_for_project(project_id)
+    return {"contexts": contexts}
+
+@app.get("/projects/{project_id}/context/{context_type}")
+async def get_specific_context(
+    project_id: str, 
+    context_type: str, 
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Get user context for a specific agent/type"""
+    context_service = ContextService(db.client)
+    context = await context_service.get_context(project_id, context_type)
+    return context or {"user_context": ""}
+
+@app.post("/projects/{project_id}/context")
+async def save_project_context(
+    project_id: str,
+    payload: ContextPayload,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Create or update user context for a project"""
+    context_service = ContextService(db.client)
+    result = await context_service.upsert_context(
+        project_id,
+        payload.context_type,
+        payload.user_context
+    )
+    return {"success": True, "context": result}
+
+@app.delete("/projects/{project_id}/context/{context_type}")
+async def delete_project_context(
+    project_id: str,
+    context_type: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Delete a specific context entry"""
+    context_service = ContextService(db.client)
+    success = await context_service.delete_context(project_id, context_type)
+    return {"success": success}

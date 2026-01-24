@@ -1,142 +1,208 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Terminal } from "lucide-react";
+import { Lock, Sparkles, Save, Trash2 } from "lucide-react";
 import { API_BASE_URL } from "../lib/config";
 
 interface PromptsExplorerProps {
     className?: string;
+    projectId?: string; // Optional: if provided, shows user context editing
 }
 
-export default function PromptsExplorer({ className }: PromptsExplorerProps) {
-    const [prompts, setPrompts] = useState<{ [key: string]: string }>({});
+interface AgentInfo {
+    id: string;
+    name: string;
+    systemPrompt: string;
+    userContext: string;
+}
+
+export default function PromptsExplorer({ className, projectId }: PromptsExplorerProps) {
+    const [agents, setAgents] = useState<AgentInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+    const [editingContext, setEditingContext] = useState("");
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        const fetchPrompts = async () => {
-            try {
-                const [a, c, f, g] = await Promise.all([
-                    fetch(`${API_BASE_URL}/prompts/agent-a`).then(r => r.json()),
-                    fetch(`${API_BASE_URL}/prompts/agent-c`).then(r => r.json()),
-                    fetch(`${API_BASE_URL}/prompts/agent-f`).then(r => r.json()),
-                    fetch(`${API_BASE_URL}/prompts/agent-g`).then(r => r.json())
-                ]);
-                const loadedPrompts = {
-                    "Agent A (Detective)": a.prompt,
-                    "Agent C (Developer)": c.prompt,
-                    "Agent F (Compliance)": f.prompt,
-                    "Agent G (Governance)": g.prompt
-                };
-                setPrompts(loadedPrompts);
-                // Default to first agent
-                setSelectedAgent(Object.keys(loadedPrompts)[0]);
-            } catch (e) {
-                console.error("Failed to load prompts", e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchPrompts();
-    }, []);
+        fetchData();
+    }, [projectId]);
 
-    if (loading) return <div className="text-center p-10 text-gray-500">Loading Intelligence Hub...</div>;
-
-    const [testInput, setTestInput] = useState("");
-    const [testOutput, setTestOutput] = useState("");
-    const [isRunning, setIsRunning] = useState(false);
-
-    const handleRunTest = async () => {
-        if (!selectedAgent) return;
-        setIsRunning(true);
-        setTestOutput("Running validation...");
-
+    const fetchData = async () => {
         try {
-            // Map display name to ID
-            let agentId = "agent-a";
-            if (selectedAgent.includes("Agent C")) agentId = "agent-c";
-            if (selectedAgent.includes("Agent F")) agentId = "agent-f";
-            if (selectedAgent.includes("Agent G")) agentId = "agent-g";
+            // Fetch system prompts
+            const [a, c, f, g] = await Promise.all([
+                fetch(`${API_BASE_URL}/prompts/agent-a`).then(r => r.json()),
+                fetch(`${API_BASE_URL}/prompts/agent-c`).then(r => r.json()),
+                fetch(`${API_BASE_URL}/prompts/agent-f`).then(r => r.json()),
+                fetch(`${API_BASE_URL}/prompts/agent-g`).then(r => r.json())
+            ]);
 
-            const res = await fetch(`${API_BASE_URL}/system/validate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    agent_id: agentId,
-                    user_input: testInput || "Hello, verify your system prompt."
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                setTestOutput(data.response);
-            } else {
-                setTestOutput(`Error: ${data.error}`);
+            const agentData: AgentInfo[] = [
+                { id: "agent_a", name: "Agent A (Detective)", systemPrompt: a.prompt, userContext: "" },
+                { id: "agent_c", name: "Agent C (Developer)", systemPrompt: c.prompt, userContext: "" },
+                { id: "agent_f", name: "Agent F (Compliance)", systemPrompt: f.prompt, userContext: "" },
+                { id: "agent_g", name: "Agent G (Governance)", systemPrompt: g.prompt, userContext: "" }
+            ];
+
+            // Fetch user contexts if projectId provided
+            if (projectId) {
+                const contextRes = await fetch(`${API_BASE_URL}/projects/${projectId}/context`);
+                const { contexts } = await contextRes.json();
+
+                // Merge user contexts
+                agentData.forEach(agent => {
+                    const userCtx = contexts.find((c: any) => c.context_type === agent.id);
+                    agent.userContext = userCtx?.user_context || "";
+                });
             }
+
+            setAgents(agentData);
+            setSelectedAgent(agentData[0].id);
+            setEditingContext(agentData[0].userContext);
         } catch (e) {
-            setTestOutput(`Network Error: ${e}`);
+            console.error("Failed to load prompts", e);
         } finally {
-            setIsRunning(false);
+            setLoading(false);
         }
     };
 
+    const handleAgentSelect = (agentId: string) => {
+        setSelectedAgent(agentId);
+        const agent = agents.find(a => a.id === agentId);
+        if (agent) {
+            setEditingContext(agent.userContext);
+        }
+    };
+
+    const handleSaveContext = async () => {
+        if (!projectId || !selectedAgent) return;
+
+        setSaving(true);
+        try {
+            await fetch(`${API_BASE_URL}/projects/${projectId}/context`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    context_type: selectedAgent,
+                    user_context: editingContext
+                })
+            });
+
+            // Update local state
+            setAgents(prev => prev.map(a =>
+                a.id === selectedAgent ? { ...a, userContext: editingContext } : a
+            ));
+        } catch (e) {
+            console.error("Failed to save context", e);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleClearContext = async () => {
+        if (!projectId || !selectedAgent) return;
+
+        try {
+            await fetch(`${API_BASE_URL}/projects/${projectId}/context/${selectedAgent}`, {
+                method: "DELETE"
+            });
+            setEditingContext("");
+            setAgents(prev => prev.map(a =>
+                a.id === selectedAgent ? { ...a, userContext: "" } : a
+            ));
+        } catch (e) {
+            console.error("Failed to clear context", e);
+        }
+    };
+
+    if (loading) return <div className="text-center p-10 text-[var(--text-secondary)]">Loading Intelligence Hub...</div>;
+
+    const selectedAgentData = agents.find(a => a.id === selectedAgent);
+
     return (
         <div className={`h-full grid grid-cols-1 md:grid-cols-4 gap-4 ${className}`}>
-            <div className="col-span-1 space-y-2 border-r border-gray-200 dark:border-gray-800 pr-4">
-                {Object.keys(prompts).map(key => (
+            {/* Agent Selector */}
+            <div className="col-span-1 space-y-2 border-r border-[var(--border)] pr-4">
+                {agents.map(agent => (
                     <div
-                        key={key}
-                        onClick={() => setSelectedAgent(key)}
-                        className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedAgent === key
-                            ? "bg-blue-50 dark:bg-blue-900/20 border-primary shadow-sm"
-                            : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600"
+                        key={agent.id}
+                        onClick={() => handleAgentSelect(agent.id)}
+                        className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedAgent === agent.id
+                                ? "bg-[var(--accent)]/10 border-[var(--accent)] shadow-sm"
+                                : "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--accent)]/50"
                             }`}
                     >
-                        <h3 className={`font-bold text-sm ${selectedAgent === key ? "text-primary" : ""}`}>{key}</h3>
-                        <p className="text-xs text-gray-500">System Prompt</p>
+                        <h3 className={`font-bold text-sm ${selectedAgent === agent.id ? "text-[var(--accent)]" : ""}`}>
+                            {agent.name}
+                        </h3>
+                        <p className="text-xs text-[var(--text-tertiary)]">
+                            {agent.userContext ? "Customized" : "Default"}
+                        </p>
                     </div>
                 ))}
             </div>
+
+            {/* Dual Panel View */}
             <div className="col-span-3 flex flex-col gap-4">
-                <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 overflow-y-auto font-mono text-xs text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700 relative min-h-[300px]">
-                    {selectedAgent ? (
-                        <>
-                            <div className="absolute top-2 right-2 text-xs text-gray-400 font-bold bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                                {selectedAgent}
-                            </div>
-                            <pre className="whitespace-pre-wrap">{prompts[selectedAgent]}</pre>
-                        </>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-gray-400">Select an agent to view its prompt</div>
-                    )}
+                {/* System Prompt (Read-Only) */}
+                <div className="flex-1 min-h-[250px]">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Lock size={16} className="text-[var(--text-tertiary)]" />
+                        <h4 className="font-bold text-sm text-[var(--text-secondary)]">📖 System Prompt (Read-Only)</h4>
+                    </div>
+                    <div className="bg-[var(--surface-elevated)] rounded-lg p-4 h-[calc(100%-2rem)] overflow-y-auto border border-[var(--border)] relative">
+                        <div className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-mono bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
+                            {selectedAgentData?.name}
+                        </div>
+                        <pre className="whitespace-pre-wrap text-xs font-mono text-[var(--text-secondary)] pr-32">
+                            {selectedAgentData?.systemPrompt}
+                        </pre>
+                    </div>
                 </div>
 
-                {/* Validation Playground */}
-                {selectedAgent && (
-                    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 shadow-sm">
-                        <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
-                            <Terminal size={14} className="text-purple-500" />
-                            Validation Playground
-                        </h4>
-                        <div className="flex gap-2 mb-2">
-                            <input
-                                className="flex-1 p-2 text-sm border border-gray-300 dark:border-gray-700 rounded bg-transparent"
-                                placeholder="Enter test message (e.g. 'Analyze this table struct...')"
-                                value={testInput}
-                                onChange={e => setTestInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleRunTest()}
-                            />
-                            <button
-                                onClick={handleRunTest}
-                                disabled={isRunning}
-                                className="px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded hover:bg-purple-700 disabled:opacity-50"
-                            >
-                                {isRunning ? "Testing..." : "Run Test"}
-                            </button>
-                        </div>
-                        {testOutput && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-950 rounded border border-gray-200 dark:border-gray-800 text-xs font-mono max-h-32 overflow-y-auto whitespace-pre-wrap">
-                                {testOutput}
+                {/* User Context (Editable) */}
+                {projectId && (
+                    <div className="flex-1 min-h-[250px]">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <Sparkles size={16} className="text-[var(--accent)]" />
+                                <h4 className="font-bold text-sm">✏️ Your Context for this Solution</h4>
                             </div>
-                        )}
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleClearContext}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--surface-elevated)] border border-[var(--border)] hover:border-red-500 hover:bg-red-500/5 transition-all flex items-center gap-1.5"
+                                >
+                                    <Trash2 size={14} />
+                                    Clear
+                                </button>
+                                <button
+                                    onClick={handleSaveContext}
+                                    disabled={saving}
+                                    className="btn-primary px-4 py-1.5 text-sm flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                    <Save size={14} />
+                                    {saving ? "Saving..." : "Save"}
+                                </button>
+                            </div>
+                        </div>
+                        <textarea
+                            value={editingContext}
+                            onChange={(e) => setEditingContext(e.target.value)}
+                            placeholder="Add custom instructions for this agent specific to your solution...
+Example:
+- Use BIGINT for all ID columns
+- Prefix gold tables with 'dim_' or 'fact_'
+- Apply data masking to PII fields"
+                            className="input-antigravity h-[calc(100%-2.5rem)] resize-none font-mono text-sm"
+                        />
+                    </div>
+                )}
+
+                {!projectId && (
+                    <div className="flex-1 min-h-[250px] flex items-center justify-center bg-[var(--surface)]/50 rounded-lg border border-dashed border-[var(--border)]">
+                        <p className="text-[var(--text-tertiary)] text-sm">
+                            Select a project to customize agent context
+                        </p>
                     </div>
                 )}
             </div>

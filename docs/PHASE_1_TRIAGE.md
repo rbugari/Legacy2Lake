@@ -17,12 +17,13 @@ In this stage, the system performs an "intelligent scan" of your project to help
 1.  **Graph View:** An interactive visualization of your architecture. You can drag assets, delete nodes, and auto-order the mesh (Vertical/Horizontal).
 2.  **Inventory (Grid):** A detailed list where you can batch-edit categories for every file.
 3.  **Context Injection (User Input):** Add "Tribal Knowledge" (notes, business rules) to specific assets. Agent A will use this to generate **Virtual Steps**—logic that doesn't exist in the source but is required for the business.
-4.  **Operational intelligence:** The agent automatically infers:
+4.  **Column Mapping Editor**: A granular view to map source columns to target Bronze/Silver/Gold fields, including PII tagging and business context injection. Accessible via the 'Database' icon in the Grid or the 'Column Mapping' tab.
+5.  **Prompts Explorer**: Unified interface to manage agent instructions (A, C, F, G) with local persistence and real-time prompt refining.
+6.  **Operational intelligence**: The agent automatically infers:
     - **Soberanía (Security):** PII detection and masking rules.
     - **Strategy:** Optimal load strategy (Full, Incremental, SCD 2).
     - **Criticality:** Business impact classification (P1/P2/P3).
-5.  **Prompt Refinement:** For advanced users, you can give "instructions" to the AI and re-process the triage.
-6.  **Maximize Mode:** Hides the interface to focus exclusively on technical mesh design.
+7.  **Maximize Mode:** Hides the interface to focus exclusively on technical mesh design.
 
 ---
 
@@ -46,8 +47,11 @@ The visualization uses **React Flow**, while the layout intelligence resides in 
 
 ---
 
-## 🎨 Design and UX
-Legacy2Lake uses a design system based on **Glassmorphism** and **Atomic Design**, maximizing the user's focus through dynamic toolbars and immersion modes.
+## 🎨 Design and UX (v3.0 Premium)
+Legacy2Lake v3.0 features an **Enterprise Glassmorphism** design system. 
+- **Purple & Indigo Accents**: Deep tonal harmony for long engineering sessions.
+- **Card-Glass Components**: Translucent panels with background blur for complex data visualization.
+- **High-Contrast Typography**: Enhanced readability using font hierarchies optimized for technical documentation.
 
 ## ⏭️ Next Steps: Moving to Synthesis
 Once your inventory is validated and your mesh is designed, you are ready to "Approve" the plan and transition to **Stage 2: Drafting**.

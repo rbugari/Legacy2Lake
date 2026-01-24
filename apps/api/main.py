@@ -13,16 +13,32 @@ from services.graph_service import GraphService
 from services.agent_c_service import AgentCService
 from services.agent_f_service import AgentFService
 from services.agent_g_service import AgentGService
-from services.persistence_service import PersistenceService, SupabasePersistence
+try:
+    from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
+    from apps.api.services.refinement.audit_service import AuditService
+except ImportError:
+    try:
+        from services.persistence_service import PersistenceService, SupabasePersistence
+        from services.refinement.audit_service import AuditService
+    except ImportError:
+        from .persistence_service import PersistenceService, SupabasePersistence
+        from .refinement.audit_service import AuditService
 from services.discovery_service import DiscoveryService
 from services.refinement.governance_service import GovernanceService
 from supabase import create_client, Client
+
 
 load_dotenv()
 
 from apps.api.routers import config, system
 
-app = FastAPI(title="Legacy2Lake API")
+# NEW: Import refactored routers (Phase 1 - Technical Debt Remediation)
+from routers.auth import router as auth_router
+from routers.agents import router as agents_router
+# Note: Other routers (projects, triage, transpile, governance) will be 
+# integrated gradually as we verify functionality
+
+app = FastAPI(title="Legacy2Lake API", version="2.0.0")
 
 from fastapi import Request, Header, Depends
 from fastapi.responses import JSONResponse
@@ -113,6 +129,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(config.router)
 app.include_router(system.router)
 
+# NEW: Include refactored routers (Phase 1 - Technical Debt Remediation)
+# These provide improved security (bcrypt) and better code organization
+app.include_router(auth_router)  # ✅ ACTIVE: bcrypt login with auto-migration
+app.include_router(agents_router)  # Prompt management
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3005", "http://localhost:3000", "http://127.0.0.1:3005", "*"],
@@ -177,7 +198,166 @@ async def update_agent_g_prompt(payload: PromptUpdate):
     agent.save_prompt(payload.prompt)
     return {"success": True}
 
-# --- Cartridges & Global Config ---
+# --- Solution Context Management (Phase 0 - Z1) ---
+
+from services.context_service import ContextService
+
+class ContextPayload(BaseModel):
+    context_type: str  # 'agent_a', 'agent_c', 'agent_f', 'agent_g', 'global'
+    user_context: str
+
+@app.get("/projects/{project_id}/context")
+async def get_project_contexts(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get all user contexts for a project"""
+    context_service = ContextService(db.client)
+    contexts = await context_service.get_all_for_project(project_id)
+    return {"contexts": contexts}
+
+@app.get("/projects/{project_id}/context/{context_type}")
+async def get_specific_context(
+    project_id: str, 
+    context_type: str, 
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Get user context for a specific agent/type"""
+    context_service = ContextService(db.client)
+    context = await context_service.get_context(project_id, context_type)
+    return context or {"user_context": ""}
+
+@app.post("/projects/{project_id}/context")
+async def save_project_context(
+    project_id: str,
+    payload: ContextPayload,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Create or update user context for a project"""
+    context_service = ContextService(db.client)
+    result = await context_service.upsert_context(
+        project_id,
+        payload.context_type,
+        payload.user_context
+    )
+    return {"success": True, "context": result}
+
+@app.delete("/projects/{project_id}/context/{context_type}")
+async def delete_project_context(
+    project_id: str,
+    context_type: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Delete a specific context entry"""
+    context_service = ContextService(db.client)
+    success = await context_service.delete_context(project_id, context_type)
+    return {"success": success}
+
+# --- Column Mapping & Dependencies (Phase A) ---
+
+from services.column_mapping_service import ColumnMappingService, ColumnMapping
+from services.dependency_service import DependencyService
+
+class ColumnMappingPayload(BaseModel):
+    source_column: str
+    source_datatype: Optional[str] = None
+    target_column: Optional[str] = None
+    target_datatype: Optional[str] = None
+    transformation_rule: Optional[str] = None
+    is_pii: bool = False
+    is_nullable: bool = True
+    default_value: Optional[str] = None
+
+@app.get("/assets/{asset_id}/column-mappings")
+async def get_asset_column_mappings(asset_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get all column mappings for an asset"""
+    service = ColumnMappingService(db.client)
+    mappings = await service.get_mappings_for_asset(asset_id)
+    return {"mappings": mappings}
+
+@app.post("/assets/{asset_id}/column-mappings")
+async def save_column_mapping(
+    asset_id: str,
+    payload: ColumnMappingPayload,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Create or update a column mapping"""
+    service = ColumnMappingService(db.client)
+    mapping = ColumnMapping(
+        asset_id=asset_id,
+        source_column=payload.source_column,
+        source_datatype=payload.source_datatype,
+        target_column=payload.target_column,
+        target_datatype=payload.target_datatype,
+        transformation_rule=payload.transformation_rule,
+        is_pii=payload.is_pii,
+        is_nullable=payload.is_nullable,
+        default_value=payload.default_value
+    )
+    result = await service.upsert_mapping(mapping)
+    return {"success": True, "mapping": result}
+
+@app.post("/assets/{asset_id}/column-mappings/bulk")
+async def bulk_save_mappings(
+    asset_id: str,
+    mappings: List[ColumnMappingPayload],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Bulk upsert column mappings"""
+    service = ColumnMappingService(db.client)
+    mapping_objs = [
+        ColumnMapping(
+            asset_id=asset_id,
+            source_column=m.source_column,
+            source_datatype=m.source_datatype,
+            target_column=m.target_column,
+            target_datatype=m.target_datatype,
+            transformation_rule=m.transformation_rule,
+            is_pii=m.is_pii,
+            is_nullable=m.is_nullable,
+            default_value=m.default_value
+        )
+        for m in mappings
+    ]
+    count = await service.bulk_upsert(mapping_objs)
+    return {"success": True, "count": count}
+
+@app.get("/assets/{asset_id}/pii-columns")
+async def get_pii_columns(asset_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get list of PII columns for an asset"""
+    service = ColumnMappingService(db.client)
+    pii_cols = await service.get_pii_columns(asset_id)
+    return {"pii_columns": pii_cols}
+
+@app.get("/projects/{project_id}/execution-plan")
+async def get_execution_plan(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get dependency-based execution plan for project"""
+    service = DependencyService(db.client)
+    plan = await service.get_execution_plan(project_id)
+    return plan
+
+# --- Orchestration & DAG Generation (Phase B) ---
+
+from services.dag_generator_service import DagGeneratorService
+
+@app.get("/projects/{project_id}/orchestration/airflow")
+async def get_airflow_dag(project_id: str, dag_id: str = "legacy2lake_dag", db: SupabasePersistence = Depends(get_db)):
+    """Generate Airflow Python DAG code"""
+    service = DagGeneratorService(db.client)
+    code = await service.generate_airflow_dag(project_id, dag_id, save=True)
+    return {"code": code, "filename": f"{dag_id}.py"}
+
+@app.get("/projects/{project_id}/orchestration/databricks")
+async def get_databricks_workflow(project_id: str, job_name: str = "Legacy2Lake Job", db: SupabasePersistence = Depends(get_db)):
+    """Generate Databricks Workflow JSON definition"""
+    service = DagGeneratorService(db.client)
+    definition = await service.generate_databricks_workflow(project_id, job_name, save=True)
+    return {"definition": definition, "filename": "databricks_workflow.json"}
+
+@app.get("/projects/{project_id}/orchestration/yaml")
+async def get_yaml_pipeline(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Generate generic YAML orchestration code"""
+    service = DagGeneratorService(db.client)
+    code = await service.generate_generic_yaml(project_id, save=True)
+    return {"code": code, "filename": "pipeline.yaml"}
+
 
 @app.get("/cartridges")
 async def list_cartridges():
@@ -604,6 +784,13 @@ async def generate_governance(project_name: str, mesh: Dict[str, Any], context: 
         "documentation": doc_content,
         "saved_at": local_path
     }
+
+@app.get("/projects/{project_id}/audit")
+async def project_audit(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Runs an AI-powered architectural audit on the project's refined code."""
+    auditor = AuditService(db_client=db.client)
+    report = await auditor.run_audit(project_id)
+    return report
 
 @app.post("/projects/{project_id}/stage")
 async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePersistence = Depends(get_db)):

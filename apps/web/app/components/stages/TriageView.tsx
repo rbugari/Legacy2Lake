@@ -13,11 +13,14 @@ import StageHeader from '../StageHeader';
 import { Map, CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { API_BASE_URL } from '../../lib/config';
+import PromptsExplorer from '../PromptsExplorer'; // Added Phase 0
+import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
 
 // Tab Definitions
 const TABS = [
     { id: 'graph', label: 'Gráfico', icon: <Layout size={18} /> },
     { id: 'grid', label: 'Grilla', icon: <List size={18} /> },
+    { id: 'mapping', label: 'Column Mapping', icon: <Database size={18} /> }, // Added Phase A
     { id: 'prompt', label: 'Refine Prompt', icon: <Terminal size={18} /> },
     { id: 'context', label: 'User Input', icon: <MessageSquare size={18} /> },
     { id: 'logs', label: 'Logs', icon: <FileText size={18} /> },
@@ -636,6 +639,16 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                         >
                                                             <MessageSquare size={12} />
                                                         </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedAssetForContext(asset.id);
+                                                                setActiveTab('mapping');
+                                                            }}
+                                                            className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                                            title="Mapeo de Columnas"
+                                                        >
+                                                            <Database size={12} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -727,29 +740,78 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                     )}
 
 
-                    {/* 3. PROMPT TAB */}
+                    {/* 3. MAPPING TAB */}
+                    {activeTab === 'mapping' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
+                            <div className="max-w-7xl mx-auto space-y-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h2 className="text-2xl font-black flex items-center gap-3">
+                                            <div className="p-2 bg-primary/10 rounded-xl">
+                                                <Database className="text-primary" size={24} />
+                                            </div>
+                                            Mapeo de Columnas Granular
+                                        </h2>
+                                        <p className="text-sm text-[var(--text-secondary)] mt-1">
+                                            Define transformaciones, tipos de datos y tags de seguridad (PII) por cada columna.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {selectedAssetForContext ? (
+                                    <div className="card-glass border-[var(--primary)]/20 shadow-2xl">
+                                        <ColumnMappingEditor assetId={selectedAssetForContext} />
+                                    </div>
+                                ) : (
+                                    <div className="card-glass flex flex-col items-center justify-center py-20 text-center border-dashed border-2">
+                                        <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
+                                            <Layout size={40} className="text-gray-400" />
+                                        </div>
+                                        <h3 className="text-lg font-bold">Sin activo seleccionado</h3>
+                                        <p className="text-sm text-gray-500 max-w-sm mt-2">
+                                            Selecciona un activo desde la Grilla o el Gráfico para editar su mapeo de columnas.
+                                        </p>
+                                        <button
+                                            onClick={() => setActiveTab('grid')}
+                                            className="mt-6 px-4 py-2 bg-primary text-white rounded-lg font-bold text-xs shadow-lg shadow-primary/20"
+                                        >
+                                            Ir a la Grilla
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 4. PROMPT TAB */}
                     {activeTab === 'prompt' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
                             <div className="max-w-7xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center">
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
-                                        <Terminal className="text-primary" /> System Prompt
-                                    </h2>
+                                    <div>
+                                        <h2 className="text-2xl font-black flex items-center gap-3">
+                                            <div className="p-2 bg-primary/10 rounded-xl">
+                                                <Terminal className="text-primary" size={24} />
+                                            </div>
+                                            Triage Prompt Engineering
+                                        </h2>
+                                        <p className="text-sm text-[var(--text-secondary)] mt-1">
+                                            Personaliza cómo la IA clasifica y organiza los activos de este proyecto.
+                                        </p>
+                                    </div>
                                     <button
                                         onClick={handleReTriage}
-                                        className="bg-primary text-white px-4 py-2 rounded-lg font-bold hover:bg-secondary flex items-center gap-2"
+                                        className="btn-primary flex items-center gap-2"
                                     >
                                         <Play size={16} /> Re-Ejecutar Triaje
                                     </button>
                                 </div>
-                                <p className="text-sm text-gray-500">
-                                    Edita el prompt del sistema utilizado por el Agente de Triaje para clasificar y organizar los paquetes.
-                                </p>
-                                <textarea
-                                    value={systemPrompt}
-                                    onChange={(e) => setSystemPrompt(e.target.value)}
-                                    className="w-full h-96 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
-                                />
+
+                                <div className="card-glass overflow-hidden p-0 border-none shadow-2xl h-[700px]">
+                                    <PromptsExplorer
+                                        projectId={projectId}
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
