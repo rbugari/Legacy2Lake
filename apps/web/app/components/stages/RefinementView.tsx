@@ -26,7 +26,6 @@ const TABS = [
     { id: 'orchestrator', label: 'Orchestration', icon: <Layers size={18} /> },
     { id: 'workbench', label: 'Workbench (Diff)', icon: <GitBranch size={18} /> },
     { id: 'artifacts', label: 'Artifacts', icon: <Database size={18} /> },
-    { id: 'config', label: 'Solution Config', icon: <Settings size={18} /> },
 ];
 
 export default function RefinementView({ projectId, onStageChange, isReadOnly }: RefinementViewProps) {
@@ -89,7 +88,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
 
 
     const handleRunRefinement = async () => {
-        const confirmMsg = "Esta acción ejecutará la fase de Refinamiento (Agentes P, A, R, O). Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
+        const confirmMsg = "This action will execute the Refinement phase (Agents P, A, R, O). This incurs token costs and processing time.\n\nDo you want to continue?";
         if (!confirm(confirmMsg)) return;
 
         setIsRunning(true);
@@ -118,7 +117,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     };
 
     const handleApprove = async () => {
-        if (!confirm("¿Seguro que deseas aprobar la fase de refinamiento y mover el proyecto a Gobernanza?")) return;
+        if (!confirm("Are you sure you want to approve the refinement phase and move the project to Governance?")) return;
         try {
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
                 method: "POST",
@@ -245,18 +244,19 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     }, [logs, isFinished]);
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="Refinamiento (Modernization)"
-                subtitle="Transformación a arquitectura Medallion (Bronze/Silver/Gold)"
-                icon={<Layers className="text-primary" />}
+                title="AI Refinement"
+                subtitle="Transpiled code optimization and quality audit"
+                icon={<GitBranch className="text-cyan-500" />}
+                helpText="Agent R (Reviewer) analyzes generated code for inefficiencies, type errors, or logic flaws, applying automatic corrections and suggesting performance improvements."
                 isReadOnly={isReadOnly}
                 isApproveDisabled={!isComplete}
                 isExecuting={isRunning}
                 onApprove={handleApprove}
-                approveLabel="Aprobar Fase 3"
+                approveLabel="Approve Phase 3"
                 onRestart={async () => {
-                    if (window.confirm("¿Reiniciar Refinamiento? Se perderán las transformaciones actuales.")) {
+                    if (window.confirm("Restart Refinement? Current transformations will be lost.")) {
                         if (onStageChange) onStageChange(3);
                     }
                 }}
@@ -264,13 +264,13 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                 <button
                     onClick={handleRunRefinement}
                     disabled={isRunning || isReadOnly}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning || isReadOnly
+                    className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
                         ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                        : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200 dark:shadow-none"
+                        : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/20 dark:shadow-none"
                         }`}
                 >
                     <Play size={12} className={isRunning ? "animate-spin" : ""} />
-                    {isRunning ? "Refining..." : "Refinar & Modernizar"}
+                    {isRunning ? "Refining..." : "Refine & Modernize"}
                 </button>
             </StageHeader>
 
@@ -279,9 +279,9 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-4 text-xs font-bold border-b-2 transition-colors ${activeTab === tab.id
-                            ? 'border-primary text-primary bg-primary/5'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                        className={`flex items-center gap-2 px-8 py-5 text-[10px] font-bold uppercase tracking-[0.2em] border-b-2 transition-all ${activeTab === tab.id
+                            ? 'border-cyan-500 text-cyan-500 bg-cyan-500/5'
+                            : 'border-transparent text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/5'
                             }`}
                     >
                         {tab.icon} <span>{tab.label}</span>
@@ -308,7 +308,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                             <div className="grid grid-cols-2 gap-4 shrink-0">
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 shadow-sm">
                                     <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Files Analyzed</h3>
-                                    <p className="text-2xl font-bold text-primary">{profile.total_files}</p>
+                                    <p className="text-2xl font-bold text-cyan-500">{profile.total_files}</p>
                                 </div>
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 shadow-sm">
                                     <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Shared Connections</h3>
@@ -349,7 +349,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                         <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
                             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
                                 <h3 className="font-bold text-sm flex items-center gap-2">
-                                    <FileText size={16} className="text-primary" />
+                                    <FileText size={16} className="text-cyan-500" />
                                     {selectedFile ? (
                                         <span>
                                             {selectedFile.split(/[\\/]/).pop()}
@@ -384,27 +384,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                     </div>
                 )}
 
-                {activeTab === 'config' && (
-                    <div className="h-full flex flex-col gap-6 overflow-y-auto pr-2">
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <TechnologyMixer projectId={projectId} />
-                        </div>
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <Settings size={20} className="text-primary" />
-                                Estándares de Arquitectura
-                            </h3>
-                            <DesignRegistryPanel projectId={projectId} />
-                        </div>
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <Brain size={20} className="text-primary" />
-                                Configuración de Inteligencia
-                            </h3>
-                            <PromptsExplorer />
-                        </div>
-                    </div>
-                )}
+
             </div>
         </div>
     );

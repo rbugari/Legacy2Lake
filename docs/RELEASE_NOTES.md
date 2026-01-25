@@ -1,5 +1,128 @@
 # Release Notes
 
+## Version 3.2 (The Enterprise Modernization Suite) - 2026-01-25 ⭐ LATEST
+
+This transformational release elevates Legacy2Lake from a code generator into a **SaaS-ready Enterprise Migration Factory** with forensic intelligence, automated optimization, and AI-driven certification.
+
+### 🌟 Major Features
+
+#### Phase 5: Architect v2.0 & Discovery Heatmaps
+*   **Automated Metadata Inference**:
+    *   **Agent A (The Architect)** now automatically infers operational metadata from source schemas:
+        - **Data Volume**: LOW/MED/HIGH classification for cluster sizing.
+        - **PII Detection**: Column-level analysis (`email`, `ssn`, `phone`).
+        - **Partition Key Suggestion**: Identifies high-cardinality date columns.
+        - **Execution Latency**: DAILY/HOURLY/REAL_TIME frequency estimation.
+*   **Discovery Heatmaps**:
+    *   **PII Exposure Map**: Color-coded visualization (Red = High PII concentration).
+    *   **Criticality Matrix**: Business importance vs. Data Volume quadrants.
+    *   Interactive filtering and asset prioritization in Discovery UI.
+
+#### Phase 6: Intelligent Code Generation
+*   **Context-Aware Transpilation**:
+    *   **Agent C (The Interpreter)** now generates **optimized PySpark** based on Architect v2.0 metadata.
+    *   **Auto-Partitioning**: If `partition_key` is detected, generates `.partitionBy(col)` automatically.
+    *   **PII Masking**: Automatically applies `SHA2()` hashing for flagged columns.
+    *   **Volume Optimization**: High-volume assets get shuffle-optimized joins.
+*   **Transformation Logic Editor**:
+    *   New **per-column custom expression** support in Column Mapping.
+    *   Example: `CASE WHEN age < 18 THEN 'Minor'` auto-injected into generated code.
+*   **Code Blueprint Preview**:
+    *   Read-only preview of generated structure before transpilation runs.
+
+#### Phase 7: AI-Driven Governance & SaaS Delivery
+*   **Compliance Certification (Agent G)**:
+    *   **Automated Audit**: Verifies Architect v2.0 recommendations were followed.
+    *   **0-100 Scoring**: Numeric compliance score with detailed check results.
+    *   **Certification Badge**: Visual indicator in Governance UI.
+*   **Automated Runbook Generation**:
+    *   System-generated `Modernization_Runbook.md` included in every export.
+    *   Contains: Prerequisites, Deployment Steps, Validation Checklist.
+*   **Enhanced Export Bundle**:
+    ```
+    solution_export.zip
+    ├── Modernization_Runbook.md
+    ├── variables_manifest.json
+    ├── quality_contracts/
+    └── [Bronze/Silver/Gold scripts]
+    ```
+
+#### Phase 8: Variable Injection Framework
+*   **Environment Parameterization**:
+    *   New **Variable Editor** in Project Settings.
+    *   Define key-value pairs (e.g., `S3_ROOT`, `ENV`, `DB_SCHEMA`).
+*   **Dynamic Code Generation**:
+    *   Agent C replaces hardcoded paths with placeholders: `f"{S3_ROOT}/bronze/data"`.
+*   **Handover Manifest**:
+    *   Export includes `variables_manifest.json` for deployment teams.
+*   **Optionality**: If no variables defined, standard code generation proceeds.
+
+#### Phase 9: Data Quality Contracts (Optional)
+*   **Auto-Generated Validation Suites**:
+    *   **Great Expectations**: JSON suites with `expect_column_values_to_not_be_null`, type checks, etc.
+    *   **Soda Core**: YAML check files with `missing_count(col) = 0`.
+*   **Rule-Based Generation**:
+    *   `is_nullable=False` → NOT NULL expectation.
+    *   `datatype=Integer` → Type validation.
+    *   `is_pii=True` → Presence/format checks.
+*   **Optional Execution**:
+    *   Contracts only generated if Column Mapping defines rules.
+    *   No rules? No contracts. Graceful degradation.
+*   **Export Integration**:
+    *   Quality contracts included in `solution_export.zip` under `quality_contracts/`.
+
+### 🎨 UI/UX Enhancements
+
+*   **Discovery View**:
+    *   New heatmap visualizations for PII and Criticality.
+    *   Color-coded asset badges (Red/Yellow/Green).
+*   **Governance View**:
+    *   New **"Data Quality"** tab showing GX/Soda contract previews.
+    *   Certification badge with score prominently displayed.
+    *   Enhanced Audit Details expandable panel.
+*   **Project Settings**:
+    *   New **"Variables & Environment Parameters"** section.
+    *   Interactive key-value table editor.
+
+### 🐛 Bug Fixes
+
+*   Fixed partition key inference hanging on very large schemas.
+*   Resolved PII detection false positives for columns like `email_sent_date`.
+*   Fixed variable injection not applying when context was empty.
+*   Corrected YAML syntax in generated Soda checks.
+
+### ⚠️ Technical Changes
+
+*   **New Services**:
+    *   `ArchitectService` (`architect_service.py`): Metadata inference engine.
+    *   `QualityService` (`quality_service.py`): GX/Soda contract generator.
+*   **Enhanced Services**:
+    *   `GovernanceService`: Now includes audit, runbook, and bundle generation.
+    *   `AgentCService`: Variable injection and metadata-driven optimization.
+*   **Database Schema**:
+    *   `UTM_Object.metadata` (JSONB): Stores Architect v2.0 forensics.
+    *   `UTM_Project.settings.variables`: Stores environment parameters.
+    *   `UTM_Column_Mapping.logic`: Custom transformation expressions.
+*   **API Endpoints**:
+    *   `GET /projects/{id}/architect`: Retrieve inferred metadata.
+    *   `GET /api/governance/certification/{id}`: Get compliance audit.
+    *   `PATCH /projects/{id}/settings`: Update variables.
+
+### 📚 Documentation Updates
+*   New phase documents:
+    *   `PHASE_5_ARCHITECT.md`
+    *   `PHASE_6_INTELLIGENCE.md`
+    *   `PHASE_7_GOVERNANCE_DELIVERY.md`
+    *   `PHASE_8_VARIABLES.md`
+    *   `PHASE_9_QUALITY.md`
+*   Updated technical specs:
+    *   `technical/architecture.md` - v3.2 agent table
+    *   `technical/data_model.md` - Architect v2.0 fields
+    *   `technical/api_contract.md` - New endpoints
+    *   `technical/system_prompts_and_agents.md` - Enhanced capabilities
+
+---
+
 ## Version 3.0 (The Enterprise Compliance Hub) - 2026-01-24
 
 This major release transforms Legacy2Lake from a code generation tool into a comprehensive, governed, and audited modernization platform.
@@ -13,7 +136,7 @@ This major release transforms Legacy2Lake from a code generation tool into a com
 *   **Granular Column Mapping (Phase A)**:
     *   **New Editor**: Interactive UI to map source legacy columns to modernized target schemas (Bronze/Silver/Gold).
     *   **Business Context Sidebar**: Ability to inject business logic constraints per field.
-    *   **PII Tagging**: Direct integration with the auditor to ensure sensitive data is masked.
+    *   **PII Tagging**: Direct integration with theauditor to ensure sensitive data is masked.
 *   **Universal Orchestration (Phase B)**:
     *   **Multi-Platform DAGs**: Generation of production-ready orchestration files for **Apache Airflow**, **Databricks Jobs (JSON)**, and generic **YAML**.
     *   **Persistence**: Auto-saving of orchestration artifacts into the project directory.

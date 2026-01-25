@@ -93,22 +93,10 @@ class AgentAService:
         {json.dumps(registry, indent=2)}
 
         INSTRUCTIONS:
-        1. Process the FILE INVENTORY.
-        2. **PRIORITY**: If a file in the inventory has entries in USER CONTEXT, those rules/descriptions MUST take precedence over automated inference.
-        3. **VIRTUAL STEPS**: If the USER CONTEXT describes a logical process, validation, or manual step that DOES NOT exist in the FILE INVENTORY, you MUST create a node for it:
-            - Set `id` to `virtual_[unique_name]`.
-            - Set `category` to `CORE`.
-            - Create `edges` from/to this virtual node based on the context description.
-        4. **OPERATIONAL INTELLIGENCE**: For each file, infer:
-            - `frequency`: (HOURLY, DAILY, MONTHLY, NEAR-RT) based on names like 'hourly_load' or context.
-            - `load_strategy`: (INCREMENTAL, FULL_OVERWRITE, SCD_2) based on presence of watermarks, merge logic, or 'Dim' naming (for SCD).
-            - `criticality`: (P1, P2, P3) based on importance.
-        5. **SOVEREIGNTY & SECURITY**: Analyze `signatures` and `snippet` to detect:
-            - `is_pii`: Set to true if you detect columns/data like emails, SSN, personal IDs, birthdays, or salaries.
-            - `masking_rule`: Suggest a logic like 'SHA2 hashing' or 'Redacted'.
-        6. Assign a FUNCTIONAL CATEGORY (CORE, SUPPORT, IGNORED) to all relevant files.
-        7. Discover dependencies (Edges).
-        8. Synthesize the Mesh Graph. Return ONLY the JSON requested in the System Prompt. Ensure the 'nodes' in your response include the new fields: `frequency`, `load_strategy`, `criticality`, `is_pii`, `masking_rule`.
+        1. Process the FILE INVENTORY and identify the Lineage Mesh.
+        2. Assign metadata (Volume, Latency, Criticality, PII, Partition Key) based on patterns in filenames and signatures.
+        3. Respect USER CONTEXT as absolute priority.
+        4. Synthesize the Mesh Graph according to the System Prompt format.
         """
         
         logger.info(f"Agent A analyzing manifest for {manifest.get('project_id')}...", "Agent A")

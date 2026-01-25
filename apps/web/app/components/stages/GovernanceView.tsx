@@ -34,7 +34,7 @@ interface GovernanceViewProps {
 export default function GovernanceView({ projectId }: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration">("report");
+    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality">("report");
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isPushing, setIsPushing] = useState(false);
     const [auditReport, setAuditReport] = useState<any>(null);
@@ -121,6 +121,12 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                     >
                         <Share2 size={16} /> Orchestration
                     </button>
+                    <button
+                        onClick={() => setActiveTab("quality")}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "quality" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                    >
+                        <Shield size={16} /> Data Quality
+                    </button>
                 </div>
 
                 {/* Right: Operational Controls */}
@@ -165,6 +171,58 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                 ) : activeTab === "orchestration" ? (
                     <div className="card-glass border-none shadow-2xl min-h-[600px]">
                         <OrchestrationPanel projectId={projectId} />
+                    </div>
+                ) : activeTab === "quality" ? (
+                    <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-xl">
+                        <div className="flex items-center gap-6 mb-8">
+                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl">
+                                <ShieldCheck size={32} className="text-emerald-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold mb-2">Automated Data Quality Contracts</h2>
+                                <p className="text-gray-500 max-w-2xl">
+                                    Contracts derived from your Column Mappings. This feature is <strong>optional</strong>; if no rules are defined, no contracts will be generated.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                    <FileText size={18} className="text-blue-500" />
+                                    Great Expectations (JSON)
+                                </h3>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-blue-600 dark:text-blue-400 overflow-hidden">
+                                    <pre>{`{
+  "expectation_suite_name": "orders.warning",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "email" }
+    }
+  ]
+}`}</pre>
+                                </div>
+                                <p className="text-xs text-gray-400 italic">
+                                    * Included in export if rules are detected.
+                                </p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                    <Database size={18} className="text-orange-500" />
+                                    Soda Core (YAML)
+                                </h3>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-orange-600 dark:text-orange-400 overflow-hidden">
+                                    <pre>{`checks for orders:
+  - missing_count(email) = 0
+  - invalid_percent(phone) < 5%`}</pre>
+                                </div>
+                                <p className="text-xs text-gray-400 italic">
+                                    * Generated alongside GX suites.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <>
@@ -280,28 +338,23 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                         {auditReport ? "AI Audit Findings" : "Compliance Audit Trail"}
                                     </h3>
                                     <div className="space-y-4">
-                                        {auditReport ? (
-                                            auditReport.findings?.map((finding: any, idx: number) => (
-                                                <div key={idx} className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 group transition-all hover:border-primary/20">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${finding.type === 'CRITICAL' ? 'bg-red-500 text-white' :
-                                                            finding.type === 'WARNING' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'
-                                                            }`}>
-                                                            {finding.type}
-                                                        </span>
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">{finding.category}</span>
+                                        {report?.audit_details?.checks ? (
+                                            report.audit_details.checks.map((check: any, idx: number) => (
+                                                <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800 group hover:shadow-md transition-all">
+                                                    <div className={`p-2 rounded-xl ${check.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                                                        {check.status === 'PASSED' ? <ShieldCheck size={18} /> : <AlertCircle size={18} />}
                                                     </div>
-                                                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">{finding.message}</p>
-                                                    {finding.suggestion && (
-                                                        <div className="mt-3 p-3 bg-white dark:bg-gray-950 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
-                                                            <div className="flex items-center gap-2 mb-1 text-[10px] font-black text-primary uppercase">
-                                                                <Zap size={10} /> Suggestion
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono italic">
-                                                                {finding.suggestion}
-                                                            </p>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">{check.check_name}</h4>
+                                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${check.status === 'PASSED' ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>
+                                                                {check.status}
+                                                            </span>
                                                         </div>
-                                                    )}
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                                                            {check.detail}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             ))
                                         ) : report?.compliance_logs?.length > 0 ? (
@@ -367,6 +420,18 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                 ))}
                             </div>
                         </div>
+
+                        {/* Runbook Preview */}
+                        {report?.runbook && (
+                            <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm mt-8">
+                                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                                    <ScrollText size={20} className="text-amber-500" /> Modernization Runbook Preview
+                                </h3>
+                                <div className="p-6 bg-gray-50 dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 max-h-[400px] overflow-y-auto custom-scrollbar font-mono text-xs whitespace-pre-wrap text-gray-600 dark:text-gray-400">
+                                    {report.runbook}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Final Footer CTA */}
                         <div className="flex flex-col items-center justify-center py-10 text-center space-y-4 border-t border-gray-100 dark:border-gray-800">

@@ -21,24 +21,35 @@ To resolve the $N \times M$ complexity problem, Legacy2Lake implements a total d
 - **Components**: Technology **Output Cartridges** based on Jinja2 templates (e.g., `DatabricksCartridge`).
 - **Output**: Executable source code (Notebooks, SQL Scripts).
 
-## 2. Multi-Agent System (MAS v3.0)
+## 2. Multi-Agent System (MAS v3.2)
 
 The system operates via specialized AI agents interacting through the metadata store and the file system:
 
 | Agent | Name | Role | Responsibility |
 | :--- | :--- | :--- | :--- |
-| **A** | **The Architect** | Inference & Triage | Scans the repo, identifies assets, and builds the dependency graph (`READS_FROM`, `SEQUENTIAL`). Inference of business intent from file names. |
-| **C** | **The Interpreter** | Code Generation | Converts legacy logic (XML/SQL) into modern PySpark/SQL code. This is the "Compiler" working on individual units. |
-| **F** | **The Fixer** | QA & Refinement | Reviews Agent C's output. Checks for syntax errors and applies "Design Registry" patterns (e.g. naming conventions). |
-| **G** | **The Guardian** | Governance | Generates technical documentation, data lineage, and deployment artifacts (ZIP bundles, DAGs). |
-| **D** | **The Auditor** | Compliance (New) | Performs deep architectural reviews. Scores code on Idempotency, Medallion Compliance, and PII Security. |
+| **S** | **The Scout** | Validation (Phase 4) | Initial repository scan. Validates source technology, identifies context gaps, and suggests missing mission-critical files. |
+| **A** | **The Architect v2.0** | Forensics & Inference (Phase 5) | Scans repo, builds dependency graph, **infers metadata** (Volume, PII, Latency, Partition Keys). Generates Discovery Heatmaps. |
+| **C** | **The Interpreter** | Context-Aware Generation (Phase 6) | Converts legacy logic into modern PySpark/SQL code. Uses Architect v2.0 metadata for **auto-optimization** (partitioning, PII masking). Supports **Variable Injection** (Phase 8). |
+| **F** | **The Fixer** | QA & Refinement | Reviews Agent C's output. Checks for syntax errors and applies "Design Registry" patterns. |
+| **G** | **The Guardian** | AI-Driven Certification (Phase 7) | Performs **compliance audit** (0-100 score), generates **Runbook.md**, bundles **Variable Manifest**, and optionally includes **Data Quality Contracts** (Phase 9). |
+| **D** | **The Auditor** | Compliance (Legacy) | Deep architectural reviews. Scores code on Idempotency and PII. *(Note: Functionality migrated to Agent G in v3.2)* |
 
-### Interaction Model
-1. **Agent A** builds the map.
-2. **Agent C** drafts the code for each node.
-3. **Agent F** refines the code iteratively.
-4. **Agent D** audits the final artifact.
-5. **Agent G** packages everything for deployment.
+### New Services (v3.2)
+
+| Service | File | Purpose |
+| :--- | :--- | :--- |
+| **ArchitectService** | `architect_service.py` | Metadata inference engine (Volume, PII, Partition Keys) |
+| **QualityService** | `quality_service.py` | Generates Great Expectations & Soda validation suites from Column Mappings |
+| **GovernanceService** | `governance_service.py` | Enhanced with AI audit, runbook generation, and export bundling |
+
+
+### Interaction Model (Modernized)
+1. **Agent S** performs the "Discovery Gate" check (Tech validation + Gap analysis).
+2. **Agent A** builds the map after the user validates the Scout's report.
+3. **Agent C** drafts the code for each node.
+4. **Agent F** refines the code iteratively.
+5. **Agent D** audits the final artifact.
+6. **Agent G** packages everything for deployment.
 
 ## 3. System Data Flow
 

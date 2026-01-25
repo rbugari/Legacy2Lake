@@ -124,7 +124,7 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
 
     service = GovernanceService()
     try:
-        report = service.get_certification_report(project_name)
+        report = await service.get_certification_report(project_id) # Consistent with UUID passing
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -172,8 +172,8 @@ async def export_project_bundle(project_id: str, db: SupabasePersistence = Depen
 
     service = GovernanceService()
     try:
-        zip_buffer = service.create_export_bundle(project_name)
-        filename = f"ShiftT_Solution_{project_name}.zip"
+        zip_buffer = await service.create_export_bundle(project_id) # Using ID
+        filename = f"Legacy2Lake_Solution_{project_name}.zip"
         
         return StreamingResponse(
             zip_buffer,
@@ -181,4 +181,6 @@ async def export_project_bundle(project_id: str, db: SupabasePersistence = Depen
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
+        import traceback
+        print(f"EXPORT ERROR: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

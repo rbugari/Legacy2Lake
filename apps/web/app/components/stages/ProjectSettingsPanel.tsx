@@ -1,7 +1,8 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { Settings, Save, RefreshCw, Zap, Sliders } from 'lucide-react';
+import { Settings, Save, RefreshCw, Zap, Sliders, Code } from 'lucide-react';
 import { fetchWithAuth } from '../../lib/auth-client';
+import VariableEditor from '../VariableEditor';
 
 interface ProjectSettingsPanelProps {
     projectId: string;
@@ -113,7 +114,24 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
                 </div>
             </div>
 
+            {/* Variable Injection (Phase 8) */}
+            <div className="bg-gray-50 dark:bg-gray-900/40 p-6 rounded-2xl border border-gray-100 dark:border-gray-800">
+                <div className="mb-6">
+                    <h4 className="font-bold flex items-center gap-2">
+                        <Code size={18} className="text-secondary" />
+                        Variables & Environment Parameters
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Define global variables (e.g., S3 buckets, connection strings) to be automatically injected into the generated code.
+                    </p>
+                </div>
+
+                <VariableEditor
+                    variables={settings.variables || []}
+                    onChange={(vars) => setSettings({ ...settings, variables: vars })}
+                />
+            </div>
             {/* Other settings can be added here in the future */}
-        </div>
+        </div >
     );
 }

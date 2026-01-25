@@ -25,30 +25,42 @@ graph TD
 
 ## 2. Detalle de Agentes y Prompts
 
-### Agent A: El Detective (Discovery Service)
-**Misión:** Entender qué hace el repositorio sin ejecutarlo. Construye el mapa (grafo) de dependencias.
+### Agent A: El Detective (Discovery Service) → **UPGRADED TO ARCHITECT v2.0**
+**Misión:** Ya no solo descubre archivos, ahora **infiere metadatos operacionales** automáticamente (Volume, PII, Latency).
 
 **System Prompt Actual (`agent_a_discovery.md`):**
 > "Eres el Agente de Triaje... Tu misión es procesar un 'Manifiesto de Repositorio' para reconstruir la malla de orquestación."
 
+**Nuevas Capacidades (Phase 5):**
+1. **Inferencia de Volumen:** Estima `LOW | MED | HIGH` basándose en el row count del esquema fuente.
+2. **Detección de PII:** Analiza nombres de columnas (`email`, `ssn`, `phone`) y marca `is_pii = true`.
+3. **Sugerencia de Particionamiento:** Si detecta columnas de tipo DATE con alta cardinalidad, sugiere `partition_key`.
+4. **Heatmaps en UI:** Los datos de Discovery ahora se visualizan como heatmaps (PII Exposure, Criticality).
+
 **Reglas Clave:**
-1.  **Clasificación Funcional:** Separa `CORE` (Lógica migratable) de `SUPPORT` (Configs) y `IGNORED` (Basura).
-2.  **Inferencia de Negocio:** Deduce entidades del mundo real (ej. `DimCustomer.dtsx` -> Entity: `CUSTOMER`).
-3.  **Detección de Orquestación:** Busca llamadas explícitas (`Execute Package`) para crear flechas en el grafo.
+1. **Clasificación Funcional:** Separa `CORE` (Lógica migratable) de `SUPPORT` (Configs) y `IGNORED` (Basura).
+2. **Inferencia de Negocio:** Deduce entidades del mundo real (ej. `DimCustomer.dtsx` → Entity: `CUSTOMER`).
+3. **Detección de Orquestación:** Busca llamadas explícitas (`Execute Package`) para crear flechas en el grafo.
 
 ---
 
-### Agent C: El Arquitecto (Interpreter Service)
-**Misión:** Traducir la *intención de negocio* a código moderno (PySpark/Databricks). No traduce línea por línea, re-imagina el proceso.
+### Agent C: El Arquitecto (Interpreter Service) → **CONTEXT-AWARE GENERATION**
+**Misión:** Traducir la *intención de negocio* a código moderno (PySpark/Databricks). Ahora usa los metadatos de Architect v2.0 para **optimizar automáticamente**.
 
 **System Prompt Actual (`agent_c_interpreter.md`):**
 > "You are a Principal Data Engineer... Your goal is NOT to translate text, but to migrate **business intent** into high-performance, idempotent, and resilient code."
 
+**Nuevas Capacidades (Phase 6):**
+1. **Inyección de Particionamiento:** Si `metadata.partition_key` existe, genera `.partitionBy(col)`.
+2. **Masking Automático de PII:** Si `metadata.is_pii = true`, genera `sha2(col("email"), 256)`.
+3. **Optimización por Volumen:** Si `metadata.volume = HIGH`, prioriza shuffles eficientes.
+4. **Variable Injection (Phase 8):** Usa placeholders `${VAR}` en lugar de valores hardcodeados.
+
 **Reglas Clave:**
-1.  **Idempotencia Obligatoria:** Prohibido usar `mode("overwrite")`. Debe generar lógica `MERGE INTO` con claves de negocio.
-2.  **Integridad Referencial:** Debe inyectar manejo de "Miembros Desconocidos" (`COALESCE(col, -1)`) en los Lookups, algo que SSIS suele ignorar.
-3.  **Arquitectura Medallion:** Organiza el código en celdas claras: `Config` -> `Extract` -> `Transform` -> `Load`.
-4.  **Surgical Logic:** Ignora el ruido del XML y extrae solo la "médula lógica" (queries y transformaciones).
+1. **Idempotencia Obligatoria:** Prohibido usar `mode("overwrite")`. Debe generar lógica `MERGE INTO` con claves de negocio.
+2. **Integridad Referencial:** Debe inyectar manejo de "Miembros Desconocidos" (`COALESCE(col, -1)`) en los Lookups.
+3. **Arquitectura Medallion:** Organiza el código en celdas claras: `Config` → `Extract` → `Transform` → `Load`.
+4. **Surgical Logic:** Ignora el ruido del XML y extrae solo la "médula lógica" (queries y transformaciones).
 
 ---
 
@@ -65,16 +77,24 @@ graph TD
 
 ---
 
-### Agent G: Gobernanza (Governance Service)
-**Misión:** Generar la documentación técnica y de negocio que los desarrolladores humanos odian escribir.
+### Agent G: Gobernanza (Governance Service) → **AI-DRIVEN CERTIFICATION**
+**Misión:** Ya no solo genera documentación, ahora **audita el código** y certifica su calidad con un score numérico.
 
 **System Prompt Actual (`agent_g_governance.md`):**
 > "Your mission is to provide clarity, control, and documentation... transform raw Generated Code into high-level intelligence."
 
+**Nuevas Capacidades (Phase 7):**
+1. **Compliance Audit:** Verifica que las recomendaciones de Architect v2.0 fueron aplicadas (particionamiento, masking).
+2. **Scoring (0-100):** Calcula un puntaje de certificación basado en checks automatizados.
+3. **Runbook Automation:** Genera un documento técnico de handover (`Modernization_Runbook.md`).
+4. **Variable Manifest:** Incluye `variables_manifest.json` en el ZIP de export.
+5. **Data Quality Contracts (Phase 9):** Opcionalmente genera suites de Great Expectations y Soda.
+
 **Reglas Clave:**
-1.  **Linaje:** Extrae tablas de origen y destino para crear una matriz de trazabilidad.
-2.  **PII Detection:** Escanea el código en busca de campos sensibles no enmascarados.
-3.  **Business Language:** Explica la lógica en inglés técnico, no solo repitiendo el código.
+1. **Linaje:** Extrae tablas de origen y destino para crear una matriz de trazabilidad.
+2. **PII Detection:** Escanea el código en busca de campos sensibles no enmascarados.
+3. **Business Language:** Explica la lógica en inglés técnico, no solo repitiendo el código.
+4. **Dual Output:** Retorna tanto `audit_json` (checks estructurados) como `runbook_markdown` (documentación).
 
 ---
 

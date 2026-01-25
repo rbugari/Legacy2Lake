@@ -13,6 +13,7 @@ interface ColumnMapping {
     is_pii: boolean;
     is_nullable: boolean;
     default_value?: string;
+    logic?: string;
 }
 
 interface ColumnMappingEditorProps {
@@ -169,6 +170,7 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
                             <th className="px-3 py-2 text-left font-semibold">Target Column</th>
                             <th className="px-3 py-2 text-left font-semibold">Target Type</th>
                             <th className="px-3 py-2 text-left font-semibold">Transform</th>
+                            <th className="px-3 py-2 text-left font-semibold">Logic</th>
                             <th className="px-3 py-2 text-center font-semibold">PII</th>
                             <th className="px-3 py-2 text-center font-semibold">Nullable</th>
                             <th className="px-3 py-2 text-center font-semibold w-24">Actions</th>
@@ -233,6 +235,15 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
                                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                                             ))}
                                         </select>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <input
+                                            type="text"
+                                            value={mapping.logic || ""}
+                                            onChange={(e) => handleUpdateRow(index, "logic", e.target.value)}
+                                            className="input-antigravity text-sm py-1 font-mono text-cyan-500"
+                                            placeholder="Expression"
+                                        />
                                     </td>
                                     <td className="px-3 py-2 text-center">
                                         <input

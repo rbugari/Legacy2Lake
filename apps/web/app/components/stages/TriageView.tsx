@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     ReactFlowProvider,
     useNodesState,
@@ -10,7 +10,7 @@ import {
 } from '@xyflow/react';
 import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
-import { Map, CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity } from 'lucide-react';
+import { Map, CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity, FileEdit, Activity, RefreshCw } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { API_BASE_URL } from '../../lib/config';
 import PromptsExplorer from '../PromptsExplorer'; // Added Phase 0
@@ -18,12 +18,11 @@ import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
 
 // Tab Definitions
 const TABS = [
-    { id: 'graph', label: 'Gráfico', icon: <Layout size={18} /> },
-    { id: 'grid', label: 'Grilla', icon: <List size={18} /> },
-    { id: 'mapping', label: 'Column Mapping', icon: <Database size={18} /> }, // Added Phase A
-    { id: 'prompt', label: 'Refine Prompt', icon: <Terminal size={18} /> },
-    { id: 'context', label: 'User Input', icon: <MessageSquare size={18} /> },
-    { id: 'logs', label: 'Logs', icon: <FileText size={18} /> },
+    { id: 'graph', label: 'Gráfico', icon: <Layout size={14} />, group: 'Vistas' },
+    { id: 'grid', label: 'Grilla', icon: <List size={14} />, group: 'Vistas' },
+    { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Vistas' },
+    { id: 'prompt', label: 'IA Prompts', icon: <Terminal size={14} />, group: 'Config' },
+    { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
 ];
 
 export default function TriageView({ projectId, onStageChange, isReadOnly: propReadOnly }: { projectId: string, onStageChange?: (stage: number) => void, isReadOnly?: boolean }) {
@@ -45,6 +44,10 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
     const [userContext, setUserContext] = useState("");
     const [triageLog, setTriageLog] = useState("");
 
+    // Heatmap State
+    const [activeHeatmap, setActiveHeatmap] = useState<'none' | 'pii' | 'criticality' | 'volume'>('none');
+    const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
+
     // DnD (Keep for Graph Tab logic if needed, though split pane is gone)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
@@ -54,6 +57,8 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
     const [assetContexts, setAssetContexts] = useState<Record<string, { notes: string, rules: any }>>({});
     const [selectedAssetForContext, setSelectedAssetForContext] = useState<any | null>(null);
     const [isSavingContext, setIsSavingContext] = useState(false);
+    const [editingAsset, setEditingAsset] = useState<any | null>(null);
+    const [assetNote, setAssetNote] = useState("");
 
     const handleDeleteNode = useCallback((id: string) => {
         if (isReadOnly) return;
@@ -61,20 +66,26 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
         setAssets(prev => prev.map(a => a.id === id ? { ...a, type: 'IGNORED' } : a));
     }, [setNodes, setAssets, isReadOnly]);
 
-    const enrichNodes = useCallback((nds: any[]) => {
+    const enrichNodes = useCallback((nds: any[], heatmapMode: string = 'none') => {
         return nds.map(n => ({
             ...n,
             data: {
                 ...n.data,
                 onDelete: handleDeleteNode,
                 id: n.id,
-                isReadOnly: isReadOnly // Pass readOnly to node
+                isReadOnly: isReadOnly,
+                heatmapMode: heatmapMode // Pass current heatmap mode
             },
-            draggable: !isReadOnly, // Disable dragging
+            draggable: !isReadOnly,
             selectable: !isReadOnly,
             deletable: !isReadOnly
         }));
     }, [handleDeleteNode, isReadOnly]);
+
+    // Handle Heatmap Change
+    useEffect(() => {
+        setNodes(nds => enrichNodes(nds, activeHeatmap));
+    }, [activeHeatmap, setNodes, enrichNodes]);
 
     const handleCategoryChange = useCallback(async (assetId: string, newCategory: string) => {
         if (isReadOnly) return;
@@ -369,7 +380,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
     }, [isLoading, fetchTriageLogs]);
 
 
-    const handleReTriage = async () => {
+    const handleRunTriage = async () => {
         // Confirmation for cost
         const confirmMsg = "Esta acción ejecutará agentes de IA para analizar el repositorio. Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
         if (!window.confirm(confirmMsg)) return;
@@ -445,53 +456,86 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
             <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'
                 }`}>
                 <StageHeader
-                    title="Análisis & Triaje"
-                    subtitle="Escaneo de código legado y definición de malla operativa"
-                    icon={<Map className="text-primary" />}
-                    isReadOnly={isReadOnly}
+                    title="Stage 1: Smart Triage"
+                    subtitle="Asset classification and contextual enrichment"
+                    icon={<FileEdit className="text-cyan-500" />}
+                    helpText="Define which assets are CORE, SUPPORT or IGNORE. You can inject business context to improve AI precision."
                     onApprove={handleApprove}
-                    approveLabel="Aprobar Diseño"
-                    isExecuting={isLoading}
-                    onRestart={handleReset}
+                    approveLabel="Approve Design"
                 >
-                    <button
-                        onClick={handleReTriage}
-                        disabled={isReadOnly || isLoading}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-white shadow-blue-200 dark:shadow-none'
-                            }`}
-                    >
-                        <Play size={12} className={isLoading ? "animate-spin" : ""} />
-                        {isLoading ? "Procesando..." : "Ejecutar Análisis"}
-                    </button>
-                    <button
-                        onClick={async () => {
-                            await saveLayout(nodes, edges);
-                            if (activeTab === 'grid') await handleSyncGraph();
-                        }}
-                        disabled={isReadOnly}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all border ${isReadOnly
-                            ? 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed hidden'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
-                            }`}
-                    >
-                        <Save size={12} /> Guardar
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleRunTriage}
+                            disabled={isLoading}
+                            className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-secondary transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
+                        >
+                            {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
+                            {isLoading ? "Processing..." : "Run Analysis"}
+                        </button>
+                        <button
+                            onClick={() => saveLayout(nodes, edges)}
+                            className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
+                        >
+                            <Save size={14} /> Save Design
+                        </button>
+                    </div>
                 </StageHeader>
 
-                {/* Tab Navigation */}
-                <div className="flex border-b border-[var(--border)] bg-[var(--surface)] px-4">
-                    {TABS.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-2 px-6 py-4 text-xs font-bold border-b-2 transition-colors ${activeTab === tab.id
-                                ? 'border-primary text-primary bg-primary/5 font-bold'
-                                : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'
-                                }`}
-                        >
-                            {tab.icon}
-                            <span>{tab.label}</span>
-                        </button>
+                {/* GRAPH INTELLIGENCE (HEATMAPS) */}
+                <div className="bg-black/20 border-b border-white/5 px-8 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2">
+                            <Activity size={14} className="text-gray-500" />
+                            <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Graph Intelligence</span>
+                        </div>
+                        <div className="flex bg-white/5 p-1 rounded-lg border border-white/5 gap-1">
+                            {[
+                                { id: 'none', label: 'Default', icon: <Map size={12} /> },
+                                { id: 'pii', label: 'PII Heatmap', icon: <ShieldAlert size={12} /> },
+                                { id: 'criticality', label: 'Criticality', icon: <AlertTriangle size={12} /> },
+                                { id: 'volume', label: 'Load Volume', icon: <Infinity size={12} /> },
+                            ].map(h => (
+                                <button
+                                    key={h.id}
+                                    onClick={() => setActiveHeatmap(h.id as any)}
+                                    className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${activeHeatmap === h.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20' : 'text-gray-500 hover:text-cyan-500'
+                                        }`}
+                                >
+                                    {h.icon} {h.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {isLoading && (
+                        <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
+                            <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest">Architect Analyzing Flow...</span>
+                        </div>
+                    )}
+                </div>
+                {/* Tab Navigation - Grouped Structure */}
+                <div className="flex items-center gap-8 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-[#0a0a0a] px-8 py-3 overflow-x-auto no-scrollbar">
+                    {['Vistas', 'Config'].map(group => (
+                        <div key={group} className="flex items-center gap-3">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-tertiary)] vertical-text opacity-50 pl-2">
+                                {group}
+                            </span>
+                            <div className="flex bg-gray-50 dark:bg-black/20 p-1.5 rounded-2xl border border-gray-100 dark:border-white/5">
+                                {TABS.filter(t => t.group === group).map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all whitespace-nowrap ${activeTab === tab.id
+                                            ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20 active:scale-95'
+                                            : 'text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/5'
+                                            }`}
+                                    >
+                                        <span className={activeTab === tab.id ? 'text-white' : 'text-gray-400'}>{tab.icon}</span>
+                                        <span>{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </div>
 
@@ -504,30 +548,32 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                             {/* Drag Source Sidebar (Small Grid) */}
                             {!isReadOnly && (
                                 <div
-                                    className={`h-full border-r border-[var(--border)] bg-[var(--surface)] flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-64' : 'w-0'
+                                    className={`h-full border-r border-gray-100 dark:border-white/5 bg-white dark:bg-[#121212]/30 backdrop-blur-md flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-72' : 'w-0'
                                         }`}
                                 >
-                                    <div className="p-3 border-b border-[var(--border)] text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)] bg-[var(--background)] flex justify-between items-center whitespace-nowrap">
-                                        <span>Activos</span>
+                                    <div className="p-4 border-b border-gray-100 dark:border-white/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-tertiary)] bg-gray-50 dark:bg-black/20 flex justify-between items-center whitespace-nowrap">
+                                        <span>Componentes Disponibles</span>
                                         <button
                                             onClick={() => setShowSidebar(false)}
-                                            className="p-1 hover:bg-[var(--text-primary)]/10 rounded transition-colors"
+                                            className="p-1 px-2 hover:bg-cyan-500/10 hover:text-cyan-500 rounded-lg transition-colors"
                                             title="Ocultar Panel"
                                         >
-                                            <PanelLeftClose size={14} />
+                                            <PanelLeftClose size={16} />
                                         </button>
                                     </div>
-                                    <div className="flex-1 overflow-hidden min-w-[256px] custom-scrollbar">
-                                        <div className="p-4 border-b border-[var(--border)]">
+                                    <div className="flex-1 overflow-hidden min-w-[288px] custom-scrollbar">
+                                        <div className="p-4 border-b border-gray-100 dark:border-white/5">
                                             <DiscoveryDashboard assets={assets} nodes={nodes} />
                                         </div>
 
                                         {isLoading ? (
-                                            <div className="p-4 text-center text-gray-400 text-sm">Cargando...</div>
+                                            <div className="p-12 text-center">
+                                                <div className="w-6 h-6 border-2 border-cyan-500 border-b-transparent rounded-full animate-spin mx-auto mb-3" />
+                                                <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Escaneando...</span>
+                                            </div>
                                         ) : (
-                                            <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-3 space-y-2">
-                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">Available Components</h4>
-                                                {assets.map(asset => (
+                                            <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-3">
+                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'SUPPORT').map(asset => (
                                                     <div
                                                         key={asset.id}
                                                         draggable
@@ -535,18 +581,21 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                             e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
                                                             e.dataTransfer.effectAllowed = 'move';
                                                         }}
-                                                        className="p-3 text-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:border-primary/50 hover:shadow-md cursor-grab flex items-center gap-3 transition-all group"
+                                                        className="p-4 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/5 cursor-grab flex items-center gap-4 transition-all group scale-100 hover:scale-[1.02] active:scale-95"
                                                     >
-                                                        <div className="p-1.5 bg-gray-50 dark:bg-gray-950 rounded-lg group-hover:bg-primary/10 transition-colors">
-                                                            <Layout size={14} className="text-gray-400 group-hover:text-primary" />
+                                                        <div className="w-10 h-10 bg-gray-50 dark:bg-black/20 rounded-xl flex items-center justify-center group-hover:bg-cyan-500/10 group-hover:text-cyan-500 transition-all border border-transparent group-hover:border-cyan-500/20">
+                                                            <Layout size={18} className="text-gray-400 group-hover:text-cyan-500" />
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
-                                                            <span className="font-bold truncate text-gray-700 dark:text-gray-200">{asset.name}</span>
-                                                            <span className="text-xs text-gray-400 uppercase">{asset.complexity || 'Low'} Complexity</span>
+                                                            <span className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-cyan-500 transition-colors">{asset.name}</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <div className={`w-1.5 h-1.5 rounded-full ${asset.complexity === 'HIGH' ? 'bg-orange-500' : 'bg-cyan-500'}`} />
+                                                                <span className="text-[9px] font-bold text-[var(--text-tertiary)] uppercase tracking-tight">{asset.complexity || 'Low'} Complexity</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
-                                                {assets.length === 0 && <div className="text-center text-gray-400 text-sm py-10 italic">No assets found in manifest</div>}
+                                                {assets.length === 0 && <div className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest py-20 italic">No assets found in manifest</div>}
                                             </div>
                                         )}
                                     </div>
@@ -558,15 +607,15 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                             {!showSidebar && (
                                 <button
                                     onClick={() => setShowSidebar(true)}
-                                    className="absolute top-4 left-4 z-30 p-2 bg-white/80 dark:bg-gray-800/80 rounded-lg border border-gray-200 dark:border-gray-700 shadow-md backdrop-blur-md text-gray-500 hover:text-primary transition-all"
+                                    className="absolute top-6 left-6 z-30 p-3 bg-white/90 dark:bg-[#121212]/90 rounded-2xl border border-gray-100 dark:border-white/10 shadow-2xl backdrop-blur-xl text-cyan-500 hover:scale-110 active:scale-95 transition-all"
                                     title="Mostrar Panel"
                                 >
-                                    <PanelLeftOpen size={18} />
+                                    <PanelLeftOpen size={20} />
                                 </button>
                             )}
 
                             {/* Graph Area */}
-                            <div className="flex-1 h-full bg-gray-100 dark:bg-gray-900 relative" ref={setReactFlowInstance}>
+                            <div className="flex-1 h-full bg-gray-50 dark:bg-[#0a0a0a] relative" ref={setReactFlowInstance}>
                                 <MeshGraph
                                     nodes={nodes}
                                     edges={edges}
@@ -576,25 +625,99 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                     onInit={setReactFlowInstance}
                                     onDrop={onDrop}
                                     onDragOver={onDragOver}
+                                    onNodeClick={(node) => setSelectedNodeData(node.data)}
                                     onNodeDragStop={(_: any, __: any, allNodes: any[]) => {
-                                        // Auto-save on drag stop
-                                        if (allNodes) {
-                                            saveLayout(allNodes, edges);
-                                        } else {
-                                            // Fallback if third arg is missing/lazy
-                                            saveLayout(nodes, edges);
-                                        }
+                                        if (allNodes) saveLayout(allNodes, edges);
+                                        else saveLayout(nodes, edges);
                                     }}
                                     onNodesDelete={(deletedNodes: any[]) => {
                                         const deletedIds = deletedNodes.map((n: any) => n.id);
                                         setAssets(prev => prev.map(a => deletedIds.includes(a.id) ? { ...a, type: 'IGNORED' } : a));
                                     }}
-
                                 />
+
+                                {/* HIGH-RES DETAIL PANEL */}
+                                {selectedNodeData && (
+                                    <div className="absolute top-6 bottom-6 right-6 w-96 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+                                        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
+                                            <div className="flex items-center gap-3">
+                                                <Activity size={18} className="text-cyan-500" />
+                                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">Asset Intelligence</h3>
+                                            </div>
+                                            <button
+                                                onClick={() => setSelectedNodeData(null)}
+                                                className="p-2 hover:bg-white/10 rounded-xl text-gray-400 font-bold text-[10px] uppercase"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar-slim">
+                                            {/* Header Info */}
+                                            <div>
+                                                <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">{selectedNodeData.category}</span>
+                                                <h2 className="text-xl font-bold text-[var(--text-primary)] mt-1 break-all">{selectedNodeData.label}</h2>
+                                                <p className="text-xs text-[var(--text-tertiary)] font-medium mt-2">{selectedNodeData.id}</p>
+                                            </div>
+
+                                            {/* Metadata Grid */}
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {[
+                                                    { label: 'Volume', value: selectedNodeData.metadata?.volume || 'LOW', color: 'text-emerald-500' },
+                                                    { label: 'Latency', value: selectedNodeData.metadata?.latency || 'BATCH', color: 'text-cyan-500' },
+                                                    { label: 'Criticality', value: selectedNodeData.metadata?.criticality || 'P3', color: 'text-amber-500' },
+                                                    { label: 'Lineage', value: selectedNodeData.metadata?.lineage_group || 'Bronze', color: 'text-purple-500' },
+                                                ].map(m => (
+                                                    <div key={m.label} className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                        <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">{m.label}</span>
+                                                        <span className={`text-xs font-black uppercase ${m.color}`}>{m.value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Design Decisions */}
+                                            <div className="space-y-4">
+                                                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <ShieldCheck size={14} className="text-emerald-500" />
+                                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Architect Suggestion</span>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <span className="text-[9px] font-bold text-gray-600 uppercase">Target Name:</span>
+                                                            <p className="text-xs font-mono text-cyan-500 mt-1">{selectedNodeData.target_name || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[9px] font-bold text-gray-600 uppercase">Partition Strategy:</span>
+                                                            <p className="text-xs font-bold text-white mt-1">{selectedNodeData.metadata?.partition_key || 'No partitioning suggested'}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <Zap size={14} className="text-amber-500" />
+                                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Actionable Intel</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-3 h-3 rounded-full ${selectedNodeData.metadata?.is_pii ? 'bg-red-500' : 'bg-gray-700'}`} />
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                            PII Content: {selectedNodeData.metadata?.is_pii ? 'YES (High Risk)' : 'NO (Clean)'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 {nodes.length === 0 && (
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className="bg-white/80 dark:bg-black/50 p-6 rounded-xl border border-dashed border-gray-300 text-center">
-                                            <p className="text-gray-500 text-sm">Arrastra paquetes desde la izquierda.</p>
+                                        <div className="bg-white/80 dark:bg-black/40 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center backdrop-blur-sm">
+                                            <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                                <Expand className="text-cyan-500" size={32} />
+                                            </div>
+                                            <h4 className="text-lg font-bold mb-1">Canvas Vacío</h4>
+                                            <p className="text-sm text-[var(--text-tertiary)]">Arrastra componentes desde la izquierda para orquestar la resolución.</p>
                                         </div>
                                     </div>
                                 )}
@@ -633,11 +756,18 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                             <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse shrink-0" title="Tiene notas de negocio" />
                                                         )}
                                                         <button
-                                                            onClick={() => setSelectedAssetForContext(asset.id)}
-                                                            className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                            title="Editar notas de negocio"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingAsset(asset);
+                                                                setAssetNote(asset.business_notes || '');
+                                                            }}
+                                                            className="p-1 px-2 bg-white/5 hover:bg-white/10 rounded-md text-gray-500 hover:text-white transition-all order-2"
+                                                            title="Edit business notes"
                                                         >
-                                                            <MessageSquare size={12} />
+                                                            <div className="flex items-center gap-1">
+                                                                <FileEdit size={10} />
+                                                                <span className="text-[10px] uppercase font-black">Edit</span>
+                                                            </div>
                                                         </button>
                                                         <button
                                                             onClick={() => {
@@ -787,23 +917,21 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                     {activeTab === 'prompt' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
                             <div className="max-w-7xl mx-auto space-y-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h2 className="text-2xl font-black flex items-center gap-3">
-                                            <div className="p-2 bg-primary/10 rounded-xl">
-                                                <Terminal className="text-primary" size={24} />
-                                            </div>
-                                            Triage Prompt Engineering
-                                        </h2>
-                                        <p className="text-sm text-[var(--text-secondary)] mt-1">
-                                            Personaliza cómo la IA clasifica y organiza los activos de este proyecto.
-                                        </p>
+                                <div className="flex items-center justify-between mb-8">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-cyan-500/10 rounded-2xl text-cyan-500 border border-cyan-500/20">
+                                            <Zap size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-white uppercase tracking-wider">GLOBAL BUSINESS CONTEXT</h3>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">AI Instruction Overrides</p>
+                                        </div>
                                     </div>
                                     <button
-                                        onClick={handleReTriage}
-                                        className="btn-primary flex items-center gap-2"
+                                        onClick={handleRunTriage}
+                                        className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
                                     >
-                                        <Play size={16} /> Re-Ejecutar Triaje
+                                        <Play size={16} /> Re-Run Triage
                                     </button>
                                 </div>
 
@@ -832,6 +960,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                         value={userContext}
                                         onChange={(e) => setUserContext(e.target.value)}
                                         placeholder="Ej: Ignorar tablas de auditoría, priorizar paquetes de Ventas, usar prefijo 'stg_' para tablas staging..."
+                                        placeholder="Ex: Ignore audit tables, prioritize Sales packages, use 'stg_' prefix for staging tables..."
                                         className="w-full h-40 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
                                     />
                                     <div className="flex justify-end">
@@ -840,7 +969,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                             className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-secondary transition-colors flex items-center gap-2"
                                             disabled={isSavingContext}
                                         >
-                                            <Save size={16} /> {isSavingContext ? 'Guardando...' : 'Guardar Contexto Global'}
+                                            <Save size={16} /> {isSavingContext ? 'Saving...' : 'Save Global Context'}
                                         </button>
                                     </div>
                                 </div>
@@ -911,78 +1040,80 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
             </div>
 
             {/* Release 1.1: Context Sidebar Overlay */}
-            {selectedAssetForContext && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-                    <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                            <div>
-                                <h3 className="font-bold text-lg dark:text-white">Contexto de Negocio</h3>
-                                <p className="text-sm text-gray-500 truncate w-64">
-                                    {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
-                                </p>
-                            </div>
-                            <button onClick={() => setSelectedAssetForContext(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                                <PanelLeftClose size={20} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-gray-400 uppercase">Descripción / Notas</label>
-                                <textarea
-                                    className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
-                                    placeholder="Indica reglas específicas para este archivo..."
-                                    defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
-                                    id="context-notes"
-                                />
+            {
+                selectedAssetForContext && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+                        <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-lg dark:text-white">Contexto de Negocio</h3>
+                                    <p className="text-sm text-gray-500 truncate w-64">
+                                        {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
+                                    </p>
+                                </div>
+                                <button onClick={() => setSelectedAssetForContext(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                                    <PanelLeftClose size={20} />
+                                </button>
                             </div>
 
-                            <div className="space-y-4">
-                                <label className="text-sm font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
+                            <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                                 <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                        <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
-                                        <span>Ignorar Duplicados</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                        <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
-                                        <span>Tipado Estricto</span>
-                                    </label>
+                                    <label className="text-sm font-bold text-gray-400 uppercase">Descripción / Notas</label>
+                                    <textarea
+                                        className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
+                                        placeholder="Indica reglas específicas para este archivo..."
+                                        defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
+                                        id="context-notes"
+                                    />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <label className="text-sm font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
+                                            <span>Ignorar Duplicados</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
+                                            <span>Tipado Estricto</span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-3">
-                            <button
-                                onClick={() => setSelectedAssetForContext(null)}
-                                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => {
-                                    const notes = (document.getElementById('context-notes') as HTMLTextAreaElement).value;
-                                    const rules = {
-                                        ignore_duplicates: (document.getElementById('rule-dedup') as HTMLInputElement).checked,
-                                        strict_types: (document.getElementById('rule-types') as HTMLInputElement).checked,
-                                    };
-                                    // Local state update first
-                                    setAssetContexts(prev => ({
-                                        ...prev,
-                                        [selectedAssetForContext]: { notes, rules }
-                                    }));
-                                    // Save to backend
-                                    handleSaveContext(selectedAssetForContext, notes);
-                                }}
-                                className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
-                                disabled={isSavingContext}
-                            >
-                                {isSavingContext ? 'Guardando...' : <><Save size={16} /> Guardar</>}
-                            </button>
+                            <div className="p-6 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => setSelectedAssetForContext(null)}
+                                    className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const notes = (document.getElementById('context-notes') as HTMLTextAreaElement).value;
+                                        const rules = {
+                                            ignore_duplicates: (document.getElementById('rule-dedup') as HTMLInputElement).checked,
+                                            strict_types: (document.getElementById('rule-types') as HTMLInputElement).checked,
+                                        };
+                                        // Local state update first
+                                        setAssetContexts(prev => ({
+                                            ...prev,
+                                            [selectedAssetForContext]: { notes, rules }
+                                        }));
+                                        // Save to backend
+                                        handleSaveContext(selectedAssetForContext, notes);
+                                    }}
+                                    className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+                                    disabled={isSavingContext}
+                                >
+                                    {isSavingContext ? 'Guardando...' : <><Save size={16} /> Guardar</>}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </ReactFlowProvider>
+                )
+            }
+        </ReactFlowProvider >
     );
 }

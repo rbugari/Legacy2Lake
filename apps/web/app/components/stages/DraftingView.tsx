@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain } from "lucide-react";
+import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
 import PromptsExplorer from "../PromptsExplorer";
 import DesignRegistryPanel from "./DesignRegistryPanel";
@@ -135,33 +135,28 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
     };
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="Generación (Drafting)"
-                subtitle="Traducción de lógica legacy a PySpark/SQL Nativo"
-                icon={<FileCode className="text-primary" />}
-                isReadOnly={isReadOnly}
-                isApproveDisabled={progress < 100}
-                isExecuting={isRunning}
-                onApprove={() => handleApprove()}
-                approveLabel="Aprobar y Refinar"
-                onRestart={async () => {
-                    if (window.confirm("¿Reiniciar Drafting? Se borrará el código generado.")) {
-                        onStageChange(2); // In this case, just resetting to same stage might be enough or call reset
-                    }
-                }}
+                title="Stage 2: AI Drafting"
+                subtitle="Code synthesis and architectural pattern application"
+                icon={<Code className="text-cyan-500" />}
+                helpText="Agent F (Factory) translates legacy code to PySpark following Medallion architecture standards. Initial drafts are generated for all CORE assets."
+                onApprove={() => onStageChange(3)}
+                approveLabel="Approve and Refine"
             >
-                <button
-                    onClick={handleRunMigration}
-                    disabled={isRunning || isReadOnly}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all ${isRunning || isReadOnly
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                        : "bg-primary hover:bg-primary/90 text-white"
-                        }`}
-                >
-                    <Play size={12} className={isRunning ? "animate-spin" : ""} />
-                    {isRunning ? "Running..." : "Ejecutar Pipeline"}
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRunMigration}
+                        disabled={isRunning || isReadOnly}
+                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 dark:shadow-none"
+                            }`}
+                    >
+                        <Play size={12} className={isRunning ? "animate-spin" : ""} />
+                        {isRunning ? "Running..." : "Run Pipeline"}
+                    </button>
+                </div>
             </StageHeader>
 
             {/* Tab Navigation Area */}
@@ -179,10 +174,10 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                     label="Output Explorer"
                 />
                 <TabButton
-                    active={activeTab === "config"}
-                    onClick={() => setActiveTab("config")}
-                    icon={<Settings size={16} />}
-                    label="Solution Config"
+                    active={activeTab === "files"}
+                    onClick={() => setActiveTab("files")}
+                    icon={<FolderOpen size={16} />}
+                    label="Output Explorer"
                 />
             </div>
 
@@ -198,35 +193,8 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                     />
                 )}
                 {activeTab === "files" && <FileManagerTab projectId={projectId} activeTenantId={activeTenantId} />}
-                {activeTab === "config" && (
-                    <div className="h-full flex flex-col gap-6 overflow-y-auto">
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <TechnologyMixer projectId={projectId} />
-                        </div>
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <Settings size={20} className="text-primary" />
-                                Estándares de Arquitectura
-                            </h3>
-                            <DesignRegistryPanel projectId={projectId} />
-                        </div>
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <ProjectSettingsPanel
-                                projectId={projectId}
-                                onSettingsChange={(s) => setMigrationLimit(s.migration_limit || 0)}
-                            />
-                        </div>
-                        <div className="bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                <Brain size={20} className="text-primary" />
-                                Configuración de Inteligencia
-                            </h3>
-                            <PromptsExplorer />
-                        </div>
-                    </div>
-                )}
             </div>
-        </div>
+        </div >
     );
 }
 
@@ -236,9 +204,9 @@ function TabButton({ active, onClick, icon, label }: any) {
     return (
         <button
             onClick={onClick}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${active
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+            className={`flex items-center gap-2 px-8 py-5 text-[10px] font-bold uppercase tracking-[0.2em] border-b-2 transition-all ${active
+                ? "border-emerald-500 text-emerald-500 bg-emerald-500/5"
+                : "border-transparent text-[var(--text-tertiary)] hover:text-emerald-500 hover:bg-emerald-500/5"
                 }`}
         >
             {icon} {label}
@@ -252,14 +220,14 @@ function ExecutionTab({ isRunning, logs, progress, limit }: any) {
             {/* Control Panel: Shows current persistence status */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-8">
                 <div className="flex-1">
-                    <h2 className="text-xl font-bold flex items-center gap-2"><Play className="text-primary" /> Start Migration</h2>
-                    <p className="text-gray-500 text-sm mt-1">Execute the full pipeline: Librarian → Topology → Developer → Compliance.</p>
+                    <h2 className="text-xl font-bold flex items-center gap-2"><Play className="text-emerald-500" /> Start Migration</h2>
+                    <p className="text-[var(--text-secondary)] text-sm mt-1">Execute the full pipeline: Librarian → Topology → Developer → Compliance.</p>
                 </div>
 
                 <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                     <div className="text-right">
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Persistent Batch Limit</label>
-                        <span className="text-lg font-mono font-bold text-primary">{limit === 0 ? "UNLIMITED" : limit}</span>
+                        <span className="text-lg font-mono font-bold text-emerald-500">{limit === 0 ? "UNLIMITED" : limit}</span>
                     </div>
                     <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
                         <Lock size={16} className="text-gray-400" />

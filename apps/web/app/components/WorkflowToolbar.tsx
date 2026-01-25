@@ -1,6 +1,6 @@
 "use client";
 
-import { Map, FileEdit, Code, CheckCircle, ArrowRight } from "lucide-react";
+import { Map, FileEdit, Code, CheckCircle, ArrowRight, Lock, Package, ShieldCheck } from "lucide-react";
 
 interface WorkflowToolbarProps {
     currentStage: number; // The stage the project is officially in
@@ -14,10 +14,12 @@ const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     onSetView
 }) => {
     const stages = [
-        { id: 1, label: "Triaje", icon: Map },
-        { id: 2, label: "Drafting", icon: FileEdit },
-        { id: 3, label: "Refinamiento", icon: Code },
-        { id: 4, label: "Output", icon: CheckCircle },
+        { id: 0, label: "Discovery", icon: Map },
+        { id: 1, label: "Triaje", icon: FileEdit },
+        { id: 2, label: "Drafting", icon: Code },
+        { id: 3, label: "Refinamiento", icon: CheckCircle },
+        { id: 4, label: "Auditoría", icon: ShieldCheck }, // Renamed Output to Auditoría for flow
+        { id: 5, label: "Handover", icon: Package },
     ];
 
     return (
@@ -39,26 +41,26 @@ const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                                 className={`
                                     flex items-center gap-2.5 px-6 py-3 rounded-full text-sm font-black transition-all relative
                                     ${isViewing
-                                        ? "bg-primary text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)] cursor-default scale-105 z-10"
+                                        ? "bg-cyan-600 text-white shadow-[0_4px_20px_rgba(6,182,212,0.3)] cursor-default scale-105 z-10"
                                         : isLocked
                                             ? "text-gray-400 dark:text-gray-600 cursor-not-allowed grayscale"
-                                            : "text-primary hover:bg-primary/10 cursor-pointer hover:scale-102"
+                                            : "text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 cursor-pointer hover:scale-102"
                                     }
                                 `}
                             >
                                 <Icon size={18} className={isViewing ? "animate-pulse" : ""} />
-                                <span className="hidden md:inline uppercase tracking-wider">{stage.label}</span>
+                                <span className="hidden md:inline uppercase tracking-widest">{stage.label}</span>
                                 {isLocked && (
                                     <div className="absolute top-1 right-1 bg-gray-100 dark:bg-gray-800 rounded-full p-0.5 border border-gray-200 dark:border-gray-700 w-4 h-4 flex items-center justify-center">
-                                        <ArrowRight size={10} className="text-gray-400 rotate-90" />
+                                        <Lock size={10} className="text-gray-400" />
                                     </div>
                                 )}
                             </button>
 
                             {/* Connector Line (except for last item) */}
                             {idx < stages.length - 1 && (
-                                <div className={`mx-2 ${isLocked ? "text-gray-100 dark:text-gray-800" : "text-gray-300 dark:text-gray-700"} opacity-50`}>
-                                    <ArrowRight size={16} />
+                                <div className={`mx-2 ${isLocked ? "text-gray-100 dark:text-gray-800" : "text-cyan-500/30 dark:text-cyan-500/20"} opacity-50`}>
+                                    <div className="h-px w-6 bg-current" />
                                 </div>
                             )}
                         </div>

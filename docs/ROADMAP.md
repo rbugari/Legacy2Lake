@@ -1,26 +1,38 @@
 # Project Roadmap 🗺️
 
-## 🚀 Upcoming Features (v3.x & Beyond)
+> [!NOTE]
+> **Product Strategy**: Legacy2Lake operates as a high-fidelity **Artifact Generator**. Our roadmap focuses on generating production-ready code, IaC, and Orchestration manifests while maintaining a zero-access security posture relative to client infrastructure.
 
-### Phase E: Infrastructure as Code (IaC)
+## � Future Backlog (Post-v3.2)
+
+### Phase E: Infrastructure as Code (IaC) - **DEFERRED**
 - [ ] **Terraform/Bicep Generation**: Auto-generate IaC for Cloud Storage, Databricks Clusters, and Secrets Managers.
-- [ ] **Network & Security Provisioning**: Automate VNet injection and private link setups for modernization landing zones.
+- [ ] **Network & Security Provisioning**: Automate VNet injection.
 
-### Phase F: Data Observability & Quality
-- [ ] **Data Quality Contracts**: Auto-generate Soda/Great Expectations suites based on the *Column Mapping* metadata.
-- [ ] **Active Lineage Integration**: Direct push to Unity Catalog or Microsoft Purview.
+### Phase G: Real-time Modernization - **DEFERRED**
+- [ ] **Delta Live Tables (DLT)**: Streaming-ready pipelines.
+- [ ] **CDC Pattern Automation**: Merge/Upsert patterns for real-time ingest.
 
-### Phase G: Real-time Modernization
-- [ ] **Delta Live Tables (DLT)**: Evolution of batch PySpark into streaming-ready DLT pipelines.
-- [ ] **CDC Pattern Automation**: Converting legacy change-tracking logic into modern Merge/Upsert patterns.
+### Phase H: Multi-Dialect Expansion - **DEFERRED**
+- [ ] **Informatica/DataStage**: XML exports support.
+- [ ] **PL/SQL Modernization**: Oracle package conversion.
 
-### Phase H: Multi-Dialect Expansion
-- [ ] **Informatica/DataStage**: Native support for XML exports from additional ETL legacy tools.
-- [ ] **PL/SQL Modernization**: Converting Oracle packages into Python-based functional services.
+## 📦 Delivered Scope (v3.2)
+The **Enterprise Modernization Suite** is feature complete for the core artifact generation use case. Focus is on high-fidelity PySpark, Governance, and Parameterized Delivery.
 
 ## 📅 Release History
 
-### v3.0 (The Enterprise Compliance Hub) - CURRENT
+### v3.2 (The Enterprise Modernization Suite) - LATEST
+- **Architect v2.0**: Automated inference of partitioning, volume, and latency.
+- **Discovery Analytics**: Real-time heatmaps for PII and Business Criticality.
+- **Governance Audit (Agent G)**: AI-driven compliance scoring and automated Runbook generation.
+- **High-Fidelity Generation**: Context-aware PySpark code with partition-by and PII masking support.
+- **Variable Injection**: Dynamic Environment parameterization (e.g. `${S3_ROOT}`).
+- **Data Quality**: Auto-generated Great Expectations & Soda validation suites.
+
+### v3.1 (The Discovery Gate & Management Hub) 
+
+### v3.0 (The Enterprise Compliance Hub)
 - **AI Audit Engine**: Automated architectural reviews with scoring and suggestions.
 - **Column Mapping Editor**: Detailed field-level mapping with business context.
 - **Universal Orchestration**: Airflow, Databricks, and YAML DAG generation.

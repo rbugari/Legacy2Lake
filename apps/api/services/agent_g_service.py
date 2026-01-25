@@ -51,20 +51,23 @@ class AgentGService:
         with open(self.prompt_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-    async def generate_documentation(self, project_name: str, mesh: Dict[str, Any], transformations: List[Dict[str, Any]]) -> str:
-        """Generates technical documentation and lineage for a project."""
+    async def generate_governance(self, project_name: str, mesh: Dict[str, Any], transformations: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generates technical documentation (Runbook) and Compliance Audit (JSON)."""
         system_prompt = self._load_prompt(self.prompt_path)
         
         human_content = f"""
         PROJECT NAME: {project_name}
         
+        PROJECT METADATA (Architect v2.0 Forensics):
+        {json.dumps(metadata or {}, indent=2)}
+
         EXECUTION MESH (Logic Relationships):
         {json.dumps(mesh, indent=2)}
         
         TRANSFORMED CODE (PySpark Logic):
         {json.dumps(transformations, indent=2)}
         
-        Please generate the Governance Documentation following the structure defined in your system prompt.
+        Please generate the Governance Audit and Runbook. Return ONLY the JSON object.
         """
 
         messages = [
@@ -74,4 +77,18 @@ class AgentGService:
 
         llm = await self._get_llm()
         response = await llm.ainvoke(messages)
-        return response.content.strip()
+        content = response.content.strip()
+
+        # Clean JSON if LLM added markdown blocks
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {
+                "error": "Failed to parse Agent G response",
+                "raw_response": content
+            }

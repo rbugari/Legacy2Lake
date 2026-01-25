@@ -6,7 +6,10 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import shutil
+import time
+from datetime import datetime
 from typing import Dict, Any, List, Optional
+from apps.api.utils.logger import logger
 
 from services.agent_a_service import AgentAService
 from services.graph_service import GraphService
@@ -112,18 +115,54 @@ async def login(request: Request):
         "message": f"Welcome {u}"
     }
 
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    start_time = time.perf_counter()
+    
+    # Extract identity for logging if possible
+    client_id = request.headers.get("X-Client-ID", "anonymous")
+    
+    response = await call_next(request)
+    
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    
+    # Do not log health checks to avoid noise
+    if request.url.path != "/health":
+        logger.http_log(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            client_id=client_id
+        )
+    
+    return response
+
+@app.get("/health", tags=["System"])
+async def health_check(db: SupabasePersistence = Depends(get_db)):
+    """Health check with DB connectivity verification."""
+    db_status = "connected"
+    try:
+        # Simple query to check connectivity
+        await db.client.table("projects").select("count", count="exact").limit(1).execute()
+    except Exception as e:
+        logger.error(f"Health check DB failure: {str(e)}", component="Health")
+        db_status = f"disconnected ({str(e)})"
+        
+    return {
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "db_connection": db_status,
+        "timestamp": datetime.now().isoformat(),
+        "version": app.version
+    }
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    err_msg = traceback.format_exc()
-    print(f"GLOBAL ERROR: {err_msg}")
+    logger.error(f"Unhandled exception: {str(exc)}", component="FastAPI", exc=exc)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc), "traceback": err_msg},
-        headers={
-            "Access-Control-Allow-Origin": "http://localhost:3005",
-            "Access-Control-Allow-Credentials": "true"
-        }
+        content={"success": False, "error": "Internal Server Error", "detail": str(exc)},
+        headers={"Access-Control-Allow-Credentials": "true"}
     )
 
 app.include_router(config.router)
@@ -264,6 +303,7 @@ class ColumnMappingPayload(BaseModel):
     is_pii: bool = False
     is_nullable: bool = True
     default_value: Optional[str] = None
+    logic: Optional[str] = None
 
 @app.get("/assets/{asset_id}/column-mappings")
 async def get_asset_column_mappings(asset_id: str, db: SupabasePersistence = Depends(get_db)):
@@ -289,7 +329,8 @@ async def save_column_mapping(
         transformation_rule=payload.transformation_rule,
         is_pii=payload.is_pii,
         is_nullable=payload.is_nullable,
-        default_value=payload.default_value
+        default_value=payload.default_value,
+        logic=payload.logic
     )
     result = await service.upsert_mapping(mapping)
     return {"success": True, "mapping": result}
@@ -312,7 +353,8 @@ async def bulk_save_mappings(
             transformation_rule=m.transformation_rule,
             is_pii=m.is_pii,
             is_nullable=m.is_nullable,
-            default_value=m.default_value
+            default_value=m.default_value,
+            logic=m.logic
         )
         for m in mappings
     ]

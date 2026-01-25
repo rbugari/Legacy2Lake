@@ -6,6 +6,7 @@ from services.agent_a_service import AgentAService
 from services.agent_c_service import AgentCService
 from services.agent_f_service import AgentFService
 from services.agent_g_service import AgentGService
+from services.agent_s_service import AgentSService
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -82,12 +83,14 @@ async def list_prompts():
     c = AgentCService()._load_prompt()
     f = AgentFService()._load_prompt()
     g = AgentGService()._load_prompt()
+    s = AgentSService()._load_prompt()
     
     return {"prompts": [
         {"id": "agent-a", "name": "Agent A (Architect)", "content": a},
         {"id": "agent-c", "name": "Agent C (Interpreter)", "content": c},
         {"id": "agent-f", "name": "Agent F (Critic)", "content": f},
         {"id": "agent-g", "name": "Agent G (Governance)", "content": g},
+        {"id": "agent-s", "name": "Agent S (Scout)", "content": s},
     ]}
 
 @router.post("/cartridges")
@@ -153,7 +156,8 @@ async def delete_cartridge(cartridge_id: str):
 
 # --- Validation / Test Endpoint ---
 class ValidationRequest(BaseModel):
-    agent_id: str
+    agent_id: Optional[str] = None
+    agente_id: Optional[str] = None # Legacy alias
     user_input: str
     system_prompt_override: Optional[str] = None
 
@@ -161,13 +165,17 @@ class ValidationRequest(BaseModel):
 async def validate_agent(payload: ValidationRequest):
     """
     Test runs an agent with specific input to validate the prompt.
-    Handles 'agente_id' vs 'agent_id' compatibility if needed.
+    Handles 'agente_id' vs 'agent_id' compatibility.
     """
     from langchain_core.messages import SystemMessage, HumanMessage
     
+    agent_id = payload.agent_id or payload.agente_id
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="Agent ID (or agente_id) is required")
+
     # Resolve Agent Service
     agent_service = None
-    if payload.agent_id.lower() in ["agent-a", "agent_a", "a"]:
+    if agent_id.lower() in ["agent-a", "agent_a", "a"]:
         agent_service = AgentAService()
     elif payload.agent_id.lower() in ["agent-c", "agent_c", "c"]:
         agent_service = AgentCService()
@@ -175,6 +183,8 @@ async def validate_agent(payload: ValidationRequest):
         agent_service = AgentFService()
     elif payload.agent_id.lower() in ["agent-g", "agent_g", "g"]:
         agent_service = AgentGService()
+    elif payload.agent_id.lower() in ["agent-s", "agent_s", "s"]:
+        agent_service = AgentSService()
         
     if not agent_service:
         raise HTTPException(status_code=400, detail="Invalid Agent ID")
@@ -203,3 +213,14 @@ async def validate_agent(payload: ValidationRequest):
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# --- Stage 0.5 Scout ---
+class ScoutRequest(BaseModel):
+    file_list: List[str]
+
+@router.post("/scout/assess")
+async def assess_repository(payload: ScoutRequest):
+    """Triggers Agent S to assess repository completeness."""
+    agent_s = AgentSService()
+    result = await agent_s.assess_repository(payload.file_list)
+    return result

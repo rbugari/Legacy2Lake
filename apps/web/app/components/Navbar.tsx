@@ -4,17 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import { User, Shield, Briefcase, Settings } from "lucide-react";
+import { User, Shield, Briefcase, Settings, Sparkles, LogOut } from "lucide-react";
 
 function IdentityBadge() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   if (!user) return null;
 
   const isAdmin = user.role === "ADMIN";
   const badgeColor = isAdmin
-    ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
-    : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800";
+    ? "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800"
+    : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${badgeColor} text-xs font-medium transition-colors`}>
@@ -28,6 +28,7 @@ function IdentityBadge() {
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { logout } = useAuth();
 
   // Hide Navbar on the landing page ("/")
   if (pathname === "/") {
@@ -41,15 +42,28 @@ export default function Navbar() {
           {/* Logo updated to use image */}
           <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             {/* <img src="/logo.png" alt="Shift-T Logo" className="h-8 w-auto object-contain" /> */}
-            <span className="text-xl font-bold tracking-tighter text-[var(--color-primary)] hidden sm:block">Legacy2Lake</span>
+            <span className="text-xl font-bold tracking-tighter text-cyan-500 hover:text-cyan-400 transition-colors hidden sm:block">Legacy2Lake</span>
           </Link>
         </div>
         <div className="flex items-center gap-3">
+          {/* News Sparkles */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('toggle-news', { detail: { open: true } }))}
+            className="p-2 text-cyan-500 hover:bg-cyan-500/10 rounded-full transition-all relative group"
+            title="What's New"
+          >
+            <Sparkles className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-cyan-500 rounded-full animate-ping" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-cyan-500 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+          </button>
+
+          <div className="h-6 w-px bg-white/5 mx-1" />
+
           {/* Identity Badge */}
           <IdentityBadge />
 
-          {/* System Console (Transparency Mode) - Visible to All */}
-          <Link href="/system" className="p-2 text-[var(--text-secondary)] hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-full transition-colors" title="System Architecture">
+          {/* Platform Admin Console (Transparency Mode) - Visible to All */}
+          <Link href="/admin" className="p-2 text-[var(--text-secondary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-full transition-colors" title="Platform Administration">
             <Shield className="w-5 h-5" />
           </Link>
 
@@ -59,6 +73,20 @@ export default function Navbar() {
           </Link>
 
           <ThemeToggle />
+
+          <div className="h-6 w-px bg-white/5 mx-1" />
+
+          <button
+            onClick={() => {
+              if (window.confirm("Are you sure you want to log out?")) {
+                logout();
+              }
+            }}
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+            title="Log Out"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </nav>

@@ -7,11 +7,12 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import hashlib
 import bcrypt
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
 
 from services.persistence_service import SupabasePersistence
 
-router = APIRouter(tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 # --- Models ---
@@ -26,6 +27,19 @@ class LoginResponse(BaseModel):
     client_id: str
     role: Optional[str] = None
     message: str
+
+
+class TenantCreate(BaseModel):
+    username: str
+    password: str
+    client_id: str
+    role: str = "USER"
+
+
+class TenantUpdate(BaseModel):
+    role: Optional[str] = None
+    client_id: Optional[str] = None
+    password: Optional[str] = None
 
 
 # --- Password Utilities ---
@@ -142,3 +156,80 @@ async def login(request: Request):
         role=user.get("role"),
         message=f"Welcome {username}"
     )
+
+
+# --- Admin Management Endpoints ---
+
+@router.get("/tenants", response_model=List[dict])
+async def list_tenants(request: Request):
+    """List all tenants (Admin only)."""
+    # Authorization check (In a real app, use a dependency)
+    role = request.headers.get("X-Role")
+    if role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Forbidden: Admin access required")
+    
+    db = SupabasePersistence(tenant_id=None)
+    res = db.client.table("utm_tenants").select(
+        "tenant_id, client_id, username, role, created_at"
+    ).execute()
+    return res.data
+
+
+@router.post("/tenants")
+async def create_tenant(payload: TenantCreate, request: Request):
+    """Create a new tenant (Admin only)."""
+    role = request.headers.get("X-Role")
+    if role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    db = SupabasePersistence(tenant_id=None)
+    
+    # Check if exists
+    existing = db.client.table("utm_tenants").select("tenant_id").eq("username", payload.username).execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    new_tenant = {
+        "username": payload.username,
+        "password_hash": hashlib.sha256(payload.password.encode()).hexdigest(), # Legacy compatibility
+        "password_hash_bcrypt": hash_password_bcrypt(payload.password),
+        "client_id": payload.client_id,
+        "role": payload.role,
+        "tenant_id": f"t-{payload.username}-{datetime.now().strftime('%y%m%d%H%M')}"
+    }
+    
+    db.client.table("utm_tenants").insert(new_tenant).execute()
+    return {"success": True, "tenant_id": new_tenant["tenant_id"]}
+
+
+@router.patch("/tenants/{tenant_id}")
+async def update_tenant(tenant_id: str, payload: TenantUpdate, request: Request):
+    """Update tenant details (Admin only)."""
+    role = request.headers.get("X-Role")
+    if role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    db = SupabasePersistence(tenant_id=None)
+    update_data = {}
+    if payload.role: update_data["role"] = payload.role
+    if payload.client_id: update_data["client_id"] = payload.client_id
+    if payload.password:
+        update_data["password_hash_bcrypt"] = hash_password_bcrypt(payload.password)
+    
+    if not update_data:
+        return {"success": True, "message": "No changes applied"}
+        
+    db.client.table("utm_tenants").update(update_data).eq("tenant_id", tenant_id).execute()
+    return {"success": True}
+
+
+@router.delete("/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: str, request: Request):
+    """Remove a tenant (Admin only)."""
+    role = request.headers.get("X-Role")
+    if role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    db = SupabasePersistence(tenant_id=None)
+    db.client.table("utm_tenants").delete().eq("tenant_id", tenant_id).execute()
+    return {"success": True}

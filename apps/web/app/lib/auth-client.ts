@@ -5,6 +5,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     // 1. Get Credentials from LocalStorage
     const tenant_id = localStorage.getItem("x_tenant_id");
     const client_id = localStorage.getItem("x_client_id");
+    const role = localStorage.getItem("x_role");
 
     // 2. Prepare Headers
     const headers: HeadersInit = {
@@ -17,6 +18,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     }
     if (client_id) {
         (headers as any)["X-Client-ID"] = client_id;
+    }
+    if (role) {
+        (headers as any)["X-Role"] = role;
     }
 
     // 3. Construct URL

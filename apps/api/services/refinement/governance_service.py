@@ -7,22 +7,55 @@ from pathlib import Path
 from datetime import datetime
 
 try:
-    from apps.api.services.persistence_service import PersistenceService
+    from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
+    from apps.api.services.agent_g_service import AgentGService
+    from apps.api.services.refinement.quality_service import QualityService
 except ImportError:
     try:
-        from services.persistence_service import PersistenceService
+        from services.persistence_service import PersistenceService, SupabasePersistence
+        from services.agent_g_service import AgentGService
+        from services.refinement.quality_service import QualityService
     except ImportError:
-        from ..persistence_service import PersistenceService
+        from ..persistence_service import PersistenceService, SupabasePersistence
+        from ..agent_g_service import AgentGService
+        from .quality_service import QualityService
 
 class GovernanceService:
     def __init__(self):
-        pass
+        self.agent_g = AgentGService()
+        self.quality = QualityService()
 
-    def get_certification_report(self, project_id: str) -> dict:
+    async def get_certification_report(self, project_id: str) -> dict:
         """
-        Generates a modernization certificate with real project metrics.
+        Generates a modernization certificate with AI-driven compliance checks.
         """
-        project_path = PersistenceService.ensure_solution_dir(project_id)
+        db = SupabasePersistence()
+        project_name = await db.get_project_name_by_id(project_id) or project_id
+        
+        # 1. Fetch Context for Agent G
+        assets = await db.get_project_assets(project_id)
+        # Filter for transformations
+        transformations = []
+        for asset in assets:
+            # Fetch transformation logic from DB or Files
+            # For simplicity, we'll summarize the assets and their inferred metadata
+            transformations.append({
+                "asset_id": asset.get("object_id"),
+                "name": asset.get("source_name"),
+                "metadata": asset.get("metadata", {}),
+                "is_pii": asset.get("is_pii", False),
+                "target_name": asset.get("target_name")
+            })
+
+        # 2. Get AI Audit from Agent G
+        governance_data = await self.agent_g.generate_governance(
+            project_name=project_name,
+            mesh={}, # Layout data could go here
+            transformations=transformations,
+            metadata={"project_id": project_id} # Global metadata 
+        )
+
+        project_path = PersistenceService.ensure_solution_dir(project_name)
         refined_dir = Path(project_path) / PersistenceService.STAGE_REFINEMENT
         
         # 1. Calculate Stats
@@ -48,21 +81,19 @@ class GovernanceService:
         # 3. Compliance Logs
         compliance_logs = self._fetch_compliance_logs(project_path)
 
-        # 4. Dynamic Score
-        # Start at 70, +10 for each medallion layer present, +5 for lineage coverage
-        score = 70
-        if stats["bronze_count"] > 0: score += 10
-        if stats["silver_count"] > 0: score += 10
-        if stats["gold_count"] > 0: score += 10
-        if stats["total_lines"] > 1000: score = min(100, score + 5)
-
+        # 4. Dynamic Score (Merge Heuristic with AI)
+        ai_audit = governance_data.get("audit_json", {})
+        score = ai_audit.get("score", 70)
+        
         return {
             "project_id": project_id,
             "certified_at": datetime.now().isoformat(),
             "score": score,
             "stats": stats,
             "lineage": lineage,
-            "compliance_logs": compliance_logs
+            "compliance_logs": compliance_logs,
+            "audit_details": ai_audit,
+            "runbook": governance_data.get("runbook_markdown", "")
         }
 
     def _generate_lineage(self, project_id: str) -> list:
@@ -123,16 +154,53 @@ class GovernanceService:
                             })
         return logs[-15:] # Return 15 most recent entries
 
-    def create_export_bundle(self, project_id: str) -> io.BytesIO:
+    async def create_export_bundle(self, project_id: str) -> io.BytesIO:
         """
-        Creates a ZIP bundle of the entire solution.
+        Creates a ZIP bundle of the entire solution, including the AI Runbook.
         """
+        # 1. Get real report to extract runbook
+        report = await self.get_certification_report(project_id)
+        runbook = report.get("runbook", "# Modernization Runbook")
+
+        # 2. Fetch Project Variables
+        db = SupabasePersistence()
+        settings = await db.get_project_settings(project_id) or {}
+        variables = settings.get("variables", {})
+
         project_path = PersistenceService.ensure_solution_dir(project_id)
         buffer = io.BytesIO()
         
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            # Add Runbook explicitly
+            zip_file.writestr("Modernization_Runbook.md", runbook)
+            # Add Variables Manifest
+            zip_file.writestr("variables_manifest.json", json.dumps(variables, indent=2))
+
+            # 3. Generate Data Quality Contracts (Optional)
+            assets = await db.get_project_assets(project_id)
+            if assets:
+                zip_file.writestr("quality_contracts/", "") # ensure folder exists
+                for asset in assets:
+                    # Fetch real column mappings
+                    mappings = await db.get_asset_mappings(asset.get("object_id"))
+                    if not mappings: continue
+                    
+                    # Generate GX and Soda
+                    gx_suite = self.quality.generate_great_expectations_json(asset["source_name"], mappings)
+                    soda_check = self.quality.generate_soda_yaml(asset["source_name"], mappings)
+                    
+                    if gx_suite:
+                        zip_file.writestr(
+                            f"quality_contracts/gx/great_expectations_{asset['source_name']}.json", 
+                            json.dumps(gx_suite, indent=2)
+                        )
+                    if soda_check:
+                         zip_file.writestr(
+                            f"quality_contracts/soda/checks_{asset['source_name']}.yaml", 
+                            soda_check
+                        )
+
             for root, _, files in os.walk(project_path):
-                # We skip Refined/profile_metadata.json but keep everything else
                 for file in files:
                     file_path = os.path.join(root, file)
                     arcname = os.path.relpath(file_path, project_path)

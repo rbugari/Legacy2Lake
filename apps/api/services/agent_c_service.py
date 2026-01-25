@@ -126,6 +126,9 @@ class AgentCService:
         *************************************************
         """
 
+        # Metadata Extraction (Architect v2.0)
+        metadata = node_data.get("metadata", {})
+        
         human_content = f"""
         {style_block}
 
@@ -140,12 +143,14 @@ class AgentCService:
         CONTEXT:
         {json.dumps({
             **(context or {}),
-            "load_strategy": node_data.get("load_strategy", "FULL_OVERWRITE"),
-            "frequency": node_data.get("frequency", "DAILY"),
-            "is_pii": node_data.get("is_pii", False),
+            "load_strategy": metadata.get("load_strategy", node_data.get("load_strategy", "FULL_OVERWRITE")),
+            "frequency": metadata.get("latency", node_data.get("frequency", "DAILY")),
+            "is_pii": metadata.get("is_pii", node_data.get("is_pii", False)),
             "masking_rule": node_data.get("masking_rule"),
             "target_name": node_data.get("target_name"),
             "business_entity": node_data.get("business_entity"),
+            "metadata": metadata, # Full v2.0 metadata
+            "variables": node_data.get("variables", context.get("variables", {})), # Phase 8: Variables
             "global_design_registry": registry,
             "project_set_overview": set_context # Visibility into other project assets
         }, indent=2)}

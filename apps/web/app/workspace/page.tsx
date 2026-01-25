@@ -4,10 +4,15 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useAuth } from "../context/AuthContext";
 import { useSearchParams } from "next/navigation"; // [NEW]
 import TriageView from "../components/stages/TriageView";
+import DiscoveryView from "../components/stages/DiscoveryView";
 import DraftingView from "../components/stages/DraftingView";
 import GovernanceView from "../components/stages/GovernanceView";
 import RefinementView from "../components/stages/RefinementView";
+import HandoverView from "../components/stages/HandoverView";
 import WorkflowToolbar from "../components/WorkflowToolbar";
+import LogsSidePanel from "../components/LogsSidePanel";
+import WorkspaceSidebar from "../components/WorkspaceSidebar";
+import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 
 import { API_BASE_URL } from "../lib/config";
 import {
@@ -33,6 +38,9 @@ function WorkspaceContent() {
     const [activeView, setActiveView] = useState(1);
 
     const [selectedNode, setSelectedNode] = useState<any>(null);
+    const [showLogs, setShowLogs] = useState(false);
+    const [showConfig, setShowConfig] = useState(false);
+    const [sidebarStats, setSidebarStats] = useState({ core: 12, ignored: 4, pending: 8 });
 
     useEffect(() => {
         if (!id || id === 'undefined') {
@@ -176,8 +184,17 @@ function WorkspaceContent() {
 
     return (
         <ReactFlowProvider>
-            <div className="flex h-screen bg-[var(--background)] text-[var(--text-primary)] overflow-hidden">
-                {/* Sidebar removed per user request */}
+            <div className="flex h-screen bg-[#050505] text-[var(--text-primary)] overflow-hidden">
+                <WorkspaceSidebar
+                    projectName={projectName || id}
+                    activeStage={projectStage}
+                    stats={sidebarStats}
+                    onAction={(action) => {
+                        if (action === 'config') setShowConfig(true);
+                        if (action === 'export') window.open(`${API_BASE_URL}/projects/${id}/export`);
+                        if (action === 'reset') alert("Reset Phase placeholder");
+                    }}
+                />
 
                 {/* Main Content */}
                 <main className="flex-1 flex flex-col relative">
@@ -185,8 +202,8 @@ function WorkspaceContent() {
                     <header className="bg-[var(--surface)] border-b border-[var(--border)] flex flex-col pt-3 px-6 gap-2">
                         <div className="flex justify-between items-start w-full">
                             <div className="flex flex-col gap-1">
-                                <h1 className="font-bold text-lg tracking-tight text-[var(--text-secondary)] flex items-center gap-2">
-                                    Workspace / <span className="text-[var(--text-primary)]">{projectName || id}</span>
+                                <h1 className="font-black text-xs uppercase tracking-[0.3em] text-[var(--text-tertiary)] flex items-center gap-2">
+                                    Engineering Console
                                 </h1>
                                 {repoUrl && (
                                     <a
@@ -215,8 +232,24 @@ function WorkspaceContent() {
                                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
 
                                 <button
+                                    onClick={() => setShowLogs(true)}
+                                    className="p-1.5 text-gray-500 hover:text-cyan-500 hover:bg-cyan-500/10 rounded-md transition-all relative"
+                                    title="Agent Terminal"
+                                >
+                                    <Terminal size={18} />
+                                    <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
+                                </button>
+                                <button
+                                    onClick={() => setShowConfig(true)}
+                                    className="p-1.5 text-gray-500 hover:text-cyan-500 hover:bg-cyan-500/10 rounded-md transition-all"
+                                    title="Configure Solution"
+                                >
+                                    <Settings size={18} />
+                                </button>
+                                <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
+                                <button
                                     className="p-1.5 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all"
-                                    title="Colaborar"
+                                    title="Collaborate"
                                 >
                                     <Users size={18} />
                                 </button>
@@ -225,7 +258,7 @@ function WorkspaceContent() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="p-1.5 text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all"
-                                    title="Exportar (.zip)"
+                                    title="Export (.zip)"
                                 >
                                     <Download size={18} />
                                 </a>
@@ -257,10 +290,16 @@ function WorkspaceContent() {
                             </div>
                         )}
 
+                        {activeView === 0 && (
+                            <DiscoveryView
+                                projectId={id}
+                                onStageChange={(s: number) => handleApproveStage(s)}
+                            />
+                        )}
                         {activeView === 1 && (
                             <TriageView
                                 projectId={id}
-                                onStageChange={(s) => handleApproveStage(s)}
+                                onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                             />
                         )}
@@ -286,8 +325,27 @@ function WorkspaceContent() {
                         {activeView === 4 && (
                             <GovernanceView projectId={id || ""} />
                         )}
+                        {activeView === 5 && (
+                            <HandoverView
+                                projectId={id || ""}
+                                onStageChange={(s: number) => handleApproveStage(s)}
+                            />
+                        )}
 
                     </div >
+
+                    {/* Global Diagnostics Sidebar */}
+                    <LogsSidePanel
+                        projectId={id}
+                        isOpen={showLogs}
+                        onClose={() => setShowLogs(false)}
+                    />
+
+                    {/* Global Configuration Drawer */}
+                    <SolutionConfigDrawer
+                        isOpen={showConfig}
+                        onClose={() => setShowConfig(false)}
+                    />
                 </main >
             </div >
         </ReactFlowProvider >

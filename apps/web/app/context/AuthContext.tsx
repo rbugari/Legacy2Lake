@@ -19,8 +19,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  login: () => {},
-  logout: () => {},
+  login: () => { },
+  logout: () => { },
   isAuthenticated: false,
 });
 
@@ -50,8 +50,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 2. Protect Routes
     const publicRoutes = ["/login"];
+    const isAdminRoute = pathname.startsWith("/admin");
+
     if (!user && !publicRoutes.includes(pathname)) {
       router.push("/login");
+    } else if (user && isAdminRoute && user.role !== "ADMIN") {
+      router.push("/dashboard"); // Unauthorized: Back to safety
     }
   }, [user, loading, pathname, router]);
 
@@ -60,7 +64,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem("x_client_id", client_id);
     localStorage.setItem("x_role", role);
     localStorage.setItem("x_username", username);
-    
+
     setUser({ tenant_id, client_id, role, username });
     router.push("/dashboard"); // Default redirect
   };
@@ -76,7 +80,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
-        {!loading && children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

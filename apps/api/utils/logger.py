@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import traceback
 from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, List
@@ -23,8 +24,18 @@ class ShiftLogger:
     def warning(self, message: str, component: str = "System"):
         self.log(message, "WARNING", component)
 
-    def error(self, message: str, component: str = "System"):
+    def error(self, message: str, component: str = "System", exc: Exception = None):
+        """Logs error with optional traceback."""
         self.log(message, "ERROR", component)
+        if exc:
+            tb = traceback.format_exc()
+            print(f"--- ERROR TRACEBACK ({component}) ---\n{tb}\n-------------------------")
+            sys.stdout.flush()
+
+    def http_log(self, method: str, path: str, status_code: int, duration_ms: float, client_id: str = "anonymous"):
+        """Structured HTTP request logging."""
+        msg = f"{method} {path} - {status_code} ({duration_ms:.2f}ms) [{client_id}]"
+        self.log(msg, "INFO", "HTTP")
 
     def debug(self, message: str, component: str = "System", data: Any = None):
         """
