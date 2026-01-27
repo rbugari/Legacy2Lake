@@ -1,50 +1,42 @@
-# Legacy2Lake 🚀 (Release 2.0 - The Style Master)
+# Legacy2Lake Documentation Index (v3.2)
 
-**Legacy2Lake** is an AI-augmented modernization platform that automates the transition from legacy ETL ecosystems (SSIS, Informatica, SQL) to modern Cloud Lakehouse architectures (Databricks, Snowflake).
+Welcome to the **Legacy2Lake** Documentation Center. This directory contains detailed guides for every phase of the intelligent data modernization process.
 
-## 🧠 Release 2.0 Highlights
-- **Contextual Configuration**: "Solution Config" tabs embedded directly in Drafting and Refinement stages.
-- **Technology Mixer**: Prominent UI to toggle between **PySpark**, **Pure SQL**, or **Mixed** generation modes.
-- **Design Registry**: Enforce architectural standards (naming conventions, masking rules) via a global policy engine.
-- **Expanded Workspace**: Optimized 80% width layout for engineering workflows.
-- **Stage 4 Governance**: Automated lineage mapping and certification reports.
+## 🚀 Getting Started
+- **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend and Frontend.
+- **[Release Notes](docs/RELEASE_NOTES.md)**: What's new in the latest version.
+- **[Introduction to Legacy2Lake](docs/INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
 
-## 📖 Documentation
-- **[Getting Started](docs/INTRODUCTION.md)**
-- **[Roadmap & Future](docs/ROADMAP.md)**
-- **[Phase 1: Triage](docs/PHASE_1_TRIAGE.md)**
-- **[Phase 2: Drafting](docs/PHASE_2_DRAFTING.md)**
-- **[Phase 3: Refinement](docs/PHASE_3_REFINEMENT.md)**
-- **[Phase 4: Governance](docs/PHASE_4_GOVERNANCE.md)**
-- **[Technical Specification](docs/SPECIFICATION.md)**
+## 🔄 Project Lifecycle (The 6 Stages)
 
-## ⚙️ Key Features
+Unique to Legacy2Lake is its simplified yet powerful 6-stage workflow, designed to take you from a raw dump of files to a production-ready solution.
 
-### 1. Technology Mixer
-Located in the **Solution Config** tab, this allows you to choose the target output dialect:
-- **PySpark Native**: Standard Delta Lake data engineering.
-- **Pure SQL**: Legacy-friendly stored procedures and DDL.
-- **Mixed / Dual**: Generate both dialects simultaneously for maximum flexibility.
+1.  **[Stage 1: Discovery (Ingest)](docs/stages/STAGE_1_DISCOVERY.md)**
+    - Technical ingestion and static analysis of source assets.
+2.  **[Stage 2: Triage (Strategy)](docs/stages/STAGE_2_TRIAGE.md)**
+    - Scoping, classification, and complex dependency mapping.
+3.  **[Stage 3: Drafting (Plan)](docs/stages/STAGE_3_DRAFTING.md)**
+    -  Architectural blueprinting and target stack definition.
+4.  **[Stage 4: Refinement (Build)](docs/stages/STAGE_4_REFINEMENT.md)**
+    - AI-driven code generation, transpilation, and rigorous "Fixer" loops.
+5.  **[Stage 5: Certification (Audit)](docs/stages/STAGE_5_CERTIFICATION.md)**
+    - Security scanning, compliance scoring, and quality gates.
+6.  **[Stage 6: Handover (Deliver)](docs/stages/STAGE_6_HANDOVER.md)**
+    - Runbook generation, variable injection, and final bundle export.
 
-### 2. Design Registry
-Define your "Tribal Knowledge" once, apply it everywhere:
-- **NAMING**: Prefixes for Bronze/Silver/Gold tables.
-- **PATHS**: Root locations for ADLS/S3.
-- **PRIVACY**: Default masking strategies (SHA256, Partial).
+## 🛠 Technical Reference
+- [Platform Architecture](docs/technical/architecture.md)
+- [Metadata Store (Data Model)](docs/technical/data_model.md)
+- [API Contract](docs/technical/api_contract.md)
+- [System Prompts & Agents](docs/technical/system_prompts_and_agents.md)
+- [Cartridge Development Manual](docs/technical/cartridge_manual.md)
+- [Future Releases & Roadmap](docs/ROADMAP.md)
 
-### 3. Multi-Agent Orchestration
-- **Agent A (Architect)**: Designing the Medallion architecture.
-- **Agent C (Coder)**: Generating high-fidelity PySpark/SQL code.
-- **Agent F (Fixer)**: Self-healing refinement loops.
-
-## 🛠 Quick Start
-To launch the platform locally:
-1. Ensure your `.env` is configured.
-2. Run the unified launcher:
-```bash
-python run.py
-```
-3. Access the dashboard at `http://localhost:3005`.
+## 📊 Feature Highlights (v3.2)
+- **Enterprise Modernization Suite**:
+    - **Forensic Intelligence**: Automatic Volume, PII, and Partition detection.
+    - **Smart Generation**: AI-optimized code based on data characteristics.
+    - **Certification**: Compliance scoring and automated runbook delivery.
 
 ---
-*Powered by the Legacy2Lake Orchestration Engine.*
+*Legacy2Lake Documentation Framework v3.3 - Enterprise Ready*
