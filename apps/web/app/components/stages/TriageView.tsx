@@ -18,14 +18,27 @@ import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
 
 // Tab Definitions
 const TABS = [
-    { id: 'graph', label: 'Gráfico', icon: <Layout size={14} />, group: 'Vistas' },
-    { id: 'grid', label: 'Grilla', icon: <List size={14} />, group: 'Vistas' },
-    { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Vistas' },
-    { id: 'prompt', label: 'IA Prompts', icon: <Terminal size={14} />, group: 'Config' },
+    { id: 'graph', label: 'Graph', icon: <Layout size={14} />, group: 'Views' },
+    { id: 'grid', label: 'Grid', icon: <List size={14} />, group: 'Views' },
+    { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Views' },
+    { id: 'prompt', label: 'AI Prompts', icon: <Terminal size={14} />, group: 'Config' },
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
+    { id: 'logs', label: 'Execution', icon: <FileText size={14} />, group: 'Config' },
 ];
 
-export default function TriageView({ projectId, onStageChange, isReadOnly: propReadOnly }: { projectId: string, onStageChange?: (stage: number) => void, isReadOnly?: boolean }) {
+export default function TriageView({
+    projectId,
+    activeTenantId,
+    onStageChange,
+    isReadOnly: propReadOnly,
+    onStatsUpdate
+}: {
+    projectId: string,
+    activeTenantId?: string,
+    onStageChange?: (stage: number) => void,
+    isReadOnly?: boolean,
+    onStatsUpdate?: (stats: any) => void
+}) {
     // Safety check: prioritize Prop ReadOnly (from parent) but keep internal state for fallback
     const isReadOnly = propReadOnly ?? false;
     const [activeTab, setActiveTab] = useState('graph');
@@ -215,11 +228,30 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
     }, [projectId, enrichNodes]);
 
     useEffect(() => {
-        if (projectId) {
+        if (projectId && projectId !== 'undefined' && projectId !== '') {
             fetchProject();
             fetchLayout();
+        } else {
+            setIsLoading(false);
         }
     }, [projectId, fetchProject, fetchLayout]);
+
+    // Update parent stats whenever assets change
+    const lastSidebarStatsReported = useRef("");
+    useEffect(() => {
+        if (onStatsUpdate && assets.length >= 0) {
+            const stats = {
+                core: assets.filter(a => a.type === 'CORE' || a.category === 'CORE').length,
+                ignored: assets.filter(a => a.type === 'IGNORED').length,
+                pending: assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length
+            };
+            const statsStr = JSON.stringify(stats);
+            if (lastSidebarStatsReported.current !== statsStr) {
+                lastSidebarStatsReported.current = statsStr;
+                onStatsUpdate(stats);
+            }
+        }
+    }, [assets, onStatsUpdate]);
     // Logic below the useEffect
 
     // Autosave
@@ -344,17 +376,17 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                 await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stage: '2' })
+                    body: JSON.stringify({ stage: '3' })
                 });
 
-                if (onStageChange) onStageChange(2);
+                if (onStageChange) onStageChange(3);
             } else {
                 console.error("Approve failed", await res.text());
-                alert("Error al aprobar el diseño. Intente nuevamente.");
+                alert("Error approving design. Please try again.");
             }
         } catch (e) {
             console.error("Failed to approve", e);
-            alert("Error de conexión al aprobar.");
+            alert("Connection error while approving.");
         }
     };
 
@@ -381,16 +413,27 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
 
 
     const handleRunTriage = async () => {
+        console.log("DEBUG: handleRunTriage called for projectId:", projectId);
         // Confirmation for cost
-        const confirmMsg = "Esta acción ejecutará agentes de IA para analizar el repositorio. Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
-        if (!window.confirm(confirmMsg)) return;
+        const confirmMsg = "This action will run AI agents to analyze the repository. This incurs token costs and processing time.\n\nDo you want to continue?";
 
-        if (!projectId || projectId === 'undefined') {
-            alert("Error: ID de proyecto inválido. Volviendo al dashboard...");
+        try {
+            if (!window.confirm(confirmMsg)) {
+                console.log("DEBUG: Triage cancelled by user");
+                return;
+            }
+        } catch (confirmError) {
+            console.error("DEBUG: window.confirm error:", confirmError);
+        }
+
+        if (!projectId || projectId === 'undefined' || projectId === '') {
+            console.error("DEBUG: Invalid projectId in handleRunTriage:", projectId);
+            alert("Error: Invalid Project ID. Returning to dashboard...");
             window.location.href = '/dashboard';
             return;
         }
 
+        console.log("DEBUG: Starting Triage process...");
         setIsLoading(true);
         setActiveTab('logs'); // Show logs initially to see progress
         setTriageLog("Initializing Triage Agent..."); // Reset log
@@ -405,6 +448,14 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                 })
             });
             const data = await res.json();
+            console.log("DEBUG: Triage API response received:", data);
+
+            if (data.error) {
+                console.error("Triage error from API:", data.error);
+                alert(`Analysis error: ${data.error}`);
+                if (data.log) setTriageLog(data.log);
+                return;
+            }
 
             if (data.assets) {
                 setAssets(data.assets);
@@ -421,15 +472,16 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
 
         } catch (e) {
             console.error("Triage failed", e);
-            alert("Error al ejecutar el triaje");
+            alert("Connection error running triage. Please verify backend server is running.");
         } finally {
+            console.log("DEBUG: Triage process finished.");
             setIsLoading(false);
         }
     };
 
 
     const handleReset = async () => {
-        if (!window.confirm("¿Estás seguro de que deseas limpiar el proyecto? Se eliminarán todos los resultados del triaje y el diseño actual.")) return;
+        if (!window.confirm("Are you sure you want to reset the project? All triage results and current design will be lost.")) return;
 
         setIsLoading(true);
         try {
@@ -441,11 +493,11 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                 setNodes([]);
                 setEdges([]);
                 setTriageLog("");
-                alert("Proyecto reiniciado correctamente.");
+                alert("Project reset successfully.");
             }
         } catch (e) {
             console.error("Reset failed", e);
-            alert("Error al reiniciar el proyecto.");
+            alert("Error resetting project.");
         } finally {
             setIsLoading(false);
         }
@@ -456,7 +508,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
             <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'
                 }`}>
                 <StageHeader
-                    title="Stage 1: Smart Triage"
+                    title="Stage 2: Structural Triage"
                     subtitle="Asset classification and contextual enrichment"
                     icon={<FileEdit className="text-cyan-500" />}
                     helpText="Define which assets are CORE, SUPPORT or IGNORE. You can inject business context to improve AI precision."
@@ -482,6 +534,8 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                 </StageHeader>
 
                 {/* GRAPH INTELLIGENCE (HEATMAPS) */}
+                {/* TODO v4+: Graph Intelligence Heatmaps - Feature incomplete, hidden for now */}
+                {/*
                 <div className="bg-black/20 border-b border-white/5 px-8 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2">
@@ -513,9 +567,10 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                         </div>
                     )}
                 </div>
+                */}
                 {/* Tab Navigation - Grouped Structure */}
                 <div className="flex items-center gap-8 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-[#0a0a0a] px-8 py-3 overflow-x-auto no-scrollbar">
-                    {['Vistas', 'Config'].map(group => (
+                    {['Views', 'Config'].map(group => (
                         <div key={group} className="flex items-center gap-3">
                             <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-tertiary)] vertical-text opacity-50 pl-2">
                                 {group}
@@ -552,11 +607,11 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                         }`}
                                 >
                                     <div className="p-4 border-b border-gray-100 dark:border-white/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-tertiary)] bg-gray-50 dark:bg-black/20 flex justify-between items-center whitespace-nowrap">
-                                        <span>Componentes Disponibles</span>
+                                        <span>Available Components</span>
                                         <button
                                             onClick={() => setShowSidebar(false)}
                                             className="p-1 px-2 hover:bg-cyan-500/10 hover:text-cyan-500 rounded-lg transition-colors"
-                                            title="Ocultar Panel"
+                                            title="Hide Panel"
                                         >
                                             <PanelLeftClose size={16} />
                                         </button>
@@ -569,33 +624,49 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                         {isLoading ? (
                                             <div className="p-12 text-center">
                                                 <div className="w-6 h-6 border-2 border-cyan-500 border-b-transparent rounded-full animate-spin mx-auto mb-3" />
-                                                <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Escaneando...</span>
+                                                <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Scanning...</span>
                                             </div>
                                         ) : (
-                                            <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-3">
-                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'SUPPORT').map(asset => (
-                                                    <div
-                                                        key={asset.id}
-                                                        draggable
-                                                        onDragStart={(e) => {
-                                                            e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
-                                                            e.dataTransfer.effectAllowed = 'move';
-                                                        }}
-                                                        className="p-4 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/5 cursor-grab flex items-center gap-4 transition-all group scale-100 hover:scale-[1.02] active:scale-95"
-                                                    >
-                                                        <div className="w-10 h-10 bg-gray-50 dark:bg-black/20 rounded-xl flex items-center justify-center group-hover:bg-cyan-500/10 group-hover:text-cyan-500 transition-all border border-transparent group-hover:border-cyan-500/20">
-                                                            <Layout size={18} className="text-gray-400 group-hover:text-cyan-500" />
-                                                        </div>
-                                                        <div className="flex flex-col min-w-0">
-                                                            <span className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-cyan-500 transition-colors">{asset.name}</span>
-                                                            <div className="flex items-center gap-1">
-                                                                <div className={`w-1.5 h-1.5 rounded-full ${asset.complexity === 'HIGH' ? 'bg-orange-500' : 'bg-cyan-500'}`} />
-                                                                <span className="text-[9px] font-bold text-[var(--text-tertiary)] uppercase tracking-tight">{asset.complexity || 'Low'} Complexity</span>
+                                            <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-6">
+                                                {/* PENDING REVIEW SECTION */}
+                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length > 0 && (
+                                                    <div className="space-y-3">
+                                                        <h5 className="text-[9px] font-black text-amber-500 uppercase tracking-widest pl-2">
+                                                            Pending Review ({assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length})
+                                                        </h5>
+                                                        {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').map(asset => (
+                                                            <div
+                                                                key={asset.id}
+                                                                draggable
+                                                                onDragStart={(e) => {
+                                                                    e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
+                                                                    e.dataTransfer.effectAllowed = 'move';
+                                                                }}
+                                                                className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 cursor-grab flex items-center gap-4 transition-all group scale-100 hover:scale-[1.02] active:scale-95"
+                                                            >
+                                                                <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                                                    <Activity size={18} className="text-amber-500 group-hover:text-white" />
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-amber-500 transition-colors">{asset.name}</span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-tight">Action Required</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        ))}
                                                     </div>
-                                                ))}
-                                                {assets.length === 0 && <div className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest py-20 italic">No assets found in manifest</div>}
+                                                )}
+
+                                                {/* ALL OTHER ITEMS */}
+                                                <div className="space-y-3">
+                                                    <h5 className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest pl-2">
+                                                        Unassigned Items
+                                                    </h5>
+                                                    {assets.filter(a => false).length === 0 && assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length === 0 && (
+                                                        <div className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest py-10 italic">All items classified</div>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -608,7 +679,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                 <button
                                     onClick={() => setShowSidebar(true)}
                                     className="absolute top-6 left-6 z-30 p-3 bg-white/90 dark:bg-[#121212]/90 rounded-2xl border border-gray-100 dark:border-white/10 shadow-2xl backdrop-blur-xl text-cyan-500 hover:scale-110 active:scale-95 transition-all"
-                                    title="Mostrar Panel"
+                                    title="Show Panel"
                                 >
                                     <PanelLeftOpen size={20} />
                                 </button>
@@ -716,8 +787,8 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                             <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                                 <Expand className="text-cyan-500" size={32} />
                                             </div>
-                                            <h4 className="text-lg font-bold mb-1">Canvas Vacío</h4>
-                                            <p className="text-sm text-[var(--text-tertiary)]">Arrastra componentes desde la izquierda para orquestar la resolución.</p>
+                                            <h4 className="text-lg font-bold mb-1">Empty Canvas</h4>
+                                            <p className="text-sm text-[var(--text-tertiary)]">Drag components from the left to orchestrate resolution.</p>
                                         </div>
                                     </div>
                                 )}
@@ -729,19 +800,19 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                     {activeTab === 'grid' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
                             <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-[var(--text-primary)]">
-                                <List className="text-blue-500" /> Inventario de Paquetes
+                                <List className="text-blue-500" /> Package Inventory
                             </h2>
                             <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] shadow-sm overflow-hidden">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-[var(--background)] text-[var(--text-secondary)] uppercase text-sm">
                                         <tr>
-                                            <th className="px-6 py-4">Origen</th>
-                                            <th className="px-6 py-4">Nombre Destino</th>
-                                            <th className="px-6 py-4">Entidad</th>
-                                            <th className="px-6 py-4">Soberanía</th>
-                                            <th className="px-6 py-4">Estrategia</th>
-                                            <th className="px-6 py-4">Tipo</th>
-                                            <th className="px-6 py-4 text-center">Incluir</th>
+                                            <th className="px-6 py-4">Source</th>
+                                            <th className="px-6 py-4">Target Name</th>
+                                            <th className="px-6 py-4">Entity</th>
+                                            <th className="px-6 py-4">Sovereignty</th>
+                                            <th className="px-6 py-4">Strategy</th>
+                                            <th className="px-6 py-4">Type</th>
+                                            <th className="px-6 py-4 text-center">Include</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
@@ -775,7 +846,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                                 setActiveTab('mapping');
                                                             }}
                                                             className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                            title="Mapeo de Columnas"
+                                                            title="Column Mapping"
                                                         >
                                                             <Database size={12} />
                                                         </button>
@@ -806,7 +877,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                             ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse'
                                                             : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
                                                             }`}
-                                                        title={asset.is_pii ? "PII Detectado" : "Marcar como PII"}
+                                                        title={asset.is_pii ? "PII Detected" : "Mark as PII"}
                                                     >
                                                         {asset.is_pii ? <ShieldAlert size={14} /> : <Shield size={14} />}
                                                         {asset.is_pii && <span className="text-xs font-bold">PII</span>}
@@ -841,9 +912,9 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                             }`}
                                                     >
                                                         <option value="CORE">CORE</option>
-                                                        <option value="SUPPORT">SOPORTE</option>
-                                                        <option value="IGNORED">IGNORADO</option>
-                                                        <option value="OTHER">OTRO</option>
+                                                        <option value="SUPPORT">SUPPORT</option>
+                                                        <option value="IGNORED">IGNORED</option>
+                                                        <option value="OTHER">OTHER</option>
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
@@ -859,7 +930,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                         {assets.length === 0 && (
                                             <tr>
                                                 <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
-                                                    No se encontraron activos.
+                                                    No assets found.
                                                 </td>
                                             </tr>
                                         )}
@@ -880,10 +951,10 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                             <div className="p-2 bg-primary/10 rounded-xl">
                                                 <Database className="text-primary" size={24} />
                                             </div>
-                                            Mapeo de Columnas Granular
+                                            Granular Column Mapping
                                         </h2>
                                         <p className="text-sm text-[var(--text-secondary)] mt-1">
-                                            Define transformaciones, tipos de datos y tags de seguridad (PII) por cada columna.
+                                            Define transformations, data types, and security tags (PII) for each column.
                                         </p>
                                     </div>
                                 </div>
@@ -897,15 +968,15 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                         <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
                                             <Layout size={40} className="text-gray-400" />
                                         </div>
-                                        <h3 className="text-lg font-bold">Sin activo seleccionado</h3>
+                                        <h3 className="text-lg font-bold">No Asset Selected</h3>
                                         <p className="text-sm text-gray-500 max-w-sm mt-2">
-                                            Selecciona un activo desde la Grilla o el Gráfico para editar su mapeo de columnas.
+                                            Select an asset from the Grid or Graph to edit its column mapping.
                                         </p>
                                         <button
                                             onClick={() => setActiveTab('grid')}
                                             className="mt-6 px-4 py-2 bg-primary text-white rounded-lg font-bold text-xs shadow-lg shadow-primary/20"
                                         >
-                                            Ir a la Grilla
+                                            Go to Grid
                                         </button>
                                     </div>
                                 )}
@@ -951,16 +1022,15 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                 {/* Global Context */}
                                 <div className="space-y-6">
                                     <h2 className="text-xl font-bold flex items-center gap-2">
-                                        <MessageSquare className="text-primary" /> Contexto Global del Proyecto
+                                        <MessageSquare className="text-primary" /> Global Project Context
                                     </h2>
                                     <p className="text-sm text-gray-500">
-                                        Proporciona reglas generales que el agente debe aplicar a todo el proyecto (ej: "Usar CamelCase", "Ignorar esquemas de QA").
+                                        Provide general rules that the agent must apply to the whole project (e.g., "Use CamelCase", "Ignore QA schemas").
                                     </p>
                                     <textarea
                                         value={userContext}
                                         onChange={(e) => setUserContext(e.target.value)}
-                                        placeholder="Ej: Ignorar tablas de auditoría, priorizar paquetes de Ventas, usar prefijo 'stg_' para tablas staging..."
-                                        placeholder="Ex: Ignore audit tables, prioritize Sales packages, use 'stg_' prefix for staging tables..."
+                                        placeholder="e.g. Ignore audit tables, prioritize Sales packages, use 'stg_' prefix..."
                                         className="w-full h-40 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
                                     />
                                     <div className="flex justify-end">
@@ -977,28 +1047,29 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                 <hr className="border-gray-200 dark:border-gray-800" />
 
                                 {/* Virtual Step Builder */}
+                                {/* Virtual Step Builder */}
                                 <div className="space-y-6 pb-20">
                                     <h2 className="text-xl font-bold flex items-center gap-2">
-                                        <RotateCcw className="text-primary" /> Constructor de Pasos Virtuales
+                                        <RotateCcw className="text-primary" /> Virtual Step Builder
                                     </h2>
                                     <p className="text-sm text-gray-500">
-                                        Crea nodos manuales para procesos que no están en el código. El Agente los conectará lógicamente al re-ejecutar el triaje.
+                                        Create manual nodes for processes not in the code. The Agent will logically connect them upon re-triage.
                                     </p>
 
                                     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-sm font-bold text-gray-400 uppercase">Nombre del Paso</label>
-                                                <input id="v-step-name" type="text" placeholder="Ej: Validación Manual" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                                <label className="text-sm font-bold text-gray-400 uppercase">Step Name</label>
+                                                <input id="v-step-name" type="text" placeholder="e.g. Manual Validation" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-sm font-bold text-gray-400 uppercase">Depende de (Path)</label>
-                                                <input id="v-step-dep" type="text" placeholder="Ej: schema/table.sql" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                                <label className="text-sm font-bold text-gray-400 uppercase">Depends On (Path)</label>
+                                                <input id="v-step-dep" type="text" placeholder="e.g. schema/table.sql" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-bold text-gray-400 uppercase">Instrucciones para el Agente</label>
-                                            <textarea id="v-step-desc" placeholder="Describe qué hace este paso y cómo se conecta..." className="w-full h-24 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
+                                            <label className="text-sm font-bold text-gray-400 uppercase">Agent Instructions</label>
+                                            <textarea id="v-step-desc" placeholder="Describe what this step does and how it connects..." className="w-full h-24 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
                                         </div>
                                         <div className="flex justify-end">
                                             <button
@@ -1013,7 +1084,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                                 className="px-6 py-2 bg-gray-900 text-white dark:bg-primary dark:text-white rounded-lg font-bold hover:bg-black transition-colors"
                                                 disabled={isSavingContext}
                                             >
-                                                + Añadir Paso al Mesh
+                                                + Add Step to Mesh
                                             </button>
                                         </div>
                                     </div>
@@ -1027,7 +1098,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                         <div className="h-full w-full p-8 overflow-y-auto bg-gray-950 text-gray-300 font-mono text-sm leading-relaxed">
                             <div className="max-w-5xl mx-auto">
                                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-white">
-                                    <FileText className="text-primary" /> Log de Ejecución del Agente
+                                    <FileText className="text-primary" /> Agent Execution Log
                                 </h2>
                                 <div className="bg-black/50 p-6 rounded-xl border border-gray-800 shadow-inner whitespace-pre-wrap">
                                     {triageLog}
@@ -1046,7 +1117,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                         <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
                             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
                                 <div>
-                                    <h3 className="font-bold text-lg dark:text-white">Contexto de Negocio</h3>
+                                    <h3 className="font-bold text-lg dark:text-white">Business Context</h3>
                                     <p className="text-sm text-gray-500 truncate w-64">
                                         {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
                                     </p>
@@ -1058,25 +1129,25 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
 
                             <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-gray-400 uppercase">Descripción / Notas</label>
+                                    <label className="text-sm font-bold text-gray-400 uppercase">Description / Notes</label>
                                     <textarea
                                         className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
-                                        placeholder="Indica reglas específicas para este archivo..."
+                                        placeholder="Add specific rules for this file..."
                                         defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
                                         id="context-notes"
                                     />
                                 </div>
 
                                 <div className="space-y-4">
-                                    <label className="text-sm font-bold text-gray-400 uppercase">Reglas Sugeridas</label>
+                                    <label className="text-sm font-bold text-gray-400 uppercase">Suggested Rules</label>
                                     <div className="space-y-2">
                                         <label className="flex items-center gap-2 text-sm cursor-pointer">
                                             <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
-                                            <span>Ignorar Duplicados</span>
+                                            <span>Ignore Duplicates</span>
                                         </label>
                                         <label className="flex items-center gap-2 text-sm cursor-pointer">
                                             <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
-                                            <span>Tipado Estricto</span>
+                                            <span>Strict Types</span>
                                         </label>
                                     </div>
                                 </div>
@@ -1087,7 +1158,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                     onClick={() => setSelectedAssetForContext(null)}
                                     className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
                                 >
-                                    Cancelar
+                                    Cancel
                                 </button>
                                 <button
                                     onClick={() => {
@@ -1107,7 +1178,7 @@ export default function TriageView({ projectId, onStageChange, isReadOnly: propR
                                     className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
                                     disabled={isSavingContext}
                                 >
-                                    {isSavingContext ? 'Guardando...' : <><Save size={16} /> Guardar</>}
+                                    {isSavingContext ? 'Saving...' : <><Save size={16} /> Save</>}
                                 </button>
                             </div>
                         </div>

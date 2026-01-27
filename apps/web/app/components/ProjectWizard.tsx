@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchWithAuth } from "../lib/auth-client";
 import {
     X,
     ArrowRight,
@@ -33,6 +34,28 @@ export default function ProjectWizard({ isOpen, onClose, onCreate, isCreating }:
         strategy: "Incremental Modernization"
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+    // Dynamic Options State
+    const [originsInfo, setOrigins] = useState<any[]>([]);
+    const [destinationsInfo, setDestinations] = useState<any[]>([]);
+    const [loadingOpts, setLoadingOpts] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setLoadingOpts(true);
+            Promise.all([
+                fetchWithAuth("system/origins").then(res => res.json()),
+                fetchWithAuth("system/destinations").then(res => res.json())
+            ]).then(([or, de]) => {
+                setOrigins(or.origins || []);
+                setDestinations(de.destinations || []);
+                setLoadingOpts(false);
+            }).catch(err => {
+                console.error("Failed to load options", err);
+                setLoadingOpts(false);
+            });
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -136,17 +159,47 @@ export default function ProjectWizard({ isOpen, onClose, onCreate, isCreating }:
                             <div className="space-y-4">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Legacy Source (Origin)</label>
                                 <div className="grid grid-cols-3 gap-3">
-                                    {['SQL Server', 'Oracle', 'AS400'].map(opt => (
-                                        <button key={opt} onClick={() => setFormData({ ...formData, origin: opt })} className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all ${formData.origin === opt ? 'bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}>{opt}</button>
-                                    ))}
+                                    {loadingOpts ? (
+                                        <div className="col-span-3 text-center py-4 text-xs text-gray-500">Loading inputs...</div>
+                                    ) : (
+                                        originsInfo.length > 0 ? (
+                                            originsInfo.filter(o => o.enabled).map(opt => (
+                                                <button
+                                                    key={opt.id}
+                                                    onClick={() => setFormData({ ...formData, origin: opt.name })}
+                                                    className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all truncate ${formData.origin === opt.name ? 'bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}
+                                                    title={opt.desc}
+                                                >
+                                                    {opt.name}
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="col-span-3 text-center py-4 text-xs text-gray-500">No origins found</div>
+                                        )
+                                    )}
                                 </div>
                             </div>
                             <div className="space-y-4">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Target Cloud (Destination)</label>
                                 <div className="grid grid-cols-3 gap-3">
-                                    {['Databricks', 'Snowflake', 'Fabric'].map(opt => (
-                                        <button key={opt} onClick={() => setFormData({ ...formData, destination: opt })} className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all ${formData.destination === opt ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}>{opt}</button>
-                                    ))}
+                                    {loadingOpts ? (
+                                        <div className="col-span-3 text-center py-4 text-xs text-gray-500">Loading targets...</div>
+                                    ) : (
+                                        destinationsInfo.length > 0 ? (
+                                            destinationsInfo.filter(d => d.enabled).map(opt => (
+                                                <button
+                                                    key={opt.id}
+                                                    onClick={() => setFormData({ ...formData, destination: opt.name })}
+                                                    className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all truncate ${formData.destination === opt.name ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}
+                                                    title={opt.desc}
+                                                >
+                                                    {opt.name}
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="col-span-3 text-center py-4 text-xs text-gray-500">No destinations found</div>
+                                        )
+                                    )}
                                 </div>
                             </div>
                         </div>

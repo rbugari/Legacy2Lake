@@ -50,16 +50,20 @@ The platform operates via specialized agents that interact through the Metadata 
 
 ---
 
-## 4. The 4-Phase Lifecycle 🔄
+## 4. The 6-Stage Lifecycle 🔄
 
-1.  **Phase 1: Triage & Discovery**
-    - Repository scanning and asset classification (Core/Support/Ignore).
-2.  **Phase 2: Drafting & Code Generation**
-    - Automatic generation of the first code draft (The "Ear to Voice" transition).
-3.  **Phase 3: Refinement & Medallion**
-    - Transitioning drafts into a structured **Medallion Architecture** (Bronze, Silver, Gold).
-4.  **Phase 4: Governance & Compliance**
-    - Final certification, lineage mapping, and delivery of the **Solution Bundle**.
+1.  **Stage 1: Discovery (Ingest)**
+    - Repository scanning and technical asset identification.
+2.  **Stage 2: Triage (Strategy)**
+    - Scope definition and dependency mesh construction.
+3.  **Stage 3: Drafting (Plan)**
+    - Architectural blueprinting (Logic Mapping).
+4.  **Stage 4: Refinement (Build)**
+    - Code synthesis, transpilation, and self-correcting optimization loops.
+5.  **Stage 5: Certification (Audit)**
+    - Security scanning, compliance scoring, and quality auditing.
+6.  **Stage 6: Handover (Deliver)**
+    - Variable injection, Runbook generation, and final Golden Bundle export.
 
 ---
 

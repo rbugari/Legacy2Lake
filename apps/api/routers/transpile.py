@@ -44,14 +44,14 @@ async def transpile_task(payload: TranspileRequest):
     context = payload.context or {}
     
     # 1. Generate initial code (Agent C)
-    agent_c = AgentCService()
+    agent_c = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
     c_result = await agent_c.transpile_task(node_data, context)
     
     if "error" in c_result:
         return c_result
 
     # 2. Audit and Optimize (Agent F)
-    agent_f = AgentFService()
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
     f_result = await agent_f.review_code(node_data, c_result["pyspark_code"])
     
     # 3. Persistence (Local & Supabase)
@@ -91,9 +91,9 @@ async def transpile_all(payload: TranspileAllRequest):
     context = payload.context or {}
     
     results = []
-    agent_c = AgentCService()
-    agent_f = AgentFService()
-    db = SupabasePersistence()
+    agent_c = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
+    # db is already passed via Depends(get_db)
     
     solution_name = context.get("solution_name", "BulkProject")
     asset_id = context.get("asset_id")
@@ -150,7 +150,7 @@ async def optimize_task_code(payload: OptimizeRequest):
     if not code:
         return {"error": "No code provided"}
         
-    agent_f = AgentFService()
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
     result = await agent_f.review_code({"optimizations": optimizations}, code)
     
     return {

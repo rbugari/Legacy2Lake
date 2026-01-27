@@ -5,6 +5,7 @@ import zipfile
 import io
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 try:
     from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
@@ -21,15 +22,17 @@ except ImportError:
         from .quality_service import QualityService
 
 class GovernanceService:
-    def __init__(self):
-        self.agent_g = AgentGService()
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
+        self.tenant_id = tenant_id
+        self.client_id = client_id
+        self.agent_g = AgentGService(tenant_id=tenant_id, client_id=client_id)
         self.quality = QualityService()
 
     async def get_certification_report(self, project_id: str) -> dict:
         """
         Generates a modernization certificate with AI-driven compliance checks.
         """
-        db = SupabasePersistence()
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         project_name = await db.get_project_name_by_id(project_id) or project_id
         
         # 1. Fetch Context for Agent G
@@ -163,7 +166,7 @@ class GovernanceService:
         runbook = report.get("runbook", "# Modernization Runbook")
 
         # 2. Fetch Project Variables
-        db = SupabasePersistence()
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         settings = await db.get_project_settings(project_id) or {}
         variables = settings.get("variables", {})
 

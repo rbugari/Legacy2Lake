@@ -1,6 +1,14 @@
 {
-  "status": "APPROVED",
-  "score": 100,
-  "violations": [],
-  "fixed_code": null
+  "status": "REJECTED",
+  "optimized_code": null,
+  "critique": [
+    "Hardcoded SQL queries and table names are present in the 'table_configs' list. All source queries and target table names must be parameterized or sourced from context/config.",
+    "No explicit handling for 'Unknown Members' (e.g., COALESCE(..., -1)) in any lookup or dimension key columns. Even if lookups are absent, dimension loads must ensure unknown handling for referential integrity.",
+    "Type casting uses generic 'Long' and 'String' types, which may not match the target DDL precision (e.g., Decimal(38,10)). Must validate and cast to exact types as per provided DDL.",
+    "The code structure follows Extract, Transform, Load, but the 'FULL_OVERWRITE' pattern (delete + merge) is not truly idempotent and can cause data loss if not carefully controlled. For dimensions, a pure MERGE pattern without unconditional delete is preferred.",
+    "Logging is present for process start and error, but does not log row counts processed or error states in detail (e.g., number of inserted/updated/deleted rows).",
+    "Some sections (e.g., 'dim_employee' fullname logic) are redundant as the SQL already constructs 'fullname'.",
+    "DDL for 'dim_product' and 'dim_shipper' is set to None and inferred, which can lead to schema drift and precision loss. Must use explicit DDL."
+  ],
+  "score": 5
 }

@@ -1,6 +1,15 @@
 {
-  "status": "APPROVED",
-  "score": 100,
-  "violations": [],
-  "fixed_code": null
+  "status": "REJECTED",
+  "optimized_code": "",
+  "critique": [
+    "Extraction logic is a placeholder and does not implement the required source query. The code uses 'spark.createDataFrame([], schema=None)' which is not functional.",
+    "No handling for 'Unknown Members' in lookups or surrogate keys (e.g., COALESCE(..., -1)). Even if there are no lookups in this task, the code should explicitly handle or document unknown member logic for dimensional loads.",
+    "No schema enforcement or precise casting is performed. The code comments mention DDL is not provided, but the actual DDL must be referenced and enforced for type safety.",
+    "Logging is present for errors but does not log the number of rows processed or provide detailed audit logging for resiliency.",
+    "The medallion structure is present (Extract, Transform, Load), but the Extract and Transform sections are non-functional templates.",
+    "No hardcoded paths or credentials detected, which is good.",
+    "MERGE INTO is used for Delta, which is correct for idempotency.",
+    "Business keys fallback to all columns, which is not recommended for production and should be explicitly validated."
+  ],
+  "score": 4
 }

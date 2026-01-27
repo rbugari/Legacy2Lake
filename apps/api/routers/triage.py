@@ -46,8 +46,8 @@ async def get_discovery_project(project_id: str, db: SupabasePersistence = Depen
     # Fallback to default Triage prompt if not customized for project
     prompt = meta.get("prompt") if meta else None
     if not prompt:
-        agent_a = AgentAService()
-        prompt = agent_a._load_prompt()
+        agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+        prompt = await agent_a._load_prompt()
         
     return {
         "assets": assets,
@@ -146,7 +146,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     if params.system_prompt:
         _log("   > Applying custom System Prompt override.")
     
-    agent_a = AgentAService()
+    agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         prompt = params.system_prompt
         if params.user_context:
@@ -252,7 +252,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             final_assets.append({
                 "id": item_uuid,
                 "name": item["name"],
-                "type": agent_node["category"] if agent_node else "CORE",
+                "type": agent_node["category"] if agent_node else "IGNORED",
                 "status": "analyzed" if agent_node else "unlinked",
                 "tags": str(item["signatures"]),
                 "selected": True if (agent_node and agent_node["category"] != "IGNORED") else False,

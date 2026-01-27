@@ -5,8 +5,9 @@ Phase B - Orchestration
 Uses the dependency graph to generate executable workflows.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import json
+from pathlib import Path
 from services.dependency_service import DependencyService
 from services.persistence_service import SupabasePersistence
 
@@ -34,8 +35,8 @@ class DagGeneratorService:
 
         execution_order = plan["execution_order"]
         # Fetch asset names for readability
-        assets_res = self.db.table('utm_objects').select('asset_id, name').eq('project_id', project_id).execute()
-        asset_map = {a['asset_id']: a['name'].replace('.', '_').replace('-', '_') for a in assets_res.data}
+        assets_res = self.db.table('utm_objects').select('object_id, source_name').eq('project_id', project_id).execute()
+        asset_map = {a['object_id']: a['source_name'].replace('.', '_').replace('-', '_') for a in assets_res.data}
 
         dag_template = f'''from airflow import DAG
 from airflow.operators.empty import EmptyOperator
@@ -101,13 +102,16 @@ with DAG(
             return {"error": plan["error"]}
 
         execution_order = plan["execution_order"]
-        assets_res = self.db.table('utm_objects').select('asset_id, name').eq('project_id', project_id).execute()
-        asset_map = {a['asset_id']: a['name'] for a in assets_res.data}
+        assets_res = self.db.table('utm_objects').select('object_id, source_name').eq('project_id', project_id).execute()
+        asset_map = {a['object_id']: a['source_name'] for a in assets_res.data}
         graph = await self.dependency_service.get_dependencies(project_id)
 
         tasks = []
         for asset_id in execution_order:
             name = asset_map.get(asset_id)
+            if not name:
+                name = f"task_{asset_id}"
+
             deps = graph.get(asset_id, [])
             
             task = {
@@ -141,8 +145,8 @@ with DAG(
         if "error" in plan:
             return f"error: {plan['error']}"
 
-        assets_res = self.db.table('utm_objects').select('asset_id, name').eq('project_id', project_id).execute()
-        asset_map = {a['asset_id']: a['name'] for a in assets_res.data}
+        assets_res = self.db.table('utm_objects').select('object_id, source_name').eq('project_id', project_id).execute()
+        asset_map = {a['object_id']: a['source_name'] for a in assets_res.data}
         graph = await self.dependency_service.get_dependencies(project_id)
 
         yaml_output = "pipeline:\n  name: Legacy2Lake Generated Pipeline\n  tasks:\n"
@@ -162,3 +166,19 @@ with DAG(
                 f.write(yaml_output)
             
         return yaml_output
+
+    async def generate_orchestration(self, project_id: str, target_tech: str) -> Dict[str, Any]:
+        """Unified method generated orchestration based on target tech."""
+        tech = target_tech.lower()
+        
+        if "airflow" in tech or "composer" in tech:
+            code = await self.generate_airflow_dag(project_id)
+            return {"type": "airflow", "content": code, "filename": f"{project_id}_dag.py"}
+        elif "databricks" in tech or "pyspark" in tech:
+            json_wf = await self.generate_databricks_workflow(project_id)
+            import json
+            return {"type": "databricks", "content": json.dumps(json_wf, indent=2), "filename": "workflow.json"}
+        else:
+            # Fallback to YAML
+            yaml_code = await self.generate_generic_yaml(project_id)
+            return {"type": "yaml", "content": yaml_code, "filename": "pipeline.yaml"}

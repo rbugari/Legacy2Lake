@@ -1,6 +1,14 @@
 {
-  "status": "APPROVED",
-  "score": 100,
-  "violations": [],
-  "fixed_code": null
+  "status": "REJECTED",
+  "optimized_code": null,
+  "critique": [
+    "MERGE INTO is not guaranteed: The code falls back to mode('overwrite') for Delta targets if business_keys or target_ddl are missing. This violates the architectural requirement for mandatory MERGE INTO for idempotency.",
+    "Hardcoded paths: The code uses 'dbfs:/delta/{target_table}' directly, which is a hardcoded path and not parameterized/context-driven.",
+    "Unknown member handling missing: There is no COALESCE or equivalent logic to handle unknown members in lookups or surrogate keys.",
+    "Logging is present but not detailed: While error logging exists, there is no logging for rows processed or successful states.",
+    "Casting is generic: The type enforcement loop uses field.dataType directly, which may not guarantee precision (e.g., Decimal(38,10)) unless target_ddl is strictly validated.",
+    "Medallion structure is present but not clearly separated in code sections.",
+    "No credentials are hardcoded, but path hardcoding is present."
+  ],
+  "score": 5
 }

@@ -1,0 +1,32 @@
+BEGIN HEADER
+   CharacterSet "CP1252"
+   ExportingTool "IBM InfoSphere DataStage Export"
+END HEADER
+BEGIN DSJOB
+   Identifier "Migrate_Sales_SQL2Ora"
+   DateModified "2024-01-26"
+   BEGIN DSSTAGE
+      Identifier "SQL_Server_Source"
+      StageType "PxOdbc"
+      BEGIN DSSUBRECORD
+         Name "QueryText"
+         Value "SELECT OrderID, CustomerID, TotalAmount FROM Sales.Orders WHERE Status = 'CLOSED'"
+      END DSSUBRECORD
+   END DSSTAGE
+   BEGIN DSSTAGE
+      Identifier "Oracle_Target"
+      StageType "PxOracle"
+      BEGIN DSSUBRECORD
+         Name "TableName"
+         Value "BI_MART.FACT_SALES"
+      END DSSUBRECORD
+   END DSSTAGE
+   BEGIN DSSTAGE
+      Identifier "Transform_Logic"
+      StageType "PxTransformer"
+      BEGIN DSSUBRECORD
+         Name "Description"
+         Value "Applying business rules"
+      END DSSUBRECORD
+   END DSSTAGE
+END DSJOB

@@ -38,8 +38,10 @@ from apps.api.routers import config, system
 # NEW: Import refactored routers (Phase 1 - Technical Debt Remediation)
 from routers.auth import router as auth_router
 from routers.agents import router as agents_router
-# Note: Other routers (projects, triage, transpile, governance) will be 
-# integrated gradually as we verify functionality
+from routers.projects import router as projects_router
+from routers.triage import router as triage_router
+from routers.transpile import router as transpile_router
+from routers.governance import router as governance_router
 
 app = FastAPI(title="Legacy2Lake API", version="2.0.0")
 
@@ -172,10 +174,23 @@ app.include_router(system.router)
 # These provide improved security (bcrypt) and better code organization
 app.include_router(auth_router)  # ✅ ACTIVE: bcrypt login with auto-migration
 app.include_router(agents_router)  # Prompt management
+app.include_router(projects_router) # ✅ ACTIVE: CRUD, settings, layout
+app.include_router(triage_router)   # ✅ ACTIVE: Discovery, Triage, Agent S
+app.include_router(transpile_router) # ✅ ACTIVE: Agent R, Agent C, Transpilation
+app.include_router(governance_router) # ✅ ACTIVE: Agent G, Documentation
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3005", "http://localhost:3000", "http://127.0.0.1:3005", "*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3005",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3005", 
+        "http://127.0.0.1:8085",
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -184,25 +199,25 @@ app.add_middleware(
 
 
 @app.get("/prompts/agent-a")
-async def get_agent_a_prompt():
+async def get_agent_a_prompt(db: SupabasePersistence = Depends(get_db)):
     """Returns the current default system prompt for Agent A."""
-    agent_a = AgentAService()
-    return {"prompt": agent_a._load_prompt()}
+    agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    return {"prompt": await agent_a._load_prompt()}
 
 @app.get("/prompts/agent-c")
-async def get_agent_c_prompt():
-    agent_c = AgentCService()
-    return {"prompt": agent_c._load_prompt()}
+async def get_agent_c_prompt(db: SupabasePersistence = Depends(get_db)):
+    agent_c = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
+    return {"prompt": await agent_c._load_prompt()}
 
 @app.get("/prompts/agent-f")
-async def get_agent_f_prompt():
-    agent_f = AgentFService()
-    return {"prompt": agent_f._load_prompt()}
+async def get_agent_f_prompt(db: SupabasePersistence = Depends(get_db)):
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
+    return {"prompt": await agent_f._load_prompt()}
 
 @app.get("/prompts/agent-g")
-async def get_agent_g_prompt():
-    agent_g = AgentGService()
-    return {"prompt": agent_g._load_prompt()}
+async def get_agent_g_prompt(db: SupabasePersistence = Depends(get_db)):
+    agent_g = AgentGService(tenant_id=db.tenant_id, client_id=db.client_id)
+    return {"prompt": await agent_g._load_prompt()}
 
 @app.get("/ping")
 async def ping():
@@ -214,27 +229,27 @@ class PromptUpdate(BaseModel):
     prompt: str
 
 @app.post("/prompts/agent-a")
-async def update_agent_a_prompt(payload: PromptUpdate):
-    agent = AgentAService()
-    agent.save_prompt(payload.prompt)
+async def update_agent_a_prompt(payload: PromptUpdate, db: SupabasePersistence = Depends(get_db)):
+    agent = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    await agent.save_prompt(payload.prompt)
     return {"success": True}
 
 @app.post("/prompts/agent-c")
-async def update_agent_c_prompt(payload: PromptUpdate):
-    agent = AgentCService()
-    agent.save_prompt(payload.prompt)
+async def update_agent_c_prompt(payload: PromptUpdate, db: SupabasePersistence = Depends(get_db)):
+    agent = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
+    await agent.save_prompt(payload.prompt)
     return {"success": True}
 
 @app.post("/prompts/agent-f")
-async def update_agent_f_prompt(payload: PromptUpdate):
-    agent = AgentFService()
-    agent.save_prompt(payload.prompt)
+async def update_agent_f_prompt(payload: PromptUpdate, db: SupabasePersistence = Depends(get_db)):
+    agent = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
+    await agent.save_prompt(payload.prompt)
     return {"success": True}
 
 @app.post("/prompts/agent-g")
-async def update_agent_g_prompt(payload: PromptUpdate):
-    agent = AgentGService()
-    agent.save_prompt(payload.prompt)
+async def update_agent_g_prompt(payload: PromptUpdate, db: SupabasePersistence = Depends(get_db)):
+    agent = AgentGService(tenant_id=db.tenant_id, client_id=db.client_id)
+    await agent.save_prompt(payload.prompt)
     return {"success": True}
 
 # --- Solution Context Management (Phase 0 - Z1) ---
@@ -413,11 +428,21 @@ async def list_cartridges():
         "mysql": {"id": "mysql", "name": "MySQL Extraction", "version": "v8.0", "desc": "Extracts schemas and data from MySQL databases.", "enabled": True, "category": "extraction", "beta": False},
         "oracle": {"id": "oracle", "name": "Oracle Extraction", "version": "v19c", "desc": "Extracts PL/SQL packages and schemas from Oracle.", "enabled": True, "category": "extraction", "beta": False},
         "sqlserver": {"id": "sqlserver", "name": "SQL Server Extraction", "version": "v2019", "desc": "Extracts T-SQL stored procedures and schemas.", "enabled": True, "category": "extraction", "beta": False},
-        
+        "datastage": {"id": "datastage", "name": "IBM DataStage", "version": "v11.x", "desc": "Extracts logic from .dsx parallel jobs.", "enabled": True, "category": "extraction", "beta": False},
+        "informatica": {"id": "informatica", "name": "Informatica PowerCenter", "version": "v10.x", "desc": "Analyzes XML mapping exports.", "enabled": True, "category": "extraction", "beta": False},
+        "sapbods": {"id": "sapbods", "name": "SAP BODS", "version": "v4.x", "desc": "Extracts logic from .atl exports.", "enabled": True, "category": "extraction", "beta": False},
+        "talend": {"id": "talend", "name": "Talend", "version": "v8.x", "desc": "Analyses item/properties project files.", "enabled": True, "category": "extraction", "beta": False},
+        "pentaho": {"id": "pentaho", "name": "Pentaho (Kettle)", "version": "v9.x", "desc": "Interprets .ktr transformation files.", "enabled": True, "category": "extraction", "beta": False},
+
         # --- Refinement (Output) ---
         "pyspark": {"id": "pyspark", "name": "PySpark (Databricks)", "version": "v3.2", "desc": "Generates PySpark code optimized for Databricks Photon engine.", "enabled": True, "category": "refinement", "beta": False},
         "dbt": {"id": "dbt", "name": "dbt Core (Snowflake)", "version": "v1.8", "desc": "Generates dbt models, sources.yml, and generic tests.", "enabled": True, "category": "refinement", "beta": False},
         "snowflake": {"id": "snowflake", "name": "Snowflake Native", "version": "v1.0", "desc": "Generates Snowflake SQL Stored Procedures.", "enabled": True, "category": "refinement", "beta": True},
+        "fabric": {"id": "fabric", "name": "Microsoft Fabric", "version": "v1.0", "desc": "Generates Fabric Notebooks (Spark) and T-SQL.", "enabled": True, "category": "refinement", "beta": False},
+        "gcp": {"id": "gcp", "name": "Google Cloud (BigQuery + Looker)", "version": "v1.0", "desc": "Generates BigQuery SQL and LookML views.", "enabled": True, "category": "refinement", "beta": False},
+        "aws": {"id": "aws", "name": "AWS (Glue + Redshift + QuickSight)", "version": "v1.0", "desc": "Generates Glue Scripts and QuickSight JSON.", "enabled": True, "category": "refinement", "beta": False},
+        "redshift": {"id": "redshift", "name": "AWS Redshift SQL", "version": "Base", "desc": "Generates native Redshift SQL and DDL.", "enabled": True, "category": "refinement", "beta": False},
+        "salesforce": {"id": "salesforce", "name": "Salesforce (Tableau + Data Cloud)", "version": "v1.0", "desc": "Generates Data Cloud Schemas and Tableau TDS.", "enabled": True, "category": "refinement", "beta": False},
         "sql": {"id": "sql", "name": "Pure SQL (Postgres/Redshift)", "version": "v1.0", "desc": "Generates Standard SQL scripts for ELT pipelines.", "enabled": False, "category": "refinement", "beta": True}
     }
     
@@ -672,7 +697,7 @@ async def ingest_dtsx(file: UploadFile = File(...)):
     summary["executables"] = execs
     
     # 2. Agent A Discovery (Optional: background or async)
-    agent_a = AgentAService()
+    agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
     agent_a_report = await agent_a.analyze_package(summary)
     
     # 3. Agent B Graph Construction
@@ -802,7 +827,7 @@ async def transpile_all(nodes: List[Dict[str, Any]], context: Dict[str, Any] = N
     return {"summary": results, "solution_path": os.path.join(PersistenceService.BASE_DIR, solution_name)}
 
 @app.post("/governance/document")
-async def generate_governance(project_name: str, mesh: Dict[str, Any], context: Dict[str, Any] = None):
+async def generate_governance(project_name: str, mesh: Dict[str, Any], context: Dict[str, Any] = None, db: SupabasePersistence = Depends(get_db)):
     """Generates and persists technical/governance documentation."""
     # 1. Fetch transformations for this project from Supabase
     db = SupabasePersistence()
@@ -814,7 +839,7 @@ async def generate_governance(project_name: str, mesh: Dict[str, Any], context: 
         transformations = res.data
 
     # 2. Invoke Agent G
-    agent_g = AgentGService()
+    agent_g = AgentGService(tenant_id=db.tenant_id, client_id=db.client_id)
     doc_content = await agent_g.generate_documentation(project_name, mesh, transformations)
     
     # 3. Save Local
@@ -827,25 +852,8 @@ async def generate_governance(project_name: str, mesh: Dict[str, Any], context: 
         "saved_at": local_path
     }
 
-@app.get("/projects/{project_id}/audit")
-async def project_audit(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Runs an AI-powered architectural audit on the project's refined code."""
-    auditor = AuditService(db_client=db.client)
-    report = await auditor.run_audit(project_id)
-    return report
 
-@app.post("/projects/{project_id}/stage")
-async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePersistence = Depends(get_db)):
 
-    success = await db.update_project_stage(project_id, payload.get("stage"))
-    return {"success": success}
-
-@app.patch("/projects/{project_id}/settings")
-async def update_project_settings(project_id: str, settings: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
-    """Updates project-level settings (e.g. Source/Target Tech)."""
-
-    success = await db.update_project_settings(project_id, settings)
-    return {"success": success}
 
 @app.post("/projects/{project_id}/layout")
 async def save_layout(project_id: str, layout: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
@@ -903,8 +911,8 @@ async def get_discovery_project(project_id: str, db: SupabasePersistence = Depen
     # Fallback to default Triage prompt if not customized for project
     prompt = meta.get("prompt") if meta else None
     if not prompt:
-        agent_a = AgentAService()
-        prompt = agent_a._load_prompt()
+        agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+        prompt = await agent_a._load_prompt()
         
     return {
         "assets": assets,
@@ -969,8 +977,12 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             "error": "Project is in DRAFTING mode"
         }
 
+    # Get project name for better logging
+    from datetime import datetime
+    project_name = await db.get_project_name_by_id(project_uuid) or project_folder
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     log_lines = []
-    log_lines.append(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id} (Folder: {project_folder})")
     
     # Helper to persist log incrementally
     def _log(msg: str):
@@ -982,18 +994,27 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         except:
             pass
             
-    # Clear previous log
+    # Clear previous log and write header
     try:
         path = PersistenceService.ensure_solution_dir(project_folder)
         with open(os.path.join(path, "triage.log"), "w", encoding="utf-8") as f:
-            f.write(f"--- Triage Started for {project_id} ---\n")
+            f.write(f"{'='*80}\n")
+            f.write(f"TRIAGE ANALYSIS REPORT\n")
+            f.write(f"{'='*80}\n")
+            f.write(f"Project Name: {project_name}\n")
+            f.write(f"Project ID: {project_uuid}\n")
+            f.write(f"Started: {timestamp}\n")
+            f.write(f"Tenant: {db.tenant_id or 'default'}\n")
+            f.write(f"{'='*80}\n\n")
     except:
         pass
     
-    _log(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id}")
+    _log(f"[{timestamp}] Initializing Shift-T Triage Agent")
+    _log(f"Project: {project_name} ({project_uuid})")
 
     # 1. Deep Scan (The Scanner / Pre-processing)
     _log("[Step 1] Running Deep Scanner (Python Engine)...")
+    _log(f"   > Scan Path: {project_folder}/Triage/")
     
     # NEW: Fetch persistent human context
     user_context = await db.get_project_context(project_uuid)
@@ -1010,10 +1031,23 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     
     # 2. Agent A Analysis (The Detective)
     _log("[Step 2] Invoking Agent A (Mesh Architect)...")
+    
+    # Get LLM configuration info for logging
+    agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    try:
+        llm_config = await db.resolve_agent_model("agent-a")
+        if llm_config:
+            provider = llm_config.get("provider", "unknown")
+            model = llm_config.get("deployment", "unknown")
+            _log(f"   > LLM Engine: {provider.upper()} - Model: {model}")
+        else:
+            _log("   > LLM Engine: Using environment variables (fallback)")
+    except:
+        _log("   > LLM Engine: Default configuration")
+    
     if params.system_prompt:
         _log("   > Applying custom System Prompt override.")
     
-    agent_a = AgentAService()
     try:
         # Pass user_context as part of the system prompt or prepend to user message? 
         # Ideally we prepend it to the prompt.
@@ -1130,7 +1164,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             final_assets.append({
                 "id": item_uuid,
                 "name": item["name"],
-                "type": agent_node["category"] if agent_node else "CORE",
+                "type": agent_node["category"] if agent_node else "IGNORED",
                 "status": "analyzed" if agent_node else "unlinked",
                 "tags": str(item["signatures"]),
                 "selected": True if (agent_node and agent_node["category"] != "IGNORED") else False,
@@ -1223,12 +1257,12 @@ async def sync_project_graph(project_id: str, db: SupabasePersistence = Depends(
     }
 
 @app.post("/transpile/optimize")
-async def optimize_task_code(payload: Dict[str, Any]):
+async def optimize_task_code(payload: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Re-runs Agent F with specific optimization flags."""
     code = payload.get("code")
     optimizations = payload.get("optimizations", [])
     
-    agent_f = AgentFService()
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
     result = await agent_f.optimize_code(code, optimizations)
     
     # 3. Persistence (If context provided, we could save, but for refinement loop usually we wait for 'Approve')
@@ -1390,16 +1424,28 @@ async def trigger_orchestration(payload: Dict[str, Any], db: SupabasePersistence
     return result
 
 @app.get("/projects/{project_id}/logs")
-async def get_project_logs_simple(project_id: str, db: SupabasePersistence = Depends(get_db)):
+async def get_project_logs_simple(
+    project_id: str, 
+    type: str = "migration", 
+    db: SupabasePersistence = Depends(get_db)
+):
     """Returns the orchestration logs for the project."""
 
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
         if n: project_name = n
+    
+    # Map type to filename
+    log_files = {
+        "triage": "triage.log",
+        "migration": "migration.log",
+        "refinement": "refinement.log"
+    }
+    filename = log_files.get(type.lower(), "migration.log")
         
     try:
-        content = PersistenceService.read_file_content(project_name, "migration.log")
+        content = PersistenceService.read_file_content(project_name, filename)
         return {"logs": content}
     except Exception:
         return {"logs": ""}
@@ -1609,7 +1655,7 @@ async def export_project(project_id: str, db: SupabasePersistence = Depends(get_
         n = await db.get_project_name_by_id(project_id)
         if n: project_name = n
 
-    service = GovernanceService()
+    service = GovernanceService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         zip_buffer = service.create_export_bundle(project_name)
         filename = f"ShiftT_Solution_{project_name}.zip"
@@ -1838,7 +1884,6 @@ async def update_tenant_matrix(request: Request, payload: dict, db: SupabasePers
     
     if not agent:
          raise HTTPException(status_code=400, detail="Missing Agent ID")
-         
     # Upsert logic
     # Check if exists
     existing = db.client.table("utm_agent_matrix").select("id").eq("agent_id", agent).execute()
@@ -1857,17 +1902,21 @@ async def update_tenant_matrix(request: Request, payload: dict, db: SupabasePers
     return {"success": True}
 
 @app.get("/system/prompts")
-async def get_system_prompts(request: Request):
+async def get_system_prompts(request: Request, db: SupabasePersistence = Depends(get_db)):
     """Fetches all system prompts for the studio."""
     # Use existing services to load prompts
     from services.agent_a_service import AgentAService
     from services.agent_c_service import AgentCService
     from services.agent_f_service import AgentFService
     
+    agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    agent_c = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
+    agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
+    
     return {"prompts": [
-        {"id": "agent-a", "name": "Agent A (Triage)", "content": AgentAService()._load_prompt()},
-        {"id": "agent-c", "name": "Agent C (Coder)", "content": AgentCService()._load_prompt()},
-        {"id": "agent-f", "name": "Agent F (Compliance)", "content": AgentFService()._load_prompt()},
+        {"id": "agent-a", "name": "Agent A (Triage)", "content": await agent_a._load_prompt()},
+        {"id": "agent-c", "name": "Agent C (Coder)", "content": await agent_c._load_prompt()},
+        {"id": "agent-f", "name": "Agent F (Compliance)", "content": await agent_f._load_prompt()},
         {"id": "agent-b", "name": "Agent B (Refinement)", "content": "SYSTEM: You are the Refinement Agent... (Mock)"}, 
         {"id": "agent-g", "name": "Agent G (Governance)", "content": "SYSTEM: You are the Governance Agent... (Mock)"},
     ]}

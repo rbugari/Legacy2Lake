@@ -72,10 +72,10 @@ export default function Dashboard() {
                 if (data.success) {
                     router.push(`/workspace?id=${projectId}`);
                 } else {
-                    alert(`Error: ${data.error || "No se pudo crear el proyecto."}`);
+                    alert(`Error: ${data.error || "Could not create project."}`);
                 }
             } else {
-                alert("Error al crear el proyecto.");
+                alert("Error creating project.");
             }
         } catch (error) {
             console.error("Error creating project:", error);
@@ -87,7 +87,7 @@ export default function Dashboard() {
 
     const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
         e.preventDefault();
-        if (!window.confirm("¿Estás seguro de que quieres eliminar este proyecto?")) {
+        if (!window.confirm("Are you sure you want to delete this project?")) {
             return;
         }
 
@@ -99,7 +99,7 @@ export default function Dashboard() {
             if (response.ok) {
                 setProjects(prev => prev.filter(p => p.id !== projectId));
             } else {
-                alert("Error al eliminar el proyecto.");
+                alert("Error deleting project.");
             }
         } catch (error) {
             console.error("Error deleting project:", error);
@@ -108,52 +108,68 @@ export default function Dashboard() {
 
     const handleResetProject = async (e: React.MouseEvent, projectId: string) => {
         e.preventDefault();
-        if (!confirm("¿Resetear proyecto a etapa TRIAGE? Se perderá el progreso.")) return;
+        if (!confirm("Reset project to TRIAGE stage? All progress will be lost.")) return;
         await fetchWithAuth(`projects/${projectId}/reset`, { method: "POST" });
         window.location.reload();
     };
 
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] relative transition-colors duration-300">
-            {/* Top accent light */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 bg-cyan-500/10 blur-[120px] pointer-events-none" />
+            {/* Ambient background glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-96 bg-gradient-to-b from-cyan-500/10 via-blue-500/5 to-transparent blur-3xl pointer-events-none" />
 
             <div className="max-w-7xl mx-auto p-8 relative z-10">
-                <header className="flex justify-between items-end mb-12">
+                <header className="flex justify-between items-end mb-16">
                     <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
-                            <span className="text-[10px] font-bold tracking-[0.2em] text-cyan-500 uppercase">Legacy Modernization</span>
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="relative">
+                                <div className="h-2.5 w-2.5 rounded-full bg-cyan-500 animate-pulse" />
+                                <div className="absolute inset-0 h-2.5 w-2.5 rounded-full bg-cyan-500 animate-ping opacity-75" />
+                            </div>
+                            <span className="text-[11px] font-black tracking-[0.25em] text-cyan-500 uppercase">Legacy Modernization Platform</span>
+                            <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md text-[9px] font-bold text-[var(--text-tertiary)] ml-2">
+                                {projects.length} ACTIVE
+                            </span>
                         </div>
-                        <h1 className="text-4xl font-extrabold tracking-tight mb-2">Consola de Soluciones</h1>
-                        <p className="text-[var(--text-secondary)] font-medium">Gestiona tus proyectos de modernización de extremo a extremo.</p>
+                        <h1 className="text-5xl font-black tracking-tight mb-3 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                            Solutions Console
+                        </h1>
+                        <p className="text-[var(--text-secondary)] font-medium text-lg">
+                            Manage your end-to-end modernization pipelines
+                        </p>
                     </div>
                     <div className="flex items-center gap-4">
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="bg-cyan-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-cyan-500 transition-all flex items-center gap-2 shadow-xl shadow-cyan-600/20 active:scale-95"
+                            className="group relative bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-8 py-3.5 rounded-xl font-bold hover:from-cyan-500 hover:to-blue-500 transition-all flex items-center gap-3 shadow-2xl shadow-cyan-600/30 active:scale-95 overflow-hidden"
                         >
-                            <FolderPlus size={20} /> Nueva Solución
+                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                            <FolderPlus size={20} className="relative z-10" />
+                            <span className="relative z-10">New Solution</span>
                         </button>
                     </div>
                 </header>
 
                 {/* List of Projects */}
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-40">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mb-4"></div>
-                        <p className="text-sm font-medium text-[var(--text-tertiary)]">Cargando orquestaciones...</p>
+                    <div className="flex flex-col items-center justify-center py-48">
+                        <div className="relative">
+                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-cyan-500/20 border-t-cyan-500 mb-6" />
+                            <div className="absolute inset-0 rounded-full h-16 w-16 border-4 border-cyan-500/10 animate-ping" />
+                        </div>
+                        <p className="text-sm font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Loading pipelines...</p>
                     </div>
                 ) : projects.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-40 bg-white/5 border border-white/5 rounded-3xl">
-                        <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                            <FolderPlus size={32} className="text-gray-400" />
+                    <div className="flex flex-col items-center justify-center py-48 bg-gradient-to-br from-white/5 via-cyan-500/5 to-blue-500/5 border border-white/10 rounded-3xl backdrop-blur-sm">
+                        <div className="w-20 h-20 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-2xl flex items-center justify-center mb-8 relative">
+                            <FolderPlus size={40} className="text-cyan-400" />
+                            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-2xl blur-xl" />
                         </div>
-                        <h3 className="text-sm font-black uppercase tracking-widest mb-2">No active solutions</h3>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-8">Ready to modernize? Initialize your first pipeline.</p>
+                        <h3 className="text-sm font-black uppercase tracking-[0.3em] mb-3 text-white">No Active Solutions</h3>
+                        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.25em] mb-10">Ready to modernize? Initialize your first pipeline.</p>
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="bg-cyan-600/10 text-cyan-600 px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-cyan-600 hover:text-white transition-all outline-none"
+                            className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-2 border-cyan-600 text-cyan-400 px-10 py-4 rounded-xl text-[11px] font-black uppercase tracking-[0.25em] hover:bg-gradient-to-r hover:from-cyan-600 hover:to-blue-600 hover:text-white transition-all outline-none shadow-xl shadow-cyan-600/20"
                         >
                             Initialize Workspace
                         </button>

@@ -60,9 +60,9 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
                 <div>
                     <h3 className="text-lg font-bold flex items-center gap-2">
                         <Settings size={20} className="text-primary" />
-                        Configuración del Proyecto
+                        Project Settings
                     </h3>
-                    <p className="text-sm text-gray-500">Parámetros globales de ejecución para esta solución.</p>
+                    <p className="text-sm text-gray-500">Global execution parameters for this solution.</p>
                 </div>
                 <button
                     onClick={handleSave}
@@ -70,7 +70,7 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
                     className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
                 >
                     {saving ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
-                    Guardar Cambios
+                    Save Changes
                 </button>
             </div>
 
@@ -80,11 +80,11 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
                     <div>
                         <h4 className="font-bold flex items-center gap-2">
                             <Sliders size={18} className="text-primary" />
-                            Batch Limit (Orquestación)
+                            Batch Limit (Orchestration)
                         </h4>
                         <p className="text-xs text-gray-500 mt-1 max-w-md">
-                            Define cuántos archivos se procesarán en una sola ejecución.
-                            Útil para realizar pruebas controladas antes de una migración masiva.
+                            Defines how many files to process in a single run.
+                            Useful for controlled testing before massive migration.
                         </p>
                     </div>
                     <div className="text-right">
@@ -105,11 +105,11 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
                         className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-lg appearance-none cursor-pointer accent-primary"
                     />
                     <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">
-                        <span>Sin límite</span>
-                        <span>5 Archivos</span>
-                        <span>10 Archivos</span>
-                        <span>25 Archivos</span>
-                        <span>50 Archivos</span>
+                        <span>Unlimited</span>
+                        <span>5 Files</span>
+                        <span>10 Files</span>
+                        <span>25 Files</span>
+                        <span>50 Files</span>
                     </div>
                 </div>
             </div>

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import StageHeader from '../StageHeader';
 
+import { API_BASE_URL } from '../../lib/config';
+
 interface Variable {
     key: string;
     value: string;
@@ -29,10 +31,11 @@ interface Variable {
 
 interface HandoverViewProps {
     projectId: string;
+    projectName?: string;
     onStageChange: (stage: number) => void;
 }
 
-export default function HandoverView({ projectId, onStageChange }: HandoverViewProps) {
+export default function HandoverView({ projectId, projectName, onStageChange }: HandoverViewProps) {
     const [variables, setVariables] = useState<Variable[]>([
         { key: "ENV", value: "prod", description: "Environment tag for naming" },
         { key: "ROOT_PATH", value: "/mnt/data/modernized", description: "Base path for Lakehouse tables" },
@@ -58,10 +61,18 @@ export default function HandoverView({ projectId, onStageChange }: HandoverViewP
 
     const handleExport = () => {
         setIsExporting(true);
+        // Trigger download via API
+        const exportUrl = `${API_BASE_URL}/projects/${projectId}/export`;
+
+        // Use a hidden iframe or standard navigation to trigger download
+        window.location.href = exportUrl;
+
+        // Reset state after a short delay
         setTimeout(() => {
             setIsExporting(false);
-            alert("Handover Bundle Ready! Downloading legacy2lake_modernized.zip...");
-        }, 3000);
+            const name = projectName ? `Legacy2Lake_${projectName}.zip` : "Legacy2Lake_Solution.zip";
+            alert(`Handover Bundle Ready! Downloading ${name}...`);
+        }, 2000);
     };
 
     return (

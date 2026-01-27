@@ -126,6 +126,12 @@ async def get_project_assets(project_id: str, db: SupabasePersistence = Depends(
     return {"assets": assets}
 
 
+@router.get("/{project_id}/stats")
+async def get_project_stats(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Returns summarized stats (core, ignored, pending) for a project."""
+    return await db.get_project_stats(project_id)
+
+
 # --- Project Files ---
 
 @router.get("/{project_id}/files")
@@ -191,6 +197,13 @@ async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePer
     return {"success": success}
 
 
+@router.post("/{project_id}/reset")
+async def reset_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Clears all assets, FS folders (except Triage), and resets stage/status."""
+    success = await db.reset_project_data(project_id)
+    return {"success": success}
+
+
 @router.patch("/{project_id}/settings")
 async def update_project_settings(project_id: str, settings: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Updates project-level settings (e.g. Source/Target Tech)."""
@@ -206,11 +219,6 @@ async def get_project_settings(project_id: str, db: SupabasePersistence = Depend
 
 # --- Project Lifecycle ---
 
-@router.post("/{project_id}/reset")
-async def reset_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Clears triage results for a project, resetting it to stage 1."""
-    success = await db.reset_project_data(project_id)
-    return {"success": success}
 
 
 @router.post("/{project_id}/approve")
@@ -243,16 +251,26 @@ async def unlock_triage(project_id: str, db: SupabasePersistence = Depends(get_d
 # --- Logs ---
 
 @router.get("/{project_id}/logs")
-async def get_project_logs_simple(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Returns the orchestration logs for the project."""
+async def get_project_logs_simple(
+    project_id: str, 
+    type: str = "migration",  # Added type param with default
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Returns the logs for the project based on type."""
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
         if n: 
             project_name = n
         
+    log_file = "migration.log"
+    if type.lower() == "triage":
+        log_file = "triage.log"
+    elif type.lower() == "refinement":
+        log_file = "migration.log"
+
     try:
-        content = PersistenceService.read_file_content(project_name, "migration.log")
+        content = PersistenceService.read_file_content(project_name, log_file)
         return {"logs": content}
     except Exception:
         return {"logs": ""}
@@ -287,6 +305,79 @@ async def get_project_execution_logs(
     return {"logs": "\n".join(log_lines)}
 
 
+# --- Triage Files (for Agent S - Scout) ---
+
+@router.get("/{project_id}/triage/files")
+async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Lists all files in the project's Triage folder for forensic analysis."""
+    
+    # Resolve project name if UUID provided
+    project_folder = project_id
+    if "-" in project_id:
+        resolved_name = await db.get_project_name_by_id(project_id)
+        if resolved_name:
+            project_folder = resolved_name
+    
+    # Get Triage path
+    project_base = PersistenceService.ensure_solution_dir(project_folder)
+    triage_path = os.path.join(project_base, PersistenceService.STAGE_TRIAGE)
+    
+    if not os.path.exists(triage_path):
+        return {
+            "success": False,
+            "message": "Triage folder not found. Upload files first.",
+            "project_id": project_id,
+            "triage_path": triage_path,
+            "file_count": 0,
+            "files": []
+        }
+    
+    files = []
+    file_types = {}
+    
+    for root, dirs, filenames in os.walk(triage_path):
+        # Exclude system folders
+        if '.git' in dirs: dirs.remove('.git')
+        if '__pycache__' in dirs: dirs.remove('__pycache__')
+        
+        for filename in filenames:
+            full_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(full_path, triage_path).replace("\\", "/")
+            ext = filename.split('.')[-1].lower() if '.' in filename else 'no_ext'
+            
+            # Count file types
+            file_types[ext] = file_types.get(ext, 0) + 1
+            
+            files.append({
+                "name": filename,
+                "path": rel_path,
+                "full_path": full_path,
+                "size": os.path.getsize(full_path),
+                "extension": ext,
+                "type": _classify_file_type(ext)
+            })
+    
+    return {
+        "success": True,
+        "project_id": project_id,
+        "triage_path": triage_path,
+        "file_count": len(files),
+        "file_types": file_types,
+        "files": files
+    }
+
+
+def _classify_file_type(ext: str) -> str:
+    """Helper to classify file types for Agent S."""
+    if ext == 'dtsx': return 'SSIS_PACKAGE'
+    if ext == 'sql': return 'SQL_SCRIPT'
+    if ext in ['xml', 'config']: return 'CONFIG'
+    if ext in ['json', 'yaml', 'yml']: return 'CONFIG'
+    if ext == 'py': return 'PYTHON_SCRIPT'
+    if ext in ['txt', 'md', 'doc', 'docx']: return 'DOCUMENTATION'
+    return 'OTHER'
+
+
 # --- Export ---
 
 @router.get("/{project_id}/export")
@@ -298,24 +389,41 @@ async def export_project(project_id: str, db: SupabasePersistence = Depends(get_
         if n: 
             project_name = n
     
-    solution_path = os.path.join(PersistenceService.BASE_DIR, project_name)
-    
-    if not os.path.exists(solution_path):
-        raise HTTPException(status_code=404, detail=f"Solution folder not found: {project_name}")
-    
-    # Create in-memory ZIP
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(solution_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, solution_path)
-                zf.write(file_path, arcname)
-    
-    zip_buffer.seek(0)
-    
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={project_name}.zip"}
-    )
+    # 1. Use PackagingService to create COP structure
+    try:
+        from services.packaging_service import PackagingService
+        packager = PackagingService(project_id)
+        # prepares "root_dir" inside "_package_staging"
+        package_root = await packager.prepare_bundle()
+        
+        # 2. ZIP the structured package
+        zip_buffer = io.BytesIO()
+        # package_root is .../_package_staging/ProjectName
+        # We want the ZIP to contain ProjectName/...
+        
+        base_dir = os.path.dirname(package_root) # .../_package_staging
+        root_folder_name = os.path.basename(package_root) # ProjectName
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(package_root):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Relpath from _package_staging so the zip has ProjectName/config/...
+                    arcname = os.path.relpath(file_path, base_dir)
+                    zf.write(file_path, arcname)
+                    
+        # Cleanup staging is tricky if we want async stream, but for now we rely on overwrite next time
+        # or we could schedule a cleanup task. 
+        # PersistenceService.robust_rmtree(os.path.dirname(package_root)) # Optional cleanup
+        
+        zip_buffer.seek(0)
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=Legacy2Lake_{project_name}.zip"}
+        )
+        
+    except Exception as e:
+        print(f"Export Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate package: {str(e)}")

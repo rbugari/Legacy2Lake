@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from .base_cartridge import Cartridge
 
 class SnowflakeCartridge(Cartridge):
@@ -218,4 +218,41 @@ CREATE OR REPLACE TABLE {target_gold} AS
 SELECT *
 FROM {target_silver};
 """
+
+    def generate_orchestration(self, tables_metadata: List[Dict[str, Any]]) -> str:
+        """Generates Snowflake Tasks for orchestration."""
+        sql_tasks = f"""-- SNOWFLAKE ORCHESTRATION TASKS
+-- Generated for Project: {self.project_id}
+
+CREATE OR REPLACE TASK TSK_ROOT_{self.project_id}
+  WAREHOUSE = COMPUTE_WH
+  SCHEDULE = 'USING CRON 0 0 * * * UTC'
+AS
+  SELECT CURRENT_TIMESTAMP();
+
+"""
+        for table in tables_metadata:
+            name = table['table_name'].upper()
+            sql_tasks += f"""
+-- Path for {name}
+CREATE OR REPLACE TASK TSK_{name}_BRONZE
+  WAREHOUSE = COMPUTE_WH
+  AFTER TSK_ROOT_{self.project_id}
+AS
+  CALL PROCS.RUN_BRONZE_{name}();
+
+CREATE OR REPLACE TASK TSK_{name}_SILVER
+  WAREHOUSE = COMPUTE_WH
+  AFTER TSK_{name}_BRONZE
+AS
+  CALL PROCS.RUN_SILVER_{name}();
+
+CREATE OR REPLACE TASK TSK_{name}_GOLD
+  WAREHOUSE = COMPUTE_WH
+  AFTER TSK_{name}_SILVER
+AS
+  CALL PROCS.RUN_GOLD_{name}();
+"""
+        sql_tasks += f"\n-- Resume tasks\nALTER TASK TSK_ROOT_{self.project_id} RESUME;"
+        return sql_tasks
 

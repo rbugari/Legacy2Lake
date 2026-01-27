@@ -123,11 +123,11 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                 headers: {
                     ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
                 },
-                body: JSON.stringify({ stage: "3" })
+                body: JSON.stringify({ stage: "4" })
             });
             const data = await res.json();
             if (data.success) {
-                onStageChange(3);
+                onStageChange(4);
             }
         } catch (e) {
             console.error("Failed to update stage", e);
@@ -137,11 +137,11 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
     return (
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="Stage 2: AI Drafting"
+                title="Stage 3: AI Drafting"
                 subtitle="Code synthesis and architectural pattern application"
                 icon={<Code className="text-cyan-500" />}
                 helpText="Agent F (Factory) translates legacy code to PySpark following Medallion architecture standards. Initial drafts are generated for all CORE assets."
-                onApprove={() => onStageChange(3)}
+                onApprove={() => onStageChange(4)}
                 approveLabel="Approve and Refine"
             >
                 <div className="flex gap-2">
@@ -173,12 +173,7 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
                     icon={<FolderOpen size={16} />}
                     label="Output Explorer"
                 />
-                <TabButton
-                    active={activeTab === "files"}
-                    onClick={() => setActiveTab("files")}
-                    icon={<FolderOpen size={16} />}
-                    label="Output Explorer"
-                />
+
             </div>
 
             {/* Content Area */}

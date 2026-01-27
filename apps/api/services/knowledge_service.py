@@ -53,5 +53,23 @@ class KnowledgeService:
                 "category": "PRIVACY",
                 "key": "masking_method",
                 "value": "sha256"
+            },
+            {
+                "project_id": project_id,
+                "category": "PATHS",
+                "key": "gcp_project_id",
+                "value": "my-gcp-project"
+            },
+            {
+                "project_id": project_id,
+                "category": "PATHS",
+                "key": "aws_s3_bucket",
+                "value": "my-aws-bucket"
+            },
+            {
+                "project_id": project_id,
+                "category": "PATHS",
+                "key": "aws_redshift_host",
+                "value": "redshift-cluster-1.abc.us-east-1.redshift.amazonaws.com"
             }
         ]

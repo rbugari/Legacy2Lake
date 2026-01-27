@@ -8,7 +8,7 @@ interface Cartridge {
     name: string;
     version?: string;
     type?: string;
-    status: string;
+    enabled: boolean;
     config: any;
 }
 
@@ -46,19 +46,19 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {items.map(cart => {
-                const isActive = cart.status === "active";
+                const isActive = cart.enabled;
                 const isEditing = editingId === cart.id;
 
                 return (
-                    <div key={cart.id} className={`border rounded-2xl p-6 transition-all bg-white dark:bg-white/5 border-gray-100 dark:border-white/5 shadow-sm hover:shadow-xl hover:shadow-cyan-500/5 ${isActive ? 'ring-1 ring-cyan-500/10' : 'opacity-80'}`}>
+                    <div key={cart.id} className={`border rounded-2xl p-6 transition-all bg-[var(--surface)] border-[var(--border)] shadow-sm hover:shadow-xl hover:shadow-[var(--accent)]/5 ${isActive ? 'ring-1 ring-[var(--accent)]/10' : 'opacity-80'}`}>
                         <div className="flex justify-between items-start mb-6">
                             <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-xl transition-colors ${isActive ? 'bg-cyan-500/10 text-cyan-600' : 'bg-gray-100 dark:bg-black/20 text-gray-400'}`}>
+                                <div className={`p-3 rounded-xl transition-colors ${isActive ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : 'bg-[var(--background-secondary)] text-gray-400'}`}>
                                     {type === "origin" ? <Database size={22} /> : <Server size={22} />}
                                 </div>
                                 <div className="space-y-0.5">
-                                    <h3 className="text-sm font-black uppercase tracking-widest">{cart.name}</h3>
-                                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-[0.2em]">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-gray-900 dark:text-white">{cart.name}</h3>
+                                    <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
                                         {cart.version ? `Version ${cart.version}` : cart.type}
                                     </p>
                                 </div>
@@ -68,7 +68,7 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                                     onClick={() => onToggle(cart.id, isActive ? 'disabled' : 'active')}
                                     className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all outline-none ${isActive
                                         ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white"
-                                        : "bg-gray-100 dark:bg-black/20 text-gray-500 hover:bg-cyan-500 hover:text-white"
+                                        : "bg-[var(--background-secondary)] text-gray-500 hover:bg-[var(--accent)] hover:text-white"
                                         }`}
                                     title={isActive ? "Deactivate Cartridge" : "Activate Cartridge"}
                                 >
@@ -84,8 +84,8 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 dark:bg-black/20 rounded-2xl p-5 text-xs font-mono text-[var(--text-tertiary)] border border-gray-100 dark:border-white/5 relative group/code overflow-hidden">
-                            <div className="flex justify-between items-center mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
+                        <div className="bg-[var(--background-secondary)] rounded-2xl p-5 text-xs font-mono text-[var(--text-tertiary)] border border-[var(--border)] relative group/code overflow-hidden">
+                            <div className="flex justify-between items-center mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
                                 <span className="flex items-center gap-2"><Settings size={12} className="text-cyan-500" /> Runtime Engine</span>
                                 {!isEditing && (
                                     <button
@@ -103,7 +103,7 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                                     <textarea
                                         value={editConfig}
                                         onChange={(e) => setEditConfig(e.target.value)}
-                                        className={`w-full h-40 bg-gray-50 dark:bg-black/20 border ${jsonError ? 'border-red-500' : 'border-gray-200 dark:border-white/5'} rounded-xl p-4 text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/30 font-mono text-xs transition-all`}
+                                        className={`w-full h-40 bg-[var(--background-secondary)] border ${jsonError ? 'border-red-500' : 'border-[var(--border)]'} rounded-xl p-4 text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]/30 font-mono text-xs transition-all`}
                                     />
                                     {jsonError && <p className="text-red-500 text-[10px] font-bold mt-2 uppercase tracking-widest pl-2">{jsonError}</p>}
                                     <div className="flex gap-2 mt-4 justify-end">

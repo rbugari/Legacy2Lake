@@ -122,11 +122,11 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
             const res = await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ stage: "4" })
+                body: JSON.stringify({ stage: "5" })
             });
             const data = await res.json();
             if (data.success && onStageChange) {
-                onStageChange(4);
+                onStageChange(5);
             }
         } catch (e) {
             alert("Failed to approve stage.");
@@ -142,14 +142,38 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
         }
     }, [activeTab, projectId, logs]);
 
+    const findLegacyFile = (nodes: any[], targetBaseName: string): string | null => {
+        for (const node of nodes) {
+            if (node.type === "file") {
+                // Check if file is in Triage (heuristic based on path)
+                // and matches base name (ignoring extension)
+                if (node.path.includes("Triage")) {
+                    const nodeBase = node.name.replace(/\.[^/.]+$/, ""); // Remove extension
+                    if (nodeBase.toLowerCase() === targetBaseName.toLowerCase()) {
+                        return node.path;
+                    }
+                }
+            } else if (node.children) {
+                const found = findLegacyFile(node.children, targetBaseName);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
     const resolveOriginalPath = (refinedPath: string) => {
         if (!refinedPath.includes('Refinement')) return null;
+
+        // Extract base name from refined file (e.g. "proc_sales_bronze.py" -> "proc_sales")
         let filename = refinedPath.split(/[\\/]/).pop() || "";
-        filename = filename.replace('_bronze.py', '.py')
-            .replace('_silver.py', '.py')
-            .replace('_gold.py', '.py');
-        const basePath = refinedPath.split('Refinement')[0];
-        return `${basePath}Drafting/${filename}`;
+        const baseName = filename
+            .replace(/_bronze\..*$/, "")
+            .replace(/_silver\..*$/, "")
+            .replace(/_gold\..*$/, "")
+            .replace(/\..*$/, ""); // Remove extension
+
+        // Search in file tree for a matching file in Triage
+        return findLegacyFile(fileTree, baseName);
     };
 
     const handleFileSelect = async (path: string) => {
@@ -221,7 +245,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                                 node={child}
                                 level={level + 1}
                                 onSelect={onSelect}
-                                selectedPath={selectedPath}
+                                selectedPath={selectedFile || undefined}
                             />
                         ))}
                     </div>
@@ -246,13 +270,12 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     return (
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="AI Refinement"
+                title="Stage 4: AI Refinement"
                 subtitle="Transpiled code optimization and quality audit"
                 icon={<GitBranch className="text-cyan-500" />}
                 helpText="Agent R (Reviewer) analyzes generated code for inefficiencies, type errors, or logic flaws, applying automatic corrections and suggesting performance improvements."
                 isReadOnly={isReadOnly}
                 isApproveDisabled={!isComplete}
-                isExecuting={isRunning}
                 onApprove={handleApprove}
                 approveLabel="Approve Phase 3"
                 onRestart={async () => {
@@ -367,7 +390,15 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                                     <div className="flex items-center justify-center h-full text-gray-500">Loading content...</div>
                                 ) : selectedFile ? (
                                     activeTab === 'workbench' ? (
-                                        <CodeDiffViewer originalCode={originalContent} modifiedCode={fileContent} />
+                                        <div className="flex flex-col h-full">
+                                            <div className="flex justify-between px-4 py-2 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 text-xs font-bold text-gray-500 uppercase">
+                                                <span>Original (Legacy Source)</span>
+                                                <span>Refined (Generated Code)</span>
+                                            </div>
+                                            <div className="flex-1 min-h-0">
+                                                <CodeDiffViewer originalCode={originalContent} modifiedCode={fileContent} />
+                                            </div>
+                                        </div>
                                     ) : (
                                         <div className="p-4 bg-[#1e1e1e] text-gray-200 font-mono text-sm leading-relaxed h-full overflow-auto">
                                             <pre className="whitespace-pre-wrap">{fileContent}</pre>

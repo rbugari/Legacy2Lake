@@ -1,6 +1,48 @@
 # Release Notes
 
-## Version 3.2 (The Enterprise Modernization Suite) - 2026-01-25 ⭐ LATEST
+## Version 3.3 (The Universal Connector) - 2026-01-26 ⭐ LATEST
+
+This release dramatically expands the platform's input/output capabilities, making it simpler to ingest legacy logic from enterprise ETL tools and deploy to modern data clouds.
+
+### 🌟 Major Features
+
+#### Phase 10: Expanded Source Cartridges (Input)
+*   **Universal ETL Ingestion**:
+    *   **IBM DataStage (PX)**: Native parsing of `.dsx` exports. Logic extraction from stages and connectors.
+    *   **Informatica PowerCenter**: Full XML introspection for `.xml` metadata. Captures Source Qualifiers and Transformations.
+    *   **SAP BODS (Data Integrator)**: Reads `.atl` formats to reconstruct Jobs and Dataflows.
+    *   **Talend**: Parsing of `.item` files to recover SQL from `tInput` components and `tMap` logic.
+    *   **Pentaho (Kettle)**: Support for `.ktr` and `.kjb` files, identifying `TableInput` sources and `TableOutput` targets.
+
+#### Phase 11: Multi-Cloud Destination Cartridges (Output)
+*   **Native Generation for 5 Major Platforms**:
+    *   **Microsoft Fabric**: Generates PySpark notebooks + Fabric Pipelines (JSON).
+    *   **Google Cloud**: BigQuery SQL + LookerML + Airflow DAGs.
+    *   **AWS**: Glue (PySpark) + Redshift SQL + QuickSight definitions.
+    *   **Salesforce Data Cloud**: Tableau `.tds` + Data Cloud ingestion SQL.
+    *   **Snowflake**: Snowpark Python + Snowflake Tasks (native orchestration).
+
+#### Phase 12: Automated Orchestration Layer
+*   **Workflow Synthesis**:
+    *   Automatically generates the "glue" code to run pipelines.
+    *   **Airflow DAGs**: Standard for GCP, AWS, and generic targets.
+    *   **Fabric Pipelines**: Specific JSON format for MS Fabric.
+    *   **Snowflake Tasks**: SQL-based dependency management.
+
+#### Phase 13: Certified Output Package (COP) Architecture
+*   **Vendor-Agnostic Export Bundle**:
+    *   Delivers a structured zip file (`src/`, `config/`, `docs/`, `tests/`) ready for enterprise handoff.
+    *   **Packaging Service**: Automatically reorganizes refined code into a production-ready folder hierarchy.
+    *   **Audit Trail enforcement**: All generated code now includes mandatory `# L2L MODERNIZATION TRACE` headers.
+    *   **Auto-Config**: Generates `env_config.yaml` and compliance reports on extraction.
+
+### 🎨 UI/UX Enhancements
+*   **Technology Mixer**: Updated with 5 new selection options (GCP, AWS, Fabric, Snowflake, Salesforce).
+*   **Design Registry**: Now auto-populates cloud-specific configuration keys (e.g., `gcp_project_id`, `aws_s3_bucket`) upon selection.
+
+---
+
+## Version 3.2 (The Enterprise Modernization Suite) - 2026-01-25
 
 This transformational release elevates Legacy2Lake from a code generator into a **SaaS-ready Enterprise Migration Factory** with forensic intelligence, automated optimization, and AI-driven certification.
 

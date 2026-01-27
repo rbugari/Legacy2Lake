@@ -32,8 +32,8 @@ interface SidebarProps {
 
 export default function WorkspaceSidebar({
     projectName,
-    origin = "Legacy SQL",
-    destination = "Databricks",
+    origin,
+    destination,
     activeStage,
     stats = { core: 0, ignored: 0, pending: 0 },
     onAction
@@ -42,7 +42,7 @@ export default function WorkspaceSidebar({
 
     return (
         <aside
-            className={`bg-[#0a0a0a] border-r border-white/5 flex flex-col transition-all duration-300 ease-in-out relative z-30 ${isCollapsed ? 'w-16' : 'w-72'}`}
+            className={`bg-[var(--surface)] border-r border-[var(--border)] flex flex-col transition-all duration-300 ease-in-out relative z-30 ${isCollapsed ? 'w-16' : 'w-72'}`}
         >
             {/* Collapse Toggle */}
             <button
@@ -56,22 +56,26 @@ export default function WorkspaceSidebar({
             <div className={`p-6 pb-4 ${isCollapsed ? 'items-center' : ''} flex flex-col gap-4`}>
                 {!isCollapsed && (
                     <div className="space-y-1">
-                        <p className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em]">Active Workspace</p>
-                        <h2 className="text-sm font-black text-white uppercase tracking-wider truncate" title={projectName}>
+                        <p className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.3em]">Active Workspace</p>
+                        <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider truncate" title={projectName}>
                             {projectName}
                         </h2>
                     </div>
                 )}
 
-                <div className={`flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5 ${isCollapsed ? 'justify-center' : ''}`}>
+                <div className={`flex items-center gap-3 bg-[var(--surface-elevated)] p-3 rounded-2xl border border-[var(--border)] ${isCollapsed ? 'justify-center' : ''}`}>
                     <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500">
                         <Database size={16} />
                     </div>
                     {!isCollapsed && (
                         <div className="flex-1 flex items-center justify-between overflow-hidden">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">{origin}</span>
-                            <ArrowRight size={12} className="text-gray-600 shrink-0 mx-2" />
-                            <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest truncate">{destination}</span>
+                            <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest truncate" title={origin || "Not defined yet"}>
+                                {origin || "Origin: N/D"}
+                            </span>
+                            <ArrowRight size={12} className="text-[var(--text-tertiary)] shrink-0 mx-2" />
+                            <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest truncate" title={destination || "Not defined yet"}>
+                                {destination || "Target: N/D"}
+                            </span>
                         </div>
                     )}
                 </div>
@@ -82,7 +86,7 @@ export default function WorkspaceSidebar({
                 <div className="space-y-4">
                     {!isCollapsed && (
                         <div className="px-3 flex items-center justify-between">
-                            <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <h4 className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em] flex items-center gap-2">
                                 <BarChart3 size={12} /> Discovery
                             </h4>
                         </div>
@@ -92,7 +96,7 @@ export default function WorkspaceSidebar({
                         <StatItem
                             label="Core Assets"
                             count={stats.core}
-                            color="text-emerald-500"
+                            color="text-emerald-500 dark:text-emerald-400"
                             bg="bg-emerald-500/10"
                             icon={<Box size={14} />}
                             isCollapsed={isCollapsed}
@@ -100,15 +104,15 @@ export default function WorkspaceSidebar({
                         <StatItem
                             label="Ignored"
                             count={stats.ignored}
-                            color="text-gray-500"
-                            bg="bg-white/5"
+                            color="text-[var(--text-secondary)]"
+                            bg="bg-[var(--surface-elevated)]"
                             icon={<FileCode size={14} />}
                             isCollapsed={isCollapsed}
                         />
                         <StatItem
                             label="Review Needed"
                             count={stats.pending}
-                            color="text-amber-500"
+                            color="text-amber-500 dark:text-amber-400"
                             bg="bg-amber-500/10"
                             icon={<Activity size={14} />}
                             isCollapsed={isCollapsed}
@@ -117,9 +121,9 @@ export default function WorkspaceSidebar({
                 </div>
 
                 {/* Quick Actions */}
-                <div className="space-y-4 pt-4 border-t border-white/5">
+                <div className="space-y-4 pt-4 border-t border-[var(--border)]">
                     {!isCollapsed && (
-                        <h4 className="px-3 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <h4 className="px-3 text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em] flex items-center gap-2">
                             <Zap size={12} /> Execution
                         </h4>
                     )}
@@ -151,12 +155,12 @@ export default function WorkspaceSidebar({
 
             {/* Footer */}
             {!isCollapsed && (
-                <div className="p-6 border-t border-white/5">
-                    <div className="bg-gradient-to-br from-cyan-900/20 to-black p-4 rounded-2xl border border-cyan-500/10">
+                <div className="p-6 border-t border-[var(--border)]">
+                    <div className="bg-gradient-to-br from-cyan-900/10 to-[var(--surface-elevated)] p-4 rounded-2xl border border-cyan-500/10">
                         <p className="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-2">Stage Status</p>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Stage {activeStage} Ready</span>
+                            <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest">Stage {activeStage} Ready</span>
                         </div>
                     </div>
                 </div>
@@ -167,13 +171,13 @@ export default function WorkspaceSidebar({
 
 function StatItem({ label, count, color, bg, icon, isCollapsed }: any) {
     return (
-        <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isCollapsed ? 'justify-center' : 'hover:bg-white/5'}`}>
+        <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isCollapsed ? 'justify-center' : 'hover:bg-[var(--surface-elevated)]'}`}>
             <div className={`p-2 rounded-lg ${bg} ${color}`}>
                 {icon}
             </div>
             {!isCollapsed && (
                 <div className="flex-1 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
+                    <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{label}</span>
                     <span className={`text-xs font-black ${color}`}>{count}</span>
                 </div>
             )}
@@ -185,9 +189,9 @@ function ActionItem({ label, icon, onClick, isCollapsed, primary, danger }: any)
     return (
         <button
             onClick={onClick}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${isCollapsed ? 'justify-center' : 'hover:translate-x-1'} ${primary ? 'bg-cyan-600/10 text-cyan-500 hover:bg-cyan-600 hover:text-white' :
-                    danger ? 'text-gray-500 hover:text-red-500 hover:bg-red-500/10' :
-                        'text-gray-400 hover:text-white hover:bg-white/5'
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${isCollapsed ? 'justify-center' : 'hover:translate-x-1'} ${primary ? 'bg-cyan-600/10 text-cyan-600 dark:text-cyan-500 hover:bg-cyan-600 hover:text-white' :
+                danger ? 'text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10' :
+                    'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]'
                 }`}
         >
             <div className={`transition-transform group-hover:scale-110 ${isCollapsed ? '' : ''}`}>

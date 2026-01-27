@@ -1,0 +1,15 @@
+CREATE DATAFLOW DF_Migrate_Sales
+(
+    source_table = 'SQL_SERVER_SALES_ORDERS'
+    target_table = 'ORACLE_FACT_SALES'
+    
+    BEGIN QUERY Transform_Sales
+        sql_text = 'SELECT O.ID, O.AMOUNT, C.REGION FROM ORDERS O JOIN CUSTOMERS C ON O.CUST_ID = C.ID'
+        mapping_rule = 'AMOUNT * 1.1'
+    END
+);
+
+CREATE JOB JOB_Daily_Migration
+(
+    run_dataflow( DF_Migrate_Sales )
+);

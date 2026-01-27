@@ -20,7 +20,7 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
     const sqlCount = assets.filter(a => a.name?.toLowerCase().endsWith('.sql')).length;
 
     return (
-        <div className="space-y-6 p-6 bg-white dark:bg-[#121212]/50 backdrop-blur-md rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm">
+        <div className="space-y-6 p-6 bg-[var(--surface)] backdrop-blur-md rounded-2xl border border-[var(--border)] shadow-sm">
             <h3 className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-[0.2em] flex items-center gap-2">
                 <BarChart3 size={14} className="text-cyan-500" /> Discovery Metrics
             </h3>
@@ -47,7 +47,7 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
                     </span>
                     <span className="text-orange-500">{highComplexity}</span>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-white/5 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-[var(--background-secondary)] h-2 rounded-full overflow-hidden">
                     <div
                         className="bg-gradient-to-r from-orange-400 to-orange-600 h-full transition-all duration-1000 relative"
                         style={{ width: `${total > 0 ? (highComplexity / total) * 100 : 0}%` }}
@@ -57,8 +57,8 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
                 </div>
             </div>
 
-            <div className="pt-4 border-t border-gray-100 dark:border-white/5 space-y-2">
-                <StackItem label="SSIS Packages" count={ssissCount} color="bg-cyan-500" />
+            <div className="pt-4 border-t border-[var(--border)] space-y-2">
+                <StackItem label="Source Packages" count={ssissCount} color="bg-cyan-500" />
                 <StackItem label="SQL Scripts" count={sqlCount} color="bg-orange-500" />
                 <div className="pt-2">
                     <StackItem label="PII Exposure" count={piiCount} color={piiCount > 0 ? "bg-red-500" : "bg-emerald-500"} />
@@ -81,7 +81,7 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
 function MetricCard({ label, value, icon, color }: any) {
     const colorClasses = color === 'cyan' ? 'border-cyan-500/20' : 'border-emerald-500/20';
     return (
-        <div className={`bg-gray-50 dark:bg-white/5 p-4 rounded-xl border ${colorClasses} transition-all hover:scale-[1.02]`}>
+        <div className={`bg-[var(--background-secondary)] p-4 rounded-xl border ${colorClasses} transition-all hover:scale-[1.02]`}>
             <div className="flex items-center justify-between mb-2">
                 {icon}
                 <span className="text-2xl font-black text-[var(--text-primary)] leading-none">{value}</span>

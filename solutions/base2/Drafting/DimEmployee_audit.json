@@ -1,13 +1,14 @@
 {
-  "status": "APPROVED",
-  "score": 98,
-  "violations": [
-    {
-      "severity": "WARNING",
-      "rule": "Idempotency",
-      "description": "The code uses .mode('overwrite') for writing the final table, which is generally idempotent. However, if the table is very large, this could be inefficient compared to a Delta MERGE. For SCD Type 1 (no history), this is acceptable, but for SCD Type 2, MERGE is required.",
-      "suggestion": "If SCD Type 2 is required, use Delta MERGE. For SCD Type 1, .mode('overwrite') is sufficient."
-    }
+  "status": "REJECTED",
+  "optimized_code": "",
+  "critique": [
+    "Hardcoded source queries and table names are present in the 'table_configs' list. All paths, queries, and table names must be parameterized or sourced from context/config.",
+    "No explicit COALESCE or equivalent logic for handling 'Unknown Members' in lookups or business key columns. Even if lookups are absent, dimension loads must ensure unknown handling for referential integrity.",
+    "Type casting uses generic 'Long' and 'String' types, which may not match the actual target DDL precision (e.g., Decimal(38,10) or Varchar(n)). The code does not validate or enforce exact DDL precision.",
+    "Logging is present for process steps and errors, but there is no logging of row counts processed (e.g., number of rows extracted, loaded, or merged).",
+    "The medallion structure (Extract, Transform, Load) is present and clear.",
+    "MERGE INTO is used for Delta targets, which is correct.",
+    "DDL inference for tables with 'None' is not robust; it should validate against the actual solution DDLs."
   ],
-  "fixed_code": null
+  "score": 6
 }

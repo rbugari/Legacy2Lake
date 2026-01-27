@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { Database, Code, Zap, CheckCircle, RefreshCw } from 'lucide-react';
+import { Database, Code, Zap, CheckCircle, RefreshCw, Cloud, Server, Box, Snowflake } from 'lucide-react';
 import { API_BASE_URL } from '../../lib/config';
 
 interface TechnologyMixerProps {
@@ -64,18 +64,46 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
             color: 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10'
         },
         {
-            id: 'sql',
-            label: 'Pure SQL',
-            desc: 'Stored Procedures & DDL (Legacy Native)',
-            icon: <Code className="text-orange-500" />,
+            id: 'fabric',
+            label: 'MS Fabric',
+            desc: 'Lakehouse + Power BI Semantic',
+            icon: <Box className="text-blue-600" />,
+            color: 'border-blue-600 bg-blue-50/50 dark:bg-blue-900/10'
+        },
+        {
+            id: 'snowflake',
+            label: 'Snowflake',
+            desc: 'Snowpark Python + Native Tasks',
+            icon: <Snowflake className="text-cyan-500" />,
+            color: 'border-cyan-500 bg-cyan-50/50 dark:bg-cyan-900/10'
+        },
+        {
+            id: 'gcp',
+            label: 'Google Cloud',
+            desc: 'BigQuery + Looker + Airflow',
+            icon: <Cloud className="text-red-500" />,
+            color: 'border-red-500 bg-red-50/50 dark:bg-red-900/10'
+        },
+        {
+            id: 'aws',
+            label: 'AWS',
+            desc: 'Glue + Redshift + QuickSight',
+            icon: <Server className="text-orange-500" />,
             color: 'border-orange-500 bg-orange-50/50 dark:bg-orange-900/10'
         },
         {
-            id: 'both',
-            label: 'Mixed / Dual',
-            desc: 'Generate both PySpark and SQL dialects',
-            icon: <Database className="text-purple-500" />,
-            color: 'border-purple-500 bg-purple-50/50 dark:bg-purple-900/10'
+            id: 'salesforce',
+            label: 'Salesforce',
+            desc: 'Data Cloud + Tableau (.tds)',
+            icon: <Cloud className="text-sky-500" />,
+            color: 'border-sky-500 bg-sky-50/50 dark:bg-sky-900/10'
+        },
+        {
+            id: 'sql',
+            label: 'Pure SQL',
+            desc: 'Stored Procedures & DDL (Standard)',
+            icon: <Code className="text-gray-500" />,
+            color: 'border-gray-500 bg-gray-50/50 dark:bg-gray-900/10'
         }
     ];
 
@@ -98,8 +126,8 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
                             onClick={() => handleSelect(opt.id)}
                             disabled={saving}
                             className={`flex flex-col p-4 rounded-2xl border-2 text-left transition-all ${isActive
-                                    ? `${opt.color} shadow-sm border-current`
-                                    : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700'
+                                ? `${opt.color} shadow-sm border-current`
+                                : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700'
                                 }`}
                         >
                             <div className="flex justify-between items-start mb-2">

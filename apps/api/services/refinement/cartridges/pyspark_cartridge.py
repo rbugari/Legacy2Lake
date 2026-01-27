@@ -164,6 +164,56 @@ df_gold.write.format("delta").mode("overwrite").option("overwriteSchema", "true"
 print(f"Gold Layer updated: {{target_gold_table}}")
 """
 
+    def generate_orchestration(self, tables_metadata: List[Dict[str, Any]]) -> str:
+        """Generates an Airflow DAG for Databricks/PySpark orchestration."""
+        project_id = self.project_id
+        
+        dag_content = f"""from airflow import DAG
+from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+from datetime import datetime, timedelta
+
+default_args = {{
+    'owner': 'utm_architect',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}}
+
+with DAG(
+    'dag_databricks_{project_id}_orchestration',
+    default_args=default_args,
+    description='Medallion Orchestration for Databricks ({project_id})',
+    schedule_interval=timedelta(days=1),
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+    tags=['utm', 'databricks', 'pyspark'],
+) as dag:
+
+"""
+        for table in tables_metadata:
+            name = table['table_name']
+            dag_content += f"""
+    # Orchestration for {name}
+    task_{name}_bronze = DatabricksRunNowOperator(
+        task_id='{name}_bronze',
+        job_id='job_id_bronze_{name}'
+    )
+
+    task_{name}_silver = DatabricksRunNowOperator(
+        task_id='{name}_silver',
+        job_id='job_id_silver_{name}'
+    )
+
+    task_{name}_gold = DatabricksRunNowOperator(
+        task_id='{name}_gold',
+        job_id='job_id_gold_{name}'
+    )
+
+    task_{name}_bronze >> task_{name}_silver >> task_{name}_gold
+"""
+        return dag_content
+
     def generate_bronze_sql(self, table_metadata: Dict[str, Any]) -> str:
         source_path = Path(table_metadata.get("source_path", "unknown_source.py"))
         return f"""-- BRONZE LAYER (ANSI SQL)

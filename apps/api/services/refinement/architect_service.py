@@ -190,13 +190,37 @@ class ArchitectService:
                      f.write(sql_content)
                 refined_files["silver"].append((silver_dir / sql_name).as_posix())
 
-            # Gold SQL
-            if hasattr(cartridge, "generate_gold_sql"):
-                sql_content = cartridge.generate_gold_sql(table_metadata)
-                sql_name = gold_name.replace(ext, ".sql")
-                with open(gold_dir / sql_name, "w", encoding="utf-8") as f:
-                     f.write(sql_content)
                 refined_files["gold"].append((gold_dir / sql_name).as_posix())
+
+        # 3. Generate Orchestration (Release 3.5)
+        orchestration_dir = output_dir / "Orchestration"
+        orchestration_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare full list of processed metadata for the orchestrator
+        # We need to reconstruct or store them during the loop.
+        # For simplicity infra for now, we'll re-scan or use a list.
+        # Let's use a simplified list from what we just processed.
+        all_metadata = []
+        for filename in files_to_process:
+             clean_name = filename.replace(".py", "")
+             all_metadata.append({
+                 "source_path": filename,
+                 "table_name": clean_name
+             })
+
+        orch_content = cartridge.generate_orchestration(all_metadata)
+        if orch_content:
+            orch_filename = "orchestration_dag" if ".py" in cartridge.get_file_extension() else "orchestration_pipeline"
+            # Add proper extension based on content? 
+            # For now, if "import airflow" is in it, use .py, else .json
+            orch_ext = ".py" if "airflow" in orch_content.lower() else ".json"
+            orch_path = orchestration_dir / f"{orch_filename}{orch_ext}"
+            
+            with open(orch_path, "w", encoding="utf-8") as f:
+                f.write(orch_content)
+            
+            refined_files["orchestration"] = [str(orch_path)]
+            log.append(f"[Architect] Generated Orchestration: {orch_path.name}")
 
         return {
             "status": "COMPLETED",

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Lock, Sparkles, Save, Trash2 } from "lucide-react";
+import { Lock, Sparkles, Save, Trash2, RefreshCw, CheckCircle } from "lucide-react";
 import { API_BASE_URL } from "../lib/config";
 
 interface PromptsExplorerProps {
@@ -21,6 +21,7 @@ export default function PromptsExplorer({ className, projectId }: PromptsExplore
     const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
     const [editingContext, setEditingContext] = useState("");
     const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -95,6 +96,8 @@ export default function PromptsExplorer({ className, projectId }: PromptsExplore
             console.error("Failed to save context", e);
         } finally {
             setSaving(false);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
         }
     };
 
@@ -127,8 +130,8 @@ export default function PromptsExplorer({ className, projectId }: PromptsExplore
                         key={agent.id}
                         onClick={() => handleAgentSelect(agent.id)}
                         className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedAgent === agent.id
-                                ? "bg-[var(--accent)]/10 border-[var(--accent)] shadow-sm"
-                                : "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--accent)]/50"
+                            ? "bg-[var(--accent)]/10 border-[var(--accent)] shadow-sm"
+                            : "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--accent)]/50"
                             }`}
                     >
                         <h3 className={`font-bold text-sm ${selectedAgent === agent.id ? "text-[var(--accent)]" : ""}`}>
@@ -177,24 +180,34 @@ export default function PromptsExplorer({ className, projectId }: PromptsExplore
                                 </button>
                                 <button
                                     onClick={handleSaveContext}
-                                    disabled={saving}
-                                    className="btn-primary px-4 py-1.5 text-sm flex items-center gap-1.5 disabled:opacity-50"
+                                    disabled={saving || saved}
+                                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-xl ${saved
+                                        ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
+                                        : "bg-cyan-600 text-white hover:bg-cyan-500 shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
+                                        }`}
                                 >
-                                    <Save size={14} />
-                                    {saving ? "Saving..." : "Save"}
+                                    {saving ? <RefreshCw size={14} className="animate-spin" /> : saved ? <CheckCircle size={14} /> : <Save size={14} />}
+                                    {saving ? "Syncing..." : saved ? "Saved!" : "Save Context"}
                                 </button>
                             </div>
                         </div>
-                        <textarea
-                            value={editingContext}
-                            onChange={(e) => setEditingContext(e.target.value)}
-                            placeholder="Add custom instructions for this agent specific to your solution...
+                        <div className="relative h-[calc(100%-2.5rem)]">
+                            {saving && (
+                                <div className="absolute top-0 left-0 w-full h-[1px] bg-cyan-500/20 z-10">
+                                    <div className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)] animate-[shimmer_2s_infinite_linear] w-1/3" />
+                                </div>
+                            )}
+                            <textarea
+                                value={editingContext}
+                                onChange={(e) => setEditingContext(e.target.value)}
+                                placeholder="Add custom instructions for this agent specific to your solution...
 Example:
 - Use BIGINT for all ID columns
 - Prefix gold tables with 'dim_' or 'fact_'
 - Apply data masking to PII fields"
-                            className="input-antigravity h-[calc(100%-2.5rem)] resize-none font-mono text-sm"
-                        />
+                                className="w-full h-full bg-white/5 border border-white/5 rounded-2xl p-6 text-[13px] text-gray-300 font-mono outline-none focus:ring-1 focus:ring-cyan-500/30 transition-all resize-none"
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -206,6 +219,12 @@ Example:
                     </div>
                 )}
             </div>
+            <style jsx>{`
+                @keyframes shimmer {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(300%); }
+                }
+            `}</style>
         </div>
     );
 }

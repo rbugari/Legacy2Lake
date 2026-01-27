@@ -19,8 +19,8 @@ export default function RootLayout({
 }>) {
   return (
     // [NEW] Default to dark mode as requested by "Antigravity Deep Space" spec
-    <html lang="en" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${jetbrains.variable}`}>
-      <body suppressHydrationWarning={true} className="min-h-screen flex flex-col font-sans bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300">
+    <html lang="en" data-theme="dark" suppressHydrationWarning className={`dark ${inter.variable} ${jetbrains.variable}`}>
+      <body suppressHydrationWarning={true} className="min-h-screen flex flex-col font-sans transition-colors duration-300">
         <main className="flex-1 w-full flex flex-col">
           <AppWrapper>
             {children}

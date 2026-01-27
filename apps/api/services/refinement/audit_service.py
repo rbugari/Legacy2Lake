@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -11,34 +11,48 @@ except ImportError:
     from services.persistence_service import PersistenceService, SupabasePersistence
 
 class AuditService:
-    def __init__(self, db_client=None):
+    def __init__(self, tenant_id: str = None, client_id: str = None, db_client=None):
+        self.tenant_id = tenant_id
+        self.client_id = client_id
         self.db = db_client
         self.prompt_path = os.path.join(os.path.dirname(__file__), "../../prompts/agent_d_auditor.md")
 
     async def _get_llm(self):
-        """Resolves LLM client from Global Config or Env Vars."""
-        db = SupabasePersistence()
-        config = await db.get_global_config("provider_settings")
+        """Resolves LLM client from Agent Matrix (DB) or Env Vars."""
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
-        # Default fallback to env
+        # We reuse agent-f config for AuditService or can use a global one
+        resolved = await db.resolve_agent_model("agent-f")
+        
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         key = os.getenv("AZURE_OPENAI_API_KEY")
         deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        provider = "azure"
         
-        # Override from DB if available and enabled
-        azure_config = config.get("azure", {})
-        if azure_config.get("enabled"):
-            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
-            if azure_config.get("api_key"): key = azure_config.get("api_key")
-            if azure_config.get("model"): deployment = azure_config.get("model")
+        if resolved:
+            provider = resolved.get("provider", "azure")
+            if resolved.get("endpoint"): endpoint = resolved.get("endpoint")
+            if resolved.get("api_key"): key = resolved.get("api_key")
+            if resolved.get("deployment"): deployment = resolved.get("deployment")
+            if resolved.get("api_version"): api_version = resolved.get("api_version")
             
-        return AzureChatOpenAI(
-            azure_endpoint=endpoint,
-            azure_deployment=deployment,
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=key,
-            temperature=0
-        )
+        if provider == "azure":
+            return AzureChatOpenAI(
+                azure_endpoint=endpoint,
+                azure_deployment=deployment,
+                openai_api_version=api_version,
+                api_key=key,
+                temperature=0
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=deployment,
+                api_key=key,
+                base_url=endpoint,
+                temperature=0
+            )
 
     def _load_prompt(self) -> str:
         with open(self.prompt_path, "r", encoding="utf-8") as f:

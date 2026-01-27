@@ -1,6 +1,7 @@
 
 import os
 import json
+from typing import Optional
 from .profiler_service import ProfilerService
 from .architect_service import ArchitectService
 from .refactoring_service import RefactoringService
@@ -20,8 +21,12 @@ class RefinementOrchestrator:
     Sequence: Profiler -> Architect -> Refactoring -> Ops -> Workflow
     """
 
-    def __init__(self, tenant_id: str = None, client_id: str = None):
-
+    def __init__(self, project_name: str, project_uuid: str = None, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
+        self.project_name = project_name
+        self.project_uuid = project_uuid or project_name
+        self.tenant_id = tenant_id
+        self.client_id = client_id
+        
         # Services are instantiated once.
         # They handle project path resolution internally/per request if needed, 
         # or we pass project_id to their methods.
@@ -29,8 +34,6 @@ class RefinementOrchestrator:
         self.architect = ArchitectService()
         self.refactorer = RefactoringService()
         self.ops_auditor = OpsAuditorService()
-        self.tenant_id = tenant_id
-        self.client_id = client_id
 
     async def start_pipeline(self, project_id: str):
         # Release 3.5: DB Persistence

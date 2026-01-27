@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, Home } from "lucide-react";
+import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../lib/config";
 
 const ROUTE_LABELS: Record<string, string> = {
     "dashboard": "Consola",
@@ -17,6 +19,20 @@ export default function Breadcrumbs() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const projectId = searchParams.get("id");
+    const [projectName, setProjectName] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (projectId && projectId !== 'undefined') {
+            fetch(`${API_BASE_URL}/projects/${projectId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.name) setProjectName(data.name);
+                })
+                .catch(err => console.error("Failed to fetch project name for breadcrumbs", err));
+        } else {
+            setProjectName(null);
+        }
+    }, [projectId]);
 
     if (pathname === "/" || pathname === "/login") return null;
 
@@ -54,7 +70,9 @@ export default function Breadcrumbs() {
             {projectId && (
                 <div className="flex items-center gap-2">
                     <ChevronRight size={10} className="text-gray-400" />
-                    <span className="text-cyan-500 truncate max-w-[200px]">{projectId}</span>
+                    <span className="text-cyan-500 truncate max-w-[200px]" title={projectId}>
+                        {projectName || projectId}
+                    </span>
                 </div>
             )}
         </nav>

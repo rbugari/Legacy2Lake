@@ -7,6 +7,7 @@ from services.agent_c_service import AgentCService
 from services.agent_f_service import AgentFService
 from services.agent_g_service import AgentGService
 from services.agent_s_service import AgentSService
+from routers.dependencies import get_db
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -25,73 +26,102 @@ class ConfigPayload(BaseModel):
     config: Dict[str, Any]
 
 # --- Helper to get unified cartridge list (Logic reused from main.py) ---
+# --- Helper to get unified cartridge list (DB Driven) ---
 async def get_all_cartridges():
     db = SupabasePersistence()
-    config = await db.get_global_config("cartridges") or {}
+    # Fetch from Static Catalog (table: utm_supported_techs) in DB
+    techs = await db.list_supported_techs()
     
-    defaults = {
-        # Extraction
-        "mysql": {"id": "mysql", "name": "MySQL Extraction", "version": "v8.0", "desc": "Extracts schemas and data from MySQL.", "enabled": True, "category": "extraction", "type": "origin"},
-        "oracle": {"id": "oracle", "name": "Oracle Extraction", "version": "v19c", "desc": "Extracts PL/SQL packages and schemas.", "enabled": True, "category": "extraction", "type": "origin"},
-        "sqlserver": {"id": "sqlserver", "name": "SQL Server Extraction", "version": "v2019", "desc": "Extracts T-SQL stored procedures.", "enabled": True, "category": "extraction", "type": "origin"},
-        
-        # Refinement
-        "pyspark": {"id": "pyspark", "name": "PySpark (Databricks)", "version": "v3.2", "desc": "Generates PySpark code optimized for Databricks.", "enabled": True, "category": "refinement", "type": "destination"},
-        "dbt": {"id": "dbt", "name": "dbt Core (Snowflake)", "version": "v1.8", "desc": "Generates dbt models and tests.", "enabled": True, "category": "refinement", "type": "destination"},
-        "snowflake": {"id": "snowflake", "name": "Snowflake Native", "version": "v1.0", "desc": "Generates Snowflake SQL SPs.", "enabled": True, "category": "refinement", "type": "destination"},
-        "sql": {"id": "sql", "name": "Pure SQL (Postgres/Redshift)", "version": "v1.0", "desc": "Generates Standard SQL scripts.", "enabled": False, "category": "refinement", "type": "destination"}
-    }
+    # Fetch from Instance Config (table: utm_global_config) for overrides (enabled/disabled)
+    global_config = await db.get_global_config("cartridges") or {}
     
-    # Merge
-    merged = []
-    for key, default in defaults.items():
-        saved = config.get(key, {})
-        item = default.copy()
-        if "enabled" in saved: item["enabled"] = saved["enabled"]
-        # Allow Config overrides
-        if "config" in saved: item["config"] = saved["config"]
-        merged.append(item)
+    formatted = []
+    for t in techs:
+        # DB Columns: tech_id, role, label, description, version, is_active
+        tid = t["tech_id"].lower()
+        role = t["role"].upper() # SOURCE / TARGET
         
-    # Add custom ones if any (simple iteration over config keys not in defaults)
-    for key, val in config.items():
-        if key not in defaults:
-            # Custom cartridge
-            val["id"] = key
-            merged.append(val)
+        # Determine defaults
+        is_origin = (role == "SOURCE")
+        
+        item = {
+            "id": tid,
+            "name": t["label"],
+            "version": t.get("version", "Latest"),
+            "desc": t.get("description", ""),
+            "enabled": t.get("is_active", True),
+            "category": "extraction" if is_origin else "refinement",
+            "type": "origin" if is_origin else "destination",
+            "subtype": tid
+        }
+        
+        # Apply Overrides from Global Config (if any)
+        if tid in global_config:
+            saved = global_config[tid]
+            if "enabled" in saved: item["enabled"] = saved["enabled"]
+            if "config" in saved: item["config"] = saved["config"]
             
-    return merged
+        formatted.append(item)
+        
+    return formatted
 
 # --- Endpoints ---
 
 @router.get("/origins")
 async def list_origins():
     all_carts = await get_all_cartridges()
-    origins = [c for c in all_carts if c.get("type") == "origin" or c.get("category") == "extraction"]
+    origins = [c for c in all_carts if c.get("type") == "origin"]
     return {"origins": origins}
 
 @router.get("/destinations")
 async def list_destinations():
     all_carts = await get_all_cartridges()
-    dests = [c for c in all_carts if c.get("type") == "destination" or c.get("category") == "refinement"]
+    dests = [c for c in all_carts if c.get("type") == "destination"]
     return {"destinations": dests}
 
 @router.get("/prompts")
 async def list_prompts():
-    """Aggregates all system prompts for the UI."""
-    # We load them live
-    a = AgentAService()._load_prompt()
-    c = AgentCService()._load_prompt()
-    f = AgentFService()._load_prompt()
-    g = AgentGService()._load_prompt()
-    s = AgentSService()._load_prompt()
+    """Aggregates all system prompts found in the prompts directory."""
+    import glob
+    import os
     
-    return {"prompts": [
-        {"id": "agent-a", "name": "Agent A (Architect)", "content": a},
-        {"id": "agent-c", "name": "Agent C (Interpreter)", "content": c},
-        {"id": "agent-f", "name": "Agent F (Critic)", "content": f},
-        {"id": "agent-g", "name": "Agent G (Governance)", "content": g},
-        {"id": "agent-s", "name": "Agent S (Scout)", "content": s},
-    ]}
+    prompts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
+    md_files = glob.glob(os.path.join(prompts_dir, "*.md"))
+    
+    results = []
+    for filepath in md_files:
+        filename = os.path.basename(filepath)
+        file_id = filename.replace(".md", "")
+        
+        # Friendly Name Logic
+        parts = file_id.split("_")
+        name = ""
+        
+        if len(parts) >= 2 and parts[0] == "agent" and len(parts[1]) == 1:
+             agent_letter = parts[1].upper()
+             remainder = " ".join([chunk.capitalize() for chunk in parts[2:]])
+             if remainder:
+                 name = f"Agent {agent_letter} ({remainder})"
+             else:
+                 name = f"Agent {agent_letter}"
+        else:
+             name = " ".join([chunk.capitalize() for chunk in parts])
+             
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            results.append({
+                "id": file_id,
+                "name": name,
+                "content": content
+            })
+        except Exception as e:
+            print(f"Error loading prompt {filename}: {e}")
+            
+    # Sort by ID for consistency
+    results.sort(key=lambda x: x["id"])
+    return {"prompts": results}
 
 @router.post("/cartridges")
 async def add_cartridge(payload: CartridgeConfig):
@@ -162,7 +192,7 @@ class ValidationRequest(BaseModel):
     system_prompt_override: Optional[str] = None
 
 @router.post("/validate")
-async def validate_agent(payload: ValidationRequest):
+async def validate_agent(payload: ValidationRequest, db: SupabasePersistence = Depends(get_db)):
     """
     Test runs an agent with specific input to validate the prompt.
     Handles 'agente_id' vs 'agent_id' compatibility.
@@ -176,15 +206,15 @@ async def validate_agent(payload: ValidationRequest):
     # Resolve Agent Service
     agent_service = None
     if agent_id.lower() in ["agent-a", "agent_a", "a"]:
-        agent_service = AgentAService()
-    elif payload.agent_id.lower() in ["agent-c", "agent_c", "c"]:
-        agent_service = AgentCService()
-    elif payload.agent_id.lower() in ["agent-f", "agent_f", "f"]:
-        agent_service = AgentFService()
-    elif payload.agent_id.lower() in ["agent-g", "agent_g", "g"]:
-        agent_service = AgentGService()
-    elif payload.agent_id.lower() in ["agent-s", "agent_s", "s"]:
-        agent_service = AgentSService()
+        agent_service = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    elif agent_id.lower() in ["agent-c", "agent_c", "c"]:
+        agent_service = AgentCService(tenant_id=db.tenant_id, client_id=db.client_id)
+    elif agent_id.lower() in ["agent-f", "agent_f", "f"]:
+        agent_service = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
+    elif agent_id.lower() in ["agent-g", "agent_g", "g"]:
+        agent_service = AgentGService(tenant_id=db.tenant_id, client_id=db.client_id)
+    elif agent_id.lower() in ["agent-s", "agent_s", "s"]:
+        agent_service = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
         
     if not agent_service:
         raise HTTPException(status_code=400, detail="Invalid Agent ID")
@@ -199,8 +229,16 @@ async def validate_agent(payload: ValidationRequest):
         # Use Agent A's method as generic provider
         llm = await AgentAService()._get_llm()
 
+    prompt_content = payload.system_prompt_override
+    if not prompt_content:
+        import inspect
+        if inspect.iscoroutinefunction(agent_service._load_prompt):
+            prompt_content = await agent_service._load_prompt()
+        else:
+            prompt_content = agent_service._load_prompt()
+
     messages = [
-        SystemMessage(content=payload.system_prompt_override or agent_service._load_prompt()),
+        SystemMessage(content=prompt_content),
         HumanMessage(content=payload.user_input)
     ]
     
@@ -219,8 +257,28 @@ class ScoutRequest(BaseModel):
     file_list: List[str]
 
 @router.post("/scout/assess")
-async def assess_repository(payload: ScoutRequest):
+async def assess_repository(payload: ScoutRequest, db: SupabasePersistence = Depends(get_db)):
     """Triggers Agent S to assess repository completeness."""
-    agent_s = AgentSService()
-    result = await agent_s.assess_repository(payload.file_list)
-    return result
+    
+    if not payload.file_list or len(payload.file_list) == 0:
+        return {
+            "error": "No files provided for assessment",
+            "assessment_summary": "No files to analyze",
+            "completeness_score": 0,
+            "detected_gaps": []
+        }
+    
+    # Initialize Agent S with tenant context
+    agent_s = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
+    
+    try:
+        result = await agent_s.assess_repository(payload.file_list)
+        return result
+    except Exception as e:
+        return {
+            "error": f"Assessment failed: {str(e)}",
+            "assessment_summary": "Error during assessment",
+            "completeness_score": 0,
+            "detected_gaps": []
+        }
+

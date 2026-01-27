@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE POWERMART SYSTEM "powermart.dtd">
+<POWERMART CREATION_DATE="2024-01-26" REPOSITORY_VERSION="181.91">
+<REPOSITORY NAME="Rep_Migration" VERSION="181">
+<FOLDER NAME="Folder_Sales">
+    <MAPPING NAME="m_Migrate_Sales_SQL2Ora" ISVALID="YES">
+        <TRANSFORMATION NAME="SQ_Sales_Orders" TYPE="Source Qualifier">
+            <TABLEATTRIBUTE NAME="Sql Query" VALUE="SELECT O.OrderID, O.Date FROM SQLServer.Orders O JOIN Customers C ON O.CID = C.ID WHERE O.Status = 'A'"/>
+        </TRANSFORMATION>
+        <TRANSFORMATION NAME="EXP_Calculate_Tax" TYPE="Expression">
+        </TRANSFORMATION>
+        <INSTANCE NAME="FACT_SALES" TRANSFORMATION_NAME="FACT_SALES" TRANSFORMATION_TYPE="Target Definition" TYPE="TARGET"/>
+    </MAPPING>
+</FOLDER>
+</REPOSITORY>
+</POWERMART>

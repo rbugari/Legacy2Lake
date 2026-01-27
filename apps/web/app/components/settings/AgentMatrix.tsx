@@ -88,7 +88,7 @@ export default function AgentMatrix() {
             await Promise.all(updates);
         } catch (e) {
             console.error("Failed to save matrix", e);
-            alert("No se pudo guardar la configuración");
+            alert("Could not save configuration");
         } finally {
             setSaving(false);
         }
@@ -97,7 +97,7 @@ export default function AgentMatrix() {
     // Derived providers from catalog
     const availableProviders = Array.from(new Set(catalog.map(m => m.provider)));
 
-    if (loading) return <div className="p-4 text-center text-[var(--text-secondary)]">Cargando Matriz de IA...</div>;
+    if (loading) return <div className="p-4 text-center text-[var(--text-secondary)]">Loading AI Matrix...</div>;
 
     return (
         <div className="space-y-6">
@@ -105,7 +105,7 @@ export default function AgentMatrix() {
             {/* Quick Assign Toolbar */}
             <div className="bg-[var(--surface)] border border-blue-100 dark:border-blue-900/30 p-4 rounded-xl flex flex-wrap items-center gap-4 shadow-sm">
                 <div className="flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400">
-                    <Zap size={16} /> Assignar a Todos:
+                    <Zap size={16} /> Assign to All:
                 </div>
 
                 <select
@@ -137,7 +137,7 @@ export default function AgentMatrix() {
                     disabled={!batchModel}
                     className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                    Aplicar a Todos
+                    Apply to All
                 </button>
             </div>
 
@@ -145,9 +145,9 @@ export default function AgentMatrix() {
                 <table className="w-full text-sm">
                     <thead className="bg-[var(--background)] border-b border-[var(--border)] text-left">
                         <tr>
-                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Agente / Rol</th>
-                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Proveedor</th>
-                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Modelo Asignado</th>
+                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Agent / Role</th>
+                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Provider</th>
+                            <th className="p-4 font-bold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Assigned Model</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -192,7 +192,7 @@ export default function AgentMatrix() {
                     onClick={fetchData}
                     className="px-4 py-2 border border-[var(--border)] rounded-xl text-sm font-medium hover:bg-[var(--background)] transition-colors flex items-center gap-2"
                 >
-                    <RefreshCw size={16} /> Descartar Cambios
+                    <RefreshCw size={16} /> Discard Changes
                 </button>
                 <button
                     onClick={handleSave}
@@ -200,7 +200,7 @@ export default function AgentMatrix() {
                     className="bg-[var(--color-primary)] text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:opacity-90 shadow-lg shadow-[var(--color-primary)]/20 transition-all disabled:opacity-50"
                 >
                     {saving ? <RefreshCw className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
-                    Guardar Configuración
+                    Save Configuration
                 </button>
             </div>
         </div>

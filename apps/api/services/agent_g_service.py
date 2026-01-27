@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 try:
@@ -14,46 +14,58 @@ except ImportError:
 
 class AgentGService:
     async def _get_llm(self):
-        """Resolves LLM client from Global Config or Env Vars."""
-        db = SupabasePersistence()
-        config = await db.get_global_config("provider_settings")
+        """Resolves LLM client from Agent Matrix (DB)."""
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
-        # Default fallback to env
+        resolved = await db.resolve_agent_model("agent-g")
+        
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         key = os.getenv("AZURE_OPENAI_API_KEY")
         deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
-        
-        # Override from DB if available and enabled
-        azure_config = config.get("azure", {})
-        if azure_config.get("enabled"):
-            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
-            if azure_config.get("api_key"): key = azure_config.get("api_key")
-            if azure_config.get("model"): deployment = azure_config.get("model")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        temperature = 0
+        provider = "azure"
+
+        if resolved:
+            provider = resolved.get("provider", "azure")
+            if resolved.get("endpoint"): endpoint = resolved.get("endpoint")
+            if resolved.get("api_key"): key = resolved.get("api_key")
+            if resolved.get("deployment"): deployment = resolved.get("deployment")
+            if resolved.get("api_version"): api_version = resolved.get("api_version")
+            if "temperature" in resolved: temperature = resolved["temperature"]
             
-        return AzureChatOpenAI(
-            azure_endpoint=endpoint,
-            azure_deployment=deployment,
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=key,
-            temperature=0
-        )
+        if provider == "azure":
+            return AzureChatOpenAI(
+                azure_endpoint=endpoint,
+                azure_deployment=deployment,
+                openai_api_version=api_version,
+                api_key=key,
+                temperature=temperature
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=deployment,
+                api_key=key,
+                base_url=endpoint,
+                temperature=temperature
+            )
 
-    def __init__(self):
-        self.prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/agent_g_governance.md")
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
+        self.tenant_id = tenant_id
+        self.client_id = client_id
 
-    def _load_prompt(self, path: str = None) -> str:
-        target_path = path or self.prompt_path
-        with open(target_path, "r", encoding="utf-8") as f:
-            return f.read()
+    async def _load_prompt(self, path: str = None) -> str:
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        return await db.get_prompt("agent_g_governance")
 
-    def save_prompt(self, content: str):
-        """Updates the system prompt file."""
-        with open(self.prompt_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    async def save_prompt(self, content: str):
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        await db.save_prompt("agent_g_governance", content)
 
     async def generate_governance(self, project_name: str, mesh: Dict[str, Any], transformations: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generates technical documentation (Runbook) and Compliance Audit (JSON)."""
-        system_prompt = self._load_prompt(self.prompt_path)
+        system_prompt = await self._load_prompt()
         
         human_content = f"""
         PROJECT NAME: {project_name}

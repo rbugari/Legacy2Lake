@@ -1,0 +1,10 @@
+--- Triage Started for c522d48a-0329-4264-85ac-58bd0c8c316c ---
+[Start] Initializing Shift-T Triage Agent for Project: c522d48a-0329-4264-85ac-58bd0c8c316c
+[Step 1] Running Deep Scanner (Python Engine)...
+   > Scanned 10 files.
+   > Tech Stack Detected: {'sql': 2, 'dtsx': 7, 'md': 1}
+[Step 2] Invoking Agent A (Mesh Architect)...
+   > Applying custom System Prompt override.
+   > Analysis Complete. Total Nodes (AI + Inferred): 10
+[Step 3] Persisting Mesh Graph and Discovered Assets...
+[Success] Graph and Assets saved to database.

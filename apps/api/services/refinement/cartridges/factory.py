@@ -25,6 +25,22 @@ class CartridgeFactory:
             from .snowflake_cartridge import SnowflakeCartridge
             return SnowflakeCartridge(project_id, registry)
 
+        elif target == "fabric" or target == "ms_fabric":
+            from .ms_fabric_cartridge import MSFabricCartridge
+            return MSFabricCartridge(project_id, registry)
+
+        elif target == "gcp" or target == "google":
+            from .gcp_cartridge import GCPCartridge
+            return GCPCartridge(project_id, registry)
+
+        elif target == "aws" or target == "amazon":
+            from .aws_cartridge import AWSCartridge
+            return AWSCartridge(project_id, registry)
+
+        elif target == "salesforce" or target == "sf":
+            from .sf_cartridge import SFCartridge
+            return SFCartridge(project_id, registry)
+
         elif target == "sql":
             # Placeholder for Pure SQL
             return PySparkCartridge(project_id, registry)

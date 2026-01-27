@@ -31,14 +31,14 @@ const StageHeader: React.FC<StageHeaderProps> = ({
     children
 }) => {
     return (
-        <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 shadow-sm shrink-0 transition-all">
+        <div className="flex items-center justify-between px-6 py-4 bg-[var(--surface)] border-b border-[var(--border)] shadow-sm shrink-0 transition-all">
             <div className="flex items-center gap-4">
                 <div className="p-2.5 bg-cyan-500/10 rounded-2xl text-cyan-500 shadow-sm border border-cyan-500/20">
                     {icon}
                 </div>
                 <div>
                     <div className="flex items-center gap-2 mb-1">
-                        <h2 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white leading-none">{title}</h2>
+                        <h2 className="text-lg font-bold tracking-tight text-[var(--text-primary)] leading-none">{title}</h2>
                         {helpText && (
                             <div className="group relative">
                                 <Info size={14} className="text-gray-400 hover:text-cyan-500 cursor-help transition-colors" />
@@ -66,7 +66,7 @@ const StageHeader: React.FC<StageHeaderProps> = ({
                         onClick={onRestart}
                         className="flex items-center gap-2 px-5 py-2.5 border border-cyan-200 dark:border-cyan-900/50 bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-400 rounded-xl text-xs font-bold hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-all shadow-sm"
                     >
-                        <RefreshCw size={14} /> Editar y Reiniciar
+                        <RefreshCw size={14} /> Edit and Restart
                     </button>
                 ) : (
                     onApprove && (

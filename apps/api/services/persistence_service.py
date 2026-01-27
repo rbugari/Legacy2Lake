@@ -41,6 +41,33 @@ class PersistenceService:
             shutil.rmtree(path, onerror=on_error)
 
     @classmethod
+    def clean_downstream_folders(cls, project_id: str) -> bool:
+        """Wipes all files and subdirectories in the project folder EXCEPT 'Triage'."""
+        try:
+            folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
+            project_path = os.path.join(cls.BASE_DIR, folder_name)
+            
+            if not os.path.exists(project_path):
+                return True
+
+            for item in os.listdir(project_path):
+                item_path = os.path.join(project_path, item)
+                
+                # Protect Triage folder
+                if item.lower() == cls.STAGE_TRIAGE.lower():
+                    continue
+                    
+                # Delete everything else (including triage.log if it's in the root)
+                if os.path.isdir(item_path):
+                    cls.robust_rmtree(item_path)
+                else:
+                    os.remove(item_path)
+            return True
+        except Exception as e:
+            print(f"Error cleaning downstream folders for {project_id}: {e}")
+            return False
+
+    @classmethod
     def delete_project_directory(cls, project_id: str) -> bool:
         """Deletes the project directory from the filesystem."""
         try:
@@ -200,6 +227,13 @@ class SupabasePersistence:
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        
+        if not key:
+             print("DEBUG: Service Role Key MISSING. Falling back to ANON.")
+             key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+        else:
+             print(f"DEBUG: Initializing Supabase with Service Role Key (starts with {key[:5]}...)")
+
         self.client: Client = create_client(url, key)
         self.tenant_id = tenant_id
         self.client_id = client_id
@@ -225,16 +259,42 @@ class SupabasePersistence:
         return res.data[0]["project_id"]
 
     async def list_projects(self) -> List[Dict[str, Any]]:
-        """Returns a list of all projects, filtered by tenant if set."""
+        """Returns a list of all projects, with asset counts and calculated progress."""
         query = self.client.table("utm_projects").select("*")
         if self.tenant_id:
             query = query.eq("tenant_id", self.tenant_id)
             
         res = query.execute()
-        if res.data:
-            for item in res.data:
-                item["id"] = item["project_id"]
-        return res.data if res.data else []
+        projects = res.data if res.data else []
+        
+        # Enrich with asset counts and progress
+        for item in projects:
+            item["id"] = item["project_id"]
+            
+            # Fetch asset count for this project
+            try:
+                asset_res = self.client.table("utm_objects").select("object_id", count="exact").eq("project_id", item["project_id"]).execute()
+                item["assets_count"] = asset_res.count if asset_res.count is not None else 0
+            except:
+                item["assets_count"] = 0
+                
+            # Calculate progress based on stage (Aligned with WorkspacePage.tsx)
+            stage_map = {
+                "1": 5,    # DISCOVERY
+                "2": 25,   # TRIAGE
+                "3": 50,   # DRAFTING
+                "4": 75,   # REFINEMENT
+                "5": 90,   # GOVERNANCE
+                "6": 100   # HANDOVER
+            }
+            item["progress"] = stage_map.get(str(item.get("stage", "1")), 0)
+
+            # Release 3.6: Expose Tech Stack for Dashboard
+            settings = item.get("settings") or {}
+            item["source_tech"] = settings.get("source_tech")
+            item["target_tech"] = settings.get("target_tech")
+            
+        return projects
 
     async def delete_project(self, project_id: str) -> bool:
         """Deletes the project and its assets from the database."""
@@ -246,6 +306,20 @@ class SupabasePersistence:
         except Exception as e:
             print(f"Error deleting project {project_id} from DB: {e}")
             return False
+
+    async def get_project_stats(self, project_id: str) -> Dict[str, int]:
+        """Returns summarized counts of assets by category for a project."""
+        try:
+            res = self.client.table("utm_objects").select("type").eq("project_id", project_id).execute()
+            assets = res.data or []
+            return {
+                "core": len([a for a in assets if a.get("type") == "CORE"]),
+                "ignored": len([a for a in assets if a.get("type") == "IGNORED"]),
+                "pending": len([a for a in assets if a.get("type") not in ["CORE", "IGNORED", "SUPPORT"]])
+            }
+        except Exception as e:
+            print(f"Error fetching stats for {project_id}: {e}")
+            return {"core": 0, "ignored": 0, "pending": 0}
 
     async def get_project_id_by_name(self, name: str) -> Optional[str]:
         """Resolves a project name (slug) to its UUID."""
@@ -497,6 +571,11 @@ class SupabasePersistence:
             self.client.table("utm_execution_logs").delete().eq("project_id", project_id).execute()
             self.client.table("utm_file_inventory").delete().eq("project_id", project_id).execute()
             
+            # 4.5 Clean File System (except Triage)
+            project_name = await self.get_project_name_by_id(project_id)
+            if project_name:
+                PersistenceService.clean_downstream_folders(project_name)
+
             # 5. Reset stage to 1 and status to TRIAGE
             self.client.table("utm_projects").update({
                 "stage": "1",
@@ -633,6 +712,144 @@ class SupabasePersistence:
         except Exception as e:
             print(f"Error initializing design registry: {e}")
             return False
+
+    # Release 3.5 Phase 3: Universal Persistence (Prompts & Catalogs)
+    # ----------------------------------------------------------------
+
+    async def get_prompt(self, prompt_id: str) -> str:
+        """Fetching prompt content from DB with local file fallback."""
+        try:
+            print(f"DEBUG: Fetching prompt '{prompt_id}' from DB...")
+            res = self.client.table("utm_prompts").select("content").eq("prompt_id", prompt_id).execute()
+            if res.data and res.data[0].get("content"):
+                return res.data[0]["content"]
+            
+            # Fallback to local file
+            print(f"DEBUG: Prompt '{prompt_id}' not found in DB. Falling back to local file...")
+            prompt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prompts"))
+            file_path = os.path.join(prompt_dir, f"{prompt_id}.md")
+            
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    # Optional: Auto-seed DB if missing? 
+                    # For now just return to satisfy UI
+                    return content
+            else:
+                print(f"DEBUG: Local prompt file not found at {file_path}")
+                
+        except Exception as e:
+            print(f"Error fetching prompt {prompt_id}: {e}")
+        return ""
+
+    async def list_prompts(self) -> List[Dict[str, Any]]:
+        """List all prompts with content."""
+        try:
+            res = self.client.table("utm_prompts").select("*").execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing prompts: {e}")
+            return []
+
+    async def list_supported_techs(self) -> List[Dict[str, Any]]:
+        """Returns valid source/target technologies from metadata store."""
+        try:
+            res = self.client.table("utm_supported_techs").select("*").eq("is_active", True).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing techs: {e}")
+            return []
+
+    async def save_prompt(self, prompt_id: str, content: str) -> bool:
+        """Updates a prompt in the DB."""
+        try:
+            print(f"DEBUG: Saving prompt '{prompt_id}' length={len(content)}")
+            res = self.client.table("utm_prompts").upsert({
+                "prompt_id": prompt_id,
+                "content": content,
+                "version": "latest",
+                "updated_at": "now()"
+            }).execute()
+            print(f"DEBUG: Save result: {res}")
+            return True
+        except Exception as e:
+            print(f"Error saving prompt {prompt_id}: {e}")
+            return False
+
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Returns the list of available LLM models."""
+        try:
+            res = self.client.table("utm_model_catalog").select("*").eq("is_active", True).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing models: {e}")
+            return []
+
+    async def resolve_agent_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Resolves the configured model for a specific agent.
+        Joins utm_agent_matrix -> utm_model_catalog.
+        """
+        try:
+            # 1. Get Agent Config (Tenant-Specific)
+            query = self.client.table("utm_agent_matrix").select("*").eq("agent_id", agent_id).eq("is_active", True)
+            if self.tenant_id:
+                query = query.eq("tenant_id", self.tenant_id)
+            
+            res = query.execute()
+            if not res.data:
+                return None
+            
+            agent_config = res.data[0]
+            model_id = agent_config["model_id"]
+            
+            # 2. Get Model Details
+            model_res = self.client.table("utm_model_catalog").select("*").eq("model_id", model_id).execute()
+            if not model_res.data:
+                return None
+                
+            model = model_res.data[0]
+            provider = model.get("provider", "azure")
+            
+            # 3. Get Credentials from Vault (Tenant-Specific)
+            api_key = None
+            vault_url = None
+            if self.tenant_id:
+                vault_res = self.client.table("utm_provider_vault").select("api_key, base_url").eq("tenant_id", self.tenant_id).eq("provider_name", provider).execute()
+                if vault_res.data:
+                    api_key = vault_res.data[0].get("api_key")
+                    vault_url = vault_res.data[0].get("base_url")
+
+            # Merge configs (Agent override wins for temp)
+            return {
+                "provider": provider,
+                "deployment": model.get("deployment_id") or model.get("model_id"),
+                "api_version": model.get("api_version"),
+                "endpoint": vault_url or model.get("api_url"),
+                "api_key": api_key,
+                "temperature": agent_config.get("temperature", 0.0)
+            }
+        except Exception as e:
+            print(f"Error resolving agent model {agent_id}: {e}")
+            return None
+
+    async def list_agents(self) -> List[Dict[str, Any]]:
+        """Returns the agent catalog."""
+        try:
+            res = self.client.table("utm_agent_catalog").select("*").eq("is_active", True).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing agents: {e}")
+            return []
+
+    async def list_stages(self) -> List[Dict[str, Any]]:
+        """Returns the configured project stages."""
+        try:
+            res = self.client.table("utm_stages").select("*").eq("is_active", True).order("stage_id").execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing stages: {e}")
+            return []
 
     # Release 3.5: Execution Logs & File Inventory
     # --------------------------------------------

@@ -29,9 +29,10 @@ import OrchestrationPanel from './OrchestrationPanel'; // Added for Phase B
 
 interface GovernanceViewProps {
     projectId: string;
+    onStageChange: (stage: number) => void;
 }
 
-export default function GovernanceView({ projectId }: GovernanceViewProps) {
+export default function GovernanceView({ projectId, onStageChange }: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality">("report");
@@ -61,7 +62,16 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
         }, 3000);
     };
 
+    const [project, setProject] = useState<any>(null);
+
     useEffect(() => {
+        // Fetch Project Metadata
+        fetch(`${API_BASE_URL}/projects/${projectId}`)
+            .then(res => res.json())
+            .then(data => setProject(data))
+            .catch(err => console.error("Failed to fetch project details:", err));
+
+        // Fetch Governance Report
         fetch(`${API_BASE_URL}/projects/${projectId}/governance`)
             .then(res => res.json())
             .then(data => {
@@ -235,17 +245,15 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                     </div>
                                     <h1 className="text-4xl font-extrabold tracking-tight">Migration Certified.</h1>
                                     <p className="text-blue-100 max-w-md text-lg leading-relaxed">
-                                        Your legacy SSIS logic has been successfully architecturalized into modern, idempotent Delta Lake logic.
+                                        Your legacy {project?.origin || 'Legacy'} logic has been successfully architecturalized into modern, idempotent {project?.destination || 'Cloud'} logic.
                                     </p>
                                     <div className="flex items-center gap-4 pt-4">
-                                        <a
-                                            href={`${API_BASE_URL}/projects/${projectId}/export`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="px-6 py-3 bg-white text-blue-700 rounded-xl font-bold shadow-lg hover:bg-blue-50 transition-all flex items-center gap-2"
+                                        <button
+                                            onClick={() => onStageChange(6)}
+                                            className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 hover:bg-emerald-400 transition-all flex items-center gap-2"
                                         >
-                                            <Download size={18} /> Download Final Bundle
-                                        </a>
+                                            <ArrowRight size={18} /> Proceed to Handover
+                                        </button>
                                         <button
                                             onClick={handlePush}
                                             disabled={isPushing}
@@ -254,11 +262,11 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                             {isPushing ? (
                                                 <>
                                                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                    Pushing to GitHub...
+                                                    Pushing...
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Github size={18} /> Push to Repository
+                                                    <Github size={18} /> Push
                                                 </>
                                             )}
                                         </button>
@@ -270,11 +278,11 @@ export default function GovernanceView({ projectId }: GovernanceViewProps) {
                                             {isAuditing ? (
                                                 <>
                                                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                    Auditing Logic...
+                                                    Auditing...
                                                 </>
                                             ) : (
                                                 <>
-                                                    <ShieldCheck size={18} /> Run AI Audit
+                                                    <ShieldCheck size={18} /> Re-Audit
                                                 </>
                                             )}
                                         </button>
@@ -501,11 +509,11 @@ function LineageRow({ item }: any) {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800">
             <LineageNode label="Source File" name={item.source} icon={<FileText size={14} />} color="gray" />
             <LineageConnector />
-            <LineageNode label="Bronze Delta" name={item.targets.bronze} icon={<Database size={14} />} color="blue" />
+            <LineageNode label="Bronze Layer" name={item.targets.bronze} icon={<Database size={14} />} color="blue" />
             <LineageConnector />
-            <LineageNode label="Silver Clean" name={item.targets.silver} icon={<ShieldCheck size={14} />} color="indigo" />
+            <LineageNode label="Silver Layer" name={item.targets.silver} icon={<ShieldCheck size={14} />} color="indigo" />
             <LineageConnector />
-            <LineageNode label="Gold Semantic" name={item.targets.gold} icon={<TrendingUp size={14} />} color="green" />
+            <LineageNode label="Gold Layer" name={item.targets.gold} icon={<TrendingUp size={14} />} color="green" />
         </div>
     );
 }

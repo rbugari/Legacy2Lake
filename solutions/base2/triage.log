@@ -1,9 +1,10 @@
 --- Triage Started for 03372277-e908-4835-907e-56d4ac0c0e34 ---
 [Start] Initializing Shift-T Triage Agent for Project: 03372277-e908-4835-907e-56d4ac0c0e34
 [Step 1] Running Deep Scanner (Python Engine)...
-   > Scanned 11 files.
-   > Tech Stack Detected: {'log': 1, 'sql': 2, 'dtsx': 7, 'md': 1}
+   > Scanned 10 files.
+   > Tech Stack Detected: {'sql': 2, 'dtsx': 7, 'md': 1}
 [Step 2] Invoking Agent A (Mesh Architect)...
-   > Analysis Complete. Total Nodes (AI + Inferred): 9
+   > Applying custom System Prompt override.
+   > Analysis Complete. Total Nodes (AI + Inferred): 10
 [Step 3] Persisting Mesh Graph and Discovered Assets...
 [Success] Graph and Assets saved to database.

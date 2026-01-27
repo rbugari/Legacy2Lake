@@ -49,8 +49,8 @@ class MigrationOrchestrator:
         # Initialize Agents
         self.librarian = LibrarianService(project_id)
         self.topology = TopologyService(project_id)
-        self.agent_c = AgentCService()
-        self.agent_f = AgentFService()
+        self.agent_c = AgentCService(tenant_id=tenant_id, client_id=client_id)
+        self.agent_f = AgentFService(tenant_id=tenant_id, client_id=client_id)
         self.persistence = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
 
         

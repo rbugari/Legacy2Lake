@@ -6,6 +6,16 @@
 - **Language**: PySpark / Spark SQL
 
 ## Key Architectural Rules (MANDATORY)
+0. **Audit Trail Headers (CRITICAL)**:
+   - EVERY generated file MUST start with the standard L2L Trace block:
+   ```python
+   # L2L MODERNIZATION TRACE
+   # Source: {source_system} Asset '{asset_name}'
+   # Component: {component_type}
+   # Logic: Transpiled from {legacy_type}
+   # Refactoring: {refactoring_note}
+   # Generated At: {timestamp}
+   ```
 1. **Idempotency via MERGE**:
    - All Delta Lake writes MUST use the `MERGE INTO` statement for target tables.
    - Using `.mode("overwrite")` or `.mode("append")` is forbidden unless explicitly justified for Bronze/Raw layers.

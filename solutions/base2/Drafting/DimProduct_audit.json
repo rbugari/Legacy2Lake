@@ -1,6 +1,14 @@
 {
-  "status": "APPROVED",
-  "score": 100,
-  "violations": [],
-  "fixed_code": null
+  "status": "REJECTED",
+  "optimized_code": "",
+  "critique": [
+    "No MERGE INTO logic present for Delta target; only a placeholder for FULL_OVERWRITE is commented (even as a comment, this is not compliant for Silver/Gold layers).",
+    "No actual extraction or transformation logic is implemented; the code is a scaffold.",
+    "No parameterized or context-driven path/credential hardcoding is present, which is good, but the code is incomplete.",
+    "No handling for 'Unknown Members' (e.g., COALESCE or equivalent) in lookups or dimension keys.",
+    "No type casting is performed according to the target DDL; the type safety loop is commented and not aligned to any provided DDL.",
+    "Logging is present for error and info states, but no logging for rows processed (since no data is processed).",
+    "Medallion structure is present as a scaffold, but no real Extract, Transform, or Load logic is implemented."
+  ],
+  "score": 2
 }

@@ -23,14 +23,15 @@ class DependencyService:
         """
         # Fetch all assets with their dependencies
         result = self.db.table('utm_objects')\
-            .select('asset_id, depends_on')\
+            .select('object_id, metadata')\
             .eq('project_id', project_id)\
             .execute()
         
         graph = {}
         for row in (result.data or []):
-            asset_id = row['asset_id']
-            depends_on = row.get('depends_on') or []
+            asset_id = row['object_id']
+            metadata = row.get('metadata') or {}
+            depends_on = metadata.get('depends_on') or []
             graph[asset_id] = depends_on if isinstance(depends_on, list) else []
         
         return graph

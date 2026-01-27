@@ -49,16 +49,42 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
 
     const runScan = async () => {
         setIsScanning(true);
-        setScanLogs(["Initializing Agent S (The Scout)...", "Establishing connection to repository..."]);
+        setScanLogs(["Initializing Agent S (The Scout)...", "Connecting to repository..."]);
         setScanProgress(10);
 
         try {
-            // Simulated file list for assessment (In Phase 5 this will come from real list_dir)
-            const file_list = ["main.ssis", "dtsx_loader.sql", "config.xml", "db_utils.plsql"];
+            // ✅ STEP 1: Fetch real file list from Triage folder
+            setScanLogs(prev => [...prev, "Scanning Triage folder..."]);
 
-            setScanLogs(prev => [...prev, "Scanning directory structure...", "Analyzing file headers (Dialect Detection)..."]);
+            const filesRes = await fetchWithAuth(`projects/${projectId}/triage/files`);
+            const filesData = await filesRes.json();
+
+            if (!filesData.success || filesData.file_count === 0) {
+                setScanLogs(prev => [...prev,
+                    "⚠️ No files found in Triage folder",
+                    "Please upload SSIS packages or source files first"
+                ]);
+                setIsScanning(false);
+                setScanProgress(100);
+                return;
+            }
+
+            // Extract file paths for Agent S
+            const file_list = filesData.files.map((f: any) => f.path);
+
+            // Show file statistics
+            const fileTypesSummary = Object.entries(filesData.file_types || {})
+                .map(([ext, count]) => `${ext}: ${count}`)
+                .join(', ');
+
+            setScanLogs(prev => [...prev,
+            `✓ Found ${filesData.file_count} files in Triage folder`,
+            `  Tech detected: ${fileTypesSummary}`,
+                "Analyzing file headers and dependencies..."
+            ]);
             setScanProgress(40);
 
+            // ✅ STEP 2: Call Agent S with real file list
             const res = await fetchWithAuth("system/scout/assess", {
                 method: "POST",
                 body: JSON.stringify({ file_list })
@@ -66,30 +92,52 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
             const data = await res.json();
 
             setScanProgress(70);
-            setScanLogs(prev => [...prev, "Forensic assessment in progress...", "Mapping procedural logic complexity..."]);
+            setScanLogs(prev => [...prev,
+                "Forensic assessment in progress...",
+                "Mapping dependencies and gaps..."
+            ]);
 
             if (data.error) {
-                setScanLogs(prev => [...prev, `ERROR: ${data.error}`]);
+                setScanLogs(prev => [...prev, `❌ ERROR: ${data.error}`]);
             } else {
                 setAssessment({
-                    summary: data.assessment_summary,
-                    score: data.completeness_score,
+                    summary: data.assessment_summary || "Assessment complete",
+                    score: data.completeness_score || 0,
                     gaps: data.detected_gaps || []
                 });
-                setScanLogs(prev => [...prev, "Generating forensic modernization report...", "Discovery Audit Complete."]);
 
-                // Trigger conflict if low score (simulated logic)
-                if (data.completeness_score < 50) {
+                setScanLogs(prev => [...prev,
+                `✓ Completeness Score: ${data.completeness_score}%`,
+                `✓ Detected ${data.detected_gaps?.length || 0} gaps`,
+                    "Discovery Audit Complete."
+                ]);
+
+                // Trigger conflict if low score
+                if (data.completeness_score < 70) {
                     setShowConflict(true);
                 }
             }
         } catch (e) {
-            setScanLogs(prev => [...prev, `Connection failed: ${e}`]);
+            setScanLogs(prev => [...prev, `❌ Connection failed: ${e}`]);
         } finally {
             setIsScanning(false);
             setScanProgress(100);
         }
     };
+
+    const [sourceTech, setSourceTech] = useState("UNKNOWN");
+
+    useEffect(() => {
+        // Fetch project settings to get Source Tech
+        fetchWithAuth(`projects/${projectId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.settings?.source_tech) {
+                    setSourceTech(data.settings.source_tech);
+                }
+            })
+            .catch(err => console.error("Failed to fetch project settings", err));
+    }, [projectId]);
 
     const handleScan = () => {
         runScan();
@@ -98,11 +146,11 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
-                title="Stage 0.5: Technical Discovery"
+                title="Stage 1: Technical Discovery"
                 subtitle="Agent S: Forensic repository audit and gap detection"
                 icon={<Activity className="text-cyan-500" />}
                 helpText="Initial analysis to ensure technical consistency and fill tribal knowledge gaps before triage."
-                onApprove={() => onStageChange(1)}
+                onApprove={() => onStageChange(2)}
                 approveLabel="Start Triage"
                 isApproveDisabled={scanProgress < 100 || showConflict}
             >
@@ -226,7 +274,7 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
                                 <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-2">User Input</span>
                                 <div className="flex items-center gap-2">
                                     <Database size={14} className="text-gray-400" />
-                                    <span className="text-xs font-black text-white">ORACLE</span>
+                                    <span className="text-xs font-black text-white uppercase">{sourceTech}</span>
                                 </div>
                             </div>
                             <div className={`p-4 border rounded-2xl transition-all ${showConflict ? 'bg-amber-500/10 border-amber-500/30' : 'bg-black/40 border-white/5'}`}>
@@ -245,7 +293,7 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
                                 <div className="flex items-start gap-3 p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
                                     <ShieldAlert className="text-amber-500 shrink-0" size={16} />
                                     <p className="text-[10px] text-amber-200/80 font-bold uppercase tracking-wide leading-relaxed">
-                                        Agent S detected SQL Server dialect instead of Oracle. Resolve this conflict to proceed.
+                                        Agent S detected SQL Server dialect instead of {sourceTech}. Resolve this conflict to proceed.
                                     </p>
                                 </div>
                                 <button

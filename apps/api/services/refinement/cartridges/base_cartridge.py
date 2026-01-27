@@ -38,3 +38,17 @@ class Cartridge(ABC):
     def get_file_extension(self) -> str:
         """Returns the file extension for generated scripts (e.g., .py, .sql)."""
         pass
+
+    def generate_semantic_model(self, table_metadata: Dict[str, Any]) -> str:
+        """
+        Optional: Generates semantic layer code (e.g., LookML views, dbt metrics).
+        Defaults to returning an empty string if the cartridge doesn't support it.
+        """
+        return ""
+
+    def generate_orchestration(self, tables_metadata: List[Dict[str, Any]]) -> str:
+        """
+        Optional: Generates orchestration code (e.g., Airflow DAGs, Fabric Pipelines).
+        Defaults to returning an empty string.
+        """
+        return ""

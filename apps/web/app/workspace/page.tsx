@@ -13,6 +13,8 @@ import WorkflowToolbar from "../components/WorkflowToolbar";
 import LogsSidePanel from "../components/LogsSidePanel";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
+import WorkspaceShield from "../components/WorkspaceShield";
+import StageControls from "../components/StageControls";
 
 import { API_BASE_URL } from "../lib/config";
 import {
@@ -36,11 +38,19 @@ function WorkspaceContent() {
     // Split State: projectStage (Backend) vs activeView (UI)
     const [projectStage, setProjectStage] = useState(1);
     const [activeView, setActiveView] = useState(1);
+    const [isInitializing, setIsInitializing] = useState(true);
 
     const [selectedNode, setSelectedNode] = useState<any>(null);
     const [showLogs, setShowLogs] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
-    const [sidebarStats, setSidebarStats] = useState({ core: 12, ignored: 4, pending: 8 });
+    const [sidebarStats, setSidebarStats] = useState({ core: 0, ignored: 0, pending: 0 });
+
+    // New Global UI State
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+    const handleStatsUpdate = useCallback((stats: any) => {
+        setSidebarStats(stats);
+    }, []);
 
     useEffect(() => {
         if (!id || id === 'undefined') {
@@ -58,6 +68,8 @@ function WorkspaceContent() {
     const [projectName, setProjectName] = useState<string | null>(null);
     const [repoUrl, setRepoUrl] = useState<string | null>(null);
     const [ghostTenantId, setGhostTenantId] = useState<string | null>(null);
+    const [sourceTech, setSourceTech] = useState<string | undefined>(undefined);
+    const [targetTech, setTargetTech] = useState<string | undefined>(undefined);
 
     // Initial Load & Project Details
     useEffect(() => {
@@ -75,12 +87,34 @@ function WorkspaceContent() {
                     setActiveView(s);
                 }
 
+                // Tech Stack Extraction
+                if (data.settings) {
+                    setSourceTech(data.settings.source_tech);
+                    setTargetTech(data.settings.target_tech);
+                }
+
                 // Ghost Mode Detection
                 if (user?.role === 'ADMIN' && data.tenant_id && data.tenant_id !== user.tenant_id) {
                     setGhostTenantId(data.tenant_id);
                 }
+
+                // Allow a small delay for smooth transition
+                setTimeout(() => setIsInitializing(false), 800);
             })
-            .catch(err => console.error("Failed to fetch project details", err));
+            .catch(err => {
+                console.error("Failed to fetch project details", err);
+                setIsInitializing(false);
+            });
+
+        // Fetch Project Stats independently for Sidebar
+        fetch(`${API_BASE_URL}/projects/${id}/stats`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.core !== undefined) {
+                    setSidebarStats(data);
+                }
+            })
+            .catch(err => console.error("Failed to fetch project stats", err));
 
         const initialNodes = [
             { id: '1', type: 'package', position: { x: 250, y: 5 }, data: { label: 'SSIS Package A' } },
@@ -180,21 +214,54 @@ function WorkspaceContent() {
         }
     };
 
-    if (!id) return <div className="flex items-center justify-center h-screen">Loading Workspace...</div>;
+    const handleResetProject = async () => {
+        if (!id) return;
+        const confirmMsg = "⚠️ This will DELETE all detected assets and reset the project to Stage 1.\n\nThis is recommended if you uploaded new files and want a clean start.\n\nAre you sure you want to continue?";
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/projects/${id}/reset`, { method: 'POST' });
+            if (res.ok) {
+                alert("✅ Project reset successfully!");
+                // Clear state
+                setProjectStage(1);
+                setActiveView(1);
+                window.location.reload(); // Hard refresh to clear all local states
+            } else {
+                const data = await res.json();
+                alert(`❌ Failed to reset: ${data.detail || "Unknown error"}`);
+            }
+        } catch (e) {
+            console.error("Reset failed", e);
+            alert("❌ Connection error during reset");
+        }
+    };
+
+    const handleReloadStage = () => {
+        // Simple reload for now, can be enhanced to refresh just data later
+        window.location.reload();
+    };
+
+    if (!id) return <WorkspaceShield status="Identifying project context..." />;
+    if (isInitializing) return <WorkspaceShield status={`Syncing ${projectName || 'Agent Matrix'}...`} />;
 
     return (
         <ReactFlowProvider>
             <div className="flex h-screen bg-[#050505] text-[var(--text-primary)] overflow-hidden">
-                <WorkspaceSidebar
-                    projectName={projectName || id}
-                    activeStage={projectStage}
-                    stats={sidebarStats}
-                    onAction={(action) => {
-                        if (action === 'config') setShowConfig(true);
-                        if (action === 'export') window.open(`${API_BASE_URL}/projects/${id}/export`);
-                        if (action === 'reset') alert("Reset Phase placeholder");
-                    }}
-                />
+                {isSidebarOpen && (
+                    <WorkspaceSidebar
+                        projectName={projectName || id}
+                        origin={sourceTech}
+                        destination={targetTech}
+                        activeStage={projectStage}
+                        stats={sidebarStats}
+                        onAction={(action) => {
+                            if (action === 'config') setShowConfig(true);
+                            if (action === 'export') window.open(`${API_BASE_URL}/projects/${id}/export`);
+                            if (action === 'reset') handleResetProject();
+                        }}
+                    />
+                )}
 
                 {/* Main Content */}
                 <main className="flex-1 flex flex-col relative">
@@ -246,6 +313,13 @@ function WorkspaceContent() {
                                 >
                                     <Settings size={18} />
                                 </button>
+                                <button
+                                    onClick={handleResetProject}
+                                    className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
+                                    title="Reset Project (Delete All Assets)"
+                                >
+                                    <RefreshCw size={18} />
+                                </button>
                                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
                                 <button
                                     className="p-1.5 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all"
@@ -281,53 +355,68 @@ function WorkspaceContent() {
                                 <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-2">
                                     <Users size={12} /> Inspection Mode: You are viewing a previous stage.
                                 </p>
-                                <button
-                                    onClick={() => setActiveView(projectStage)}
-                                    className="text-[10px] font-bold text-amber-800 dark:text-amber-300 underline"
-                                >
-                                    Jump to Active Stage
-                                </button>
+                                {/* Removed Jump button here, moved to controls container for alignment */}
                             </div>
                         )}
 
-                        {activeView === 0 && (
+                        {/* Global Stage Controls (Always Visible) */}
+                        <div className="absolute top-2 right-6 z-[60] flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                            {activeView < projectStage && (
+                                <button
+                                    onClick={() => setActiveView(projectStage)}
+                                    className="text-[10px] font-bold text-amber-800 dark:text-amber-300 underline bg-amber-100 dark:bg-amber-900/40 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-200 transition-colors"
+                                >
+                                    Back to Current Stage
+                                </button>
+                            )}
+                            <StageControls
+                                isMaximized={!isSidebarOpen}
+                                onToggleMaximize={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReload={handleReloadStage}
+                            />
+                        </div>
+
+                        {activeView === 1 && (
                             <DiscoveryView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                             />
                         )}
-                        {activeView === 1 && (
+                        {activeView === 2 && (
                             <TriageView
+                                projectId={id}
+                                activeTenantId={ghostTenantId || undefined}
+                                onStageChange={(s: number) => handleApproveStage(s)}
+                                isReadOnly={activeView < projectStage}
+                                onStatsUpdate={handleStatsUpdate}
+                            />
+                        )}
+                        {activeView === 3 && (
+                            <DraftingView
+                                projectId={id}
+                                activeTenantId={ghostTenantId || undefined}
+                                onStageChange={(s: number) => handleApproveStage(s)}
+                                isReadOnly={activeView < projectStage}
+                                onCompletion={(completed) => setIsStageComplete(completed)}
+                            />
+                        )}
+                        {activeView === 4 && (
+                            <RefinementView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                             />
                         )}
-
-                        {activeView === 2 && (
-                            <DraftingView
-                                projectId={id || ""}
-                                onStageChange={(s) => handleApproveStage(s)}
-                                onCompletion={(completed) => setIsStageComplete(completed)}
-                                isReadOnly={activeView < projectStage}
-                                activeTenantId={ghostTenantId || undefined}
-                            />
-                        )}
-                        {activeView === 3 && (
-                            <RefinementView
-                                projectId={id || ""}
-                                onStageChange={(s) => handleApproveStage(s)}
-                                isReadOnly={activeView < projectStage}
-                            />
-                        )}
-
-
-                        {activeView === 4 && (
-                            <GovernanceView projectId={id || ""} />
-                        )}
                         {activeView === 5 && (
+                            <GovernanceView
+                                projectId={id}
+                                onStageChange={(s: number) => handleApproveStage(s)}
+                            />
+                        )}
+                        {activeView === 6 && (
                             <HandoverView
-                                projectId={id || ""}
+                                projectId={id}
+                                projectName={projectName || undefined}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                             />
                         )}

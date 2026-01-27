@@ -1,19 +1,14 @@
 {
   "status": "REJECTED",
-  "score": 70,
-  "violations": [
-    {
-      "severity": "CRITICAL",
-      "rule": "Identity/Surrogate Keys",
-      "description": "Surrogate key generation uses row_number() over the business key columns, but this is not guaranteed to be stable across runs unless the input data is strictly ordered and unchanged. The platform rule requires resetting the sequence to MAX(id) + 1 and using a stable, deterministic assignment. The current approach may result in surrogate key drift if the input order changes.",
-      "suggestion": "Use a deterministic hash or a sequence generator that is stable across runs, or ensure the input is strictly ordered and unchanged. Consider using 'GENERATED ALWAYS AS IDENTITY' in DDL and resetting the sequence to MAX(id) + 1 during migration."
-    },
-    {
-      "severity": "WARNING",
-      "rule": "Type Safety",
-      "description": "Type casting is not enforced. The code comments acknowledge the lack of target schema, but the platform rules require explicit casting to mapped types.",
-      "suggestion": "Obtain the target schema and apply explicit .cast() operations for all columns according to the platform's data_type_mapping."
-    }
+  "optimized_code": "",
+  "critique": [
+    "Architectural Compliance Failure: Code uses .mode('overwrite') for a Delta target. MERGE INTO is mandatory for idempotency and audit compliance.",
+    "Hardcoding Detected: target_table and target_path are hardcoded. All paths and table names must be parameterized via the context object.",
+    "Data Integrity Audit: No COALESCE or equivalent logic for handling unknown members in lookups. Even if no lookups are present, this should be explicitly handled or documented.",
+    "Resiliency: Logging exists, but there is no explicit logging of rows processed (e.g., row counts before/after load).",
+    "Precise Casting: Casting appears correct for the provided DDL (categoryid INT, categoryname STRING), but the DDL is not dynamically referenced or validated.",
+    "Medallion Structure: Extract, Transform, Load sections are present and clear.",
+    "Optimization Hints: Z-Order and Vacuum are commented out, which is acceptable but should be parameter-driven if used."
   ],
-  "fixed_code": null
+  "score": 4
 }

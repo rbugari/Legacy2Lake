@@ -1,26 +1,13 @@
 {
   "status": "REJECTED",
-  "score": 70,
-  "violations": [
-    {
-      "severity": "CRITICAL",
-      "rule": "Hardcoded Paths",
-      "description": "The code uses a hardcoded path ('/mnt/delta/base2/dbo/DimCustomer') for the Delta table location. Platform rules require paths to be parameterized.",
-      "suggestion": "Replace the hardcoded path with a variable or parameter (e.g., use a notebook widget or config variable)."
-    },
-    {
-      "severity": "WARNING",
-      "rule": "Idempotency",
-      "description": "The code uses .mode('overwrite') for writing, which is generally idempotent. However, if the table is managed via the Hive Metastore or Unity Catalog, using .save(path) may bypass table-level metadata. Consider using .saveAsTable or Delta MERGE for better idempotency and schema evolution.",
-      "suggestion": "If possible, use DeltaTable.merge for upserts or .saveAsTable for managed tables."
-    },
-    {
-      "severity": "WARNING",
-      "rule": "Identity/Surrogate Keys",
-      "description": "Surrogate key generation uses row_number() + max_sk, which is correct for migration. However, this approach can be inefficient for large tables due to the use of .count() and collecting max_sk to the driver. Consider using a more scalable approach if processing large volumes.",
-      "suggestion": "For large tables, use a distributed sequence generator or ensure max_sk is computed efficiently."
-    }
+  "optimized_code": null,
+  "critique": [
+    "Architectural Compliance: The code contains a fallback to 'mode(\"overwrite\")' for Delta targets if business keys or target_ddl are missing. This is strictly forbidden; all Delta writes must use MERGE INTO for idempotency.",
+    "Zero Hardcoding: Hardcoded Delta path 'dbfs:/delta/{target_table}' is present. All paths must be parameterized or derived from context.",
+    "Data Integrity Audit: No COALESCE or equivalent logic is present for handling 'Unknown Members' in lookups. Even if no lookups are defined, the template should enforce this for future extensibility.",
+    "Resiliency: Logging is present for extraction and load errors, but there is no logging for rows processed (e.g., row counts before and after load) or for error states at a granular level.",
+    "Precise Casting Check: The code attempts to cast columns based on target_ddl, but does not validate that the cast types match the DDL's precision (e.g., Decimal(38,10) vs. Decimal(18,2)).",
+    "Medallion Structure: The code is generally medallion-compliant, but the fallback to overwrite breaks the architectural contract for Silver/Gold layers."
   ],
-  "fixed_code": "# Replace hardcoded path with a parameterized variable\n# Example: Use a notebook widget or config variable for the path\n\ndelta_table_path = dbutils.widgets.get('delta_table_path')\nif not delta_table_path:\n    raise ValueError('delta_table_path parameter must be provided.')\n\ndf_final.write.format('delta').mode('overwrite').option('overwriteSchema', 'true').save(delta_table_path)\n\n# The rest of the code remains unchanged.",
-  "notes": "The code correctly handles surrogate key generation, unknown member enforcement, and type casting. No SCD2 logic is required for this dimension. The main blocker is the hardcoded path, which is a strict violation."
+  "score": 5
 }

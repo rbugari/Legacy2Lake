@@ -1,7 +1,7 @@
 import os
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 try:
     from apps.api.utils.logger import logger
@@ -21,56 +21,69 @@ except ImportError:
 class AgentAService:
     """Service for Agent A (Detective) using Azure OpenAI."""
     
-    def __init__(self):
-        
-        self.prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "agent_a_discovery.md")
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
+         self.tenant_id = tenant_id
+         self.client_id = client_id
 
     async def _get_llm(self):
-        """Resolves LLM client from Global Config or Env Vars."""
-        db = SupabasePersistence()
-        config = await db.get_global_config("provider_settings")
+        """Resolves LLM client from Agent Matrix (DB) or Env Vars."""
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
-        # Default fallback to env
+        # 1. Try DB Resolution (Universal Persistence)
+        resolved = await db.resolve_agent_model("agent-a")
+        
+        # Default fallback to values from ENV
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         key = os.getenv("AZURE_OPENAI_API_KEY")
         deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        temperature = 0
+        provider = "azure"
         
-        # Override from DB if available and enabled
-        azure_config = config.get("azure", {})
-        if azure_config.get("enabled"):
-            if azure_config.get("endpoint"): endpoint = azure_config.get("endpoint")
-            if azure_config.get("api_key"): key = azure_config.get("api_key")
-            if azure_config.get("model"): deployment = azure_config.get("model")
+        if resolved:
+            provider = resolved.get("provider", "azure")
+            if resolved.get("endpoint"): endpoint = resolved.get("endpoint")
+            if resolved.get("api_key"): key = resolved.get("api_key") 
+            if resolved.get("deployment"): deployment = resolved.get("deployment")
+            if resolved.get("api_version"): api_version = resolved.get("api_version")
+            if "temperature" in resolved: temperature = resolved["temperature"]
             
-        return AzureChatOpenAI(
-            azure_endpoint=endpoint,
-            azure_deployment=deployment,
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-            api_key=key,
-            temperature=0
-        )
+        if provider == "azure":
+            return AzureChatOpenAI(
+                azure_endpoint=endpoint,
+                azure_deployment=deployment,
+                openai_api_version=api_version,
+                api_key=key,
+                temperature=temperature
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=deployment,
+                api_key=key,
+                base_url=endpoint,
+                temperature=temperature
+            )
         
-        self.prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "agent_a_discovery.md")
         
-    def _load_prompt(self, path: str = None) -> str:
-        target_path = path or self.prompt_path
-        with open(target_path, "r", encoding="utf-8") as f:
-            return f.read()
+    async def _load_prompt(self, path: str = None) -> str:
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        return await db.get_prompt("agent_a_discovery")
 
-    def save_prompt(self, content: str):
-        """Updates the system prompt file."""
-        with open(self.prompt_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    async def save_prompt(self, content: str):
+        """Updates the system prompt in DB."""
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        await db.save_prompt("agent_a_discovery", content)
 
 
     async def analyze_manifest(self, manifest: Dict[str, Any], system_prompt_override: str = None) -> Dict[str, Any]:
         """Analyzes the full project manifest to build the Mesh Graph."""
         
-        system_prompt = system_prompt_override or self._load_prompt()
+        system_prompt = system_prompt_override or await self._load_prompt()
         project_id = manifest.get('project_id')
         
         # Release 1.3: Fetch Design Registry
-        db = SupabasePersistence()
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         registry_raw = await db.get_design_registry(project_id) if project_id else []
         registry = KnowledgeService.flatten_knowledge(registry_raw)
         
@@ -139,7 +152,7 @@ class AgentAService:
             }
     async def analyze_package(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """Analyzes a single SSIS package summary (legacy/individual ingest)."""
-        system_prompt = self._load_prompt()
+        system_prompt = await self._load_prompt()
         
         user_message = f"""
         ANALYZE THIS SSIS PACKAGE:

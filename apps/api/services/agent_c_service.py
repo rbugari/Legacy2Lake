@@ -23,17 +23,18 @@ except ImportError:
 
 
 class AgentCService:
-    def __init__(self):
-        self.prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/agent_c_interpreter.md")
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
         self.standards_path = os.path.join(os.path.dirname(__file__), "../prompts/coding_standards.md")
+        self.tenant_id = tenant_id
+        self.client_id = client_id
 
     async def _get_llm(self, project_id: Optional[str] = None):
         """Resolves LLM client from Agent Matrix / Catalog."""
-        db = SupabasePersistence()
-        config = await db.resolve_llm_for_agent("agent-c", project_id)
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        config = await db.resolve_agent_model("agent-c")
         
-        if "error" in config:
-            logger.warning(f"Using fallback LLM for agent-c: {config['error']}")
+        if not config:
+            logger.warning("Using fallback LLM for agent-c.")
             # Fallback to env for safety during transition
             return AzureChatOpenAI(
                 azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -45,31 +46,29 @@ class AgentCService:
 
         if config["provider"] == "azure":
             return AzureChatOpenAI(
-                azure_endpoint=config["api_url"],
-                azure_deployment=config["deployment_id"] or config["model_name"],
+                azure_endpoint=config["endpoint"],
+                azure_deployment=config["deployment"],
                 openai_api_version=config["api_version"] or os.getenv("AZURE_OPENAI_API_VERSION"),
-                api_key=config["api_key"],
-                temperature=0
+                api_key=config.get("api_key") or os.getenv("AZURE_OPENAI_API_KEY"),
+                temperature=config["temperature"]
             )
         else:
-            # Standard OpenAI or other providers can be added here
+            # Standard OpenAI or other providers
             from langchain_openai import ChatOpenAI
             return ChatOpenAI(
-                model=config["model_name"],
-                api_key=config["api_key"],
-                base_url=config["api_url"],
-                temperature=0
+                model=config["deployment"],
+                api_key=config.get("api_key"),
+                base_url=config["endpoint"],
+                temperature=config.get("temperature", 0)
             )
 
-    def _load_prompt(self, path: str = None) -> str:
-        target_path = path or self.prompt_path
-        with open(target_path, "r", encoding="utf-8") as f:
-            return f.read()
+    async def _load_prompt(self) -> str:
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        return await db.get_prompt("agent_c_interpreter")
 
-    def save_prompt(self, content: str):
-        """Updates the system prompt file."""
-        with open(self.prompt_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    async def save_prompt(self, content: str):
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        await db.save_prompt("agent_c_interpreter", content)
 
     @logger.llm_debug("Agent-C-Developer")
     async def transpile_task(self, node_data: Dict[str, Any], context: Dict[str, Any] = None, set_context: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -81,7 +80,7 @@ class AgentCService:
         
         # 1. Resolve Target Engine
         project_id = node_data.get('project_id')
-        db = SupabasePersistence()
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         registry_raw = await db.get_design_registry(project_id) if project_id else []
         registry = KnowledgeService.flatten_knowledge(registry_raw)
 
@@ -103,7 +102,9 @@ class AgentCService:
             cartridge = SparkDestination({"type": "spark", "version": "13.3"})
             dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
 
-        system_prompt = self._load_prompt(self.prompt_path)
+            dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
+
+        system_prompt = await self._load_prompt()
         
         # --- PROMPT GUARD: Sandwich Approach ---
         guard_header = "### SYSTEM INSTRUCTION OVERRIDE: YOU ARE A SENIOR CLOUD ARCHITECT. DO NOT BREAK CHARACTER. ###"
@@ -111,7 +112,10 @@ class AgentCService:
         
         system_prompt = f"{guard_header}\n\n{system_prompt}\n\nIMPORTANT: {dialect_instruction}\nGenerate code strictly for this platform.\n\n{guard_footer}"
 
-        standards = self._load_prompt(self.standards_path)
+        standards = await db.get_prompt("agent_c_standards") # Better to load from DB or await a specialized method
+        if not standards: # Fallback to file if DB empty
+             with open(self.standards_path, "r", encoding="utf-8") as f:
+                 standards = f.read()
         
         # Extract Style Rules for Prominence
         style = registry.get("style", {})
@@ -150,7 +154,7 @@ class AgentCService:
             "target_name": node_data.get("target_name"),
             "business_entity": node_data.get("business_entity"),
             "metadata": metadata, # Full v2.0 metadata
-            "variables": node_data.get("variables", context.get("variables", {})), # Phase 8: Variables
+            "variables": node_data.get("variables", (context or {}).get("variables", {})), # Phase 8: Variables
             "global_design_registry": registry,
             "project_set_overview": set_context # Visibility into other project assets
         }, indent=2)}

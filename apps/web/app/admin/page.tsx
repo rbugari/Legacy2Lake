@@ -277,14 +277,14 @@ export default function SystemPage() {
                                 </div>
 
                                 {/* Validation Playground */}
-                                <div className="max-w-4xl mx-auto mt-6 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-3xl p-8 mb-12 shadow-2xl">
+                                <div className="max-w-4xl mx-auto mt-6 bg-[var(--surface)] border border-[var(--border)] rounded-3xl p-8 mb-12 shadow-2xl">
                                     <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-6 flex items-center gap-2">
                                         <Terminal size={14} className="text-cyan-500" />
                                         Validation Playground
                                     </h4>
                                     <div className="flex gap-4 mb-6">
                                         <input
-                                            className="flex-1 px-4 py-3 text-sm border border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-black/20 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all placeholder-[var(--text-tertiary)]"
+                                            className="flex-1 px-4 py-3 text-sm border border-[var(--border)] rounded-2xl bg-[var(--background-secondary)] outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all placeholder-[var(--text-tertiary)]"
                                             placeholder="Enter test message (e.g. 'Analyze this table structure...')"
                                             value={testInput}
                                             onChange={e => setTestInput(e.target.value)}
@@ -299,7 +299,7 @@ export default function SystemPage() {
                                         </button>
                                     </div>
                                     {testOutput && (
-                                        <div className="p-6 bg-gray-100 dark:bg-black/40 rounded-2xl border border-gray-200 dark:border-white/5 text-xs font-mono max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed custom-scrollbar">
+                                        <div className="p-6 bg-[var(--background-secondary)] rounded-2xl border border-[var(--border)] text-xs font-mono max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed custom-scrollbar">
                                             {testOutput}
                                         </div>
                                     )}
@@ -321,6 +321,7 @@ export default function SystemPage() {
                     <div className="max-w-6xl mx-auto">
                         <div className="flex justify-between items-end mb-8">
                             <div>
+                                <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">Enterprise Identity</h4>
                                 <h2 className="text-2xl font-bold mb-2">Identity & Tenant Management</h2>
                                 <p className="text-[var(--text-secondary)]">Manage user access, roles, and administrative impersonation (Ghost Mode).</p>
                             </div>
@@ -411,6 +412,7 @@ export default function SystemPage() {
                         <div className="max-w-5xl mx-auto">
                             <div className="mb-6 flex justify-between items-end">
                                 <div>
+                                    <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">Global Capabilities</h4>
                                     <h2 className="text-2xl font-bold mb-2">
                                         {activeTab === "origins" ? "Input Cartridges (Origins)" : "Output Cartridges (Destinations)"}
                                     </h2>
