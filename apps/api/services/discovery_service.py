@@ -8,14 +8,14 @@ from apps.utm.cartridges.ssis.parser import SSISCartridge
 
 class DiscoveryService:
     @staticmethod
-    def generate_manifest(project_id: str, user_context: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def generate_manifest(project_id: str, tenant_id: str = None, user_context: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generates a comprehensive 'Triage Manifest' for Agent A.
         Includes structure, snippets of logic, and detected invocations.
         Scans the Triage subfolder where uploaded objects are stored.
         """
         # Get base project directory
-        project_base = PersistenceService.ensure_solution_dir(project_id)
+        project_base = PersistenceService.ensure_solution_dir(project_id, tenant_id)
         
         # Scan the Triage subfolder specifically (where uploaded objects are)
         triage_path = os.path.join(project_base, PersistenceService.STAGE_TRIAGE)
@@ -35,6 +35,11 @@ class DiscoveryService:
             if '__pycache__' in dirs: dirs.remove('__pycache__')
             
             for file in files:
+                # [Fix] Exclude system generated files to prevent Agent hallucinations
+                if file in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+                    continue
+
+
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, project_path).replace("\\", "/")
                 

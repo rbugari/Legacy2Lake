@@ -1,0 +1,12 @@
+--- Triage Started for 109401c0-426c-449d-9436-34af60db0c26 ---
+Tenant: 461b0d87-57a4-4ce5-b990-977bec9603eb
+[2026-01-29 17:33:01] [SYSTEM] Initializing Shift-T Triage Agent for Project: 109401c0-426c-449d-9436-34af60db0c26
+[2026-01-29 17:33:01] [SCANNER] Running Deep Scanner (Python Engine)...
+[2026-01-29 17:33:01] [SCANNER] Scanned 1 files.
+[2026-01-29 17:33:01] [SCANNER] Tech Stack Detected: {'dtsx': 1}
+[2026-01-29 17:33:01] [ORCHESTRATOR] Invoking Agent A (Mesh Architect)...
+[2026-01-29 17:33:01] [ORCHESTRATOR] Applying custom System Prompt override.
+[2026-01-29 17:33:01] [AGENT_A] Initiating Agent A (Detective) via OPENAI using model gpt-4o-mini-2024-07-18
+[2026-01-29 17:33:13] [AGENT_A] Analysis Complete. Total Nodes (AI + Inferred): 1
+[2026-01-29 17:33:13] [DATABASE] Persisting Mesh Graph and Discovered Assets...
+[2026-01-29 17:33:13] [DATABASE] Graph and Assets saved to database.

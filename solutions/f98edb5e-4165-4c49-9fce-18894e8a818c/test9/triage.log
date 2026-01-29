@@ -1,0 +1,12 @@
+--- Triage Started for dd13fc92-4091-456a-8ce4-712406ceb831 ---
+Tenant: f98edb5e-4165-4c49-9fce-18894e8a818c
+[2026-01-29 16:59:14] [SYSTEM] Initializing Shift-T Triage Agent for Project: dd13fc92-4091-456a-8ce4-712406ceb831
+[2026-01-29 16:59:14] [SCANNER] Running Deep Scanner (Python Engine)...
+[2026-01-29 16:59:15] [SCANNER] Scanned 1 files.
+[2026-01-29 16:59:15] [SCANNER] Tech Stack Detected: {'dtsx': 1}
+[2026-01-29 16:59:15] [ORCHESTRATOR] Invoking Agent A (Mesh Architect)...
+[2026-01-29 16:59:15] [ORCHESTRATOR] Applying custom System Prompt override.
+[2026-01-29 16:59:15] [AGENT_A] Initiating Agent A (Detective) via AZURE using model gpt-4.1
+[2026-01-29 16:59:34] [AGENT_A] Analysis Complete. Total Nodes (AI + Inferred): 1
+[2026-01-29 16:59:34] [DATABASE] Persisting Mesh Graph and Discovered Assets...
+[2026-01-29 16:59:35] [DATABASE] Graph and Assets saved to database.

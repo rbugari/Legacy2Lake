@@ -216,12 +216,15 @@ async def validate_agent(payload: ValidationRequest, db: SupabasePersistence = D
     elif agent_id.lower() in ["agent-s", "agent_s", "s"]:
         agent_service = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
         
-    if not agent_service:
-        raise HTTPException(status_code=400, detail="Invalid Agent ID")
-        
-    # Get LLM (using Agent A's helper for now, assuming shared config)
-    # Ideally each service has _get_llm exposed or shared base class.
-    # AgentAService has _get_llm public-ish.
+    # Resolviendo información del modelo para el log
+    llm_config = await db.resolve_agent_model(agent_id)
+    if llm_config:
+        provider = llm_config.get('provider', 'UNKNOWN').upper()
+        model = llm_config.get('deployment') or llm_config.get('model_name', 'UNKNOWN')
+        print(f"[VALIDATE] Initiating Agent {agent_id} via {provider} using model {model}")
+    else:
+        print(f"[VALIDATE] Missing configuration for Agent {agent_id}")
+
     try:
         llm = await agent_service._get_llm()
     except AttributeError:

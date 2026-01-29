@@ -14,13 +14,14 @@ import LogsSidePanel from "../components/LogsSidePanel";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 import WorkspaceShield from "../components/WorkspaceShield";
-import StageControls from "../components/StageControls";
+// import StageControls from "../components/StageControls";
 
 import { API_BASE_URL } from "../lib/config";
+import { fetchWithAuth } from "../lib/auth-client";
 import {
     Activity, ArrowRight, CheckCircle, Code, FileText, GitCommit,
     GitPullRequest, Layout, Play, Save, Settings, Share2,
-    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye
+    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield
 } from "lucide-react";
 
 function WorkspaceContent() {
@@ -76,7 +77,7 @@ function WorkspaceContent() {
         if (!id) return;
 
         // Fetch Project Details
-        fetch(`${API_BASE_URL}/projects/${id}`)
+        fetchWithAuth(`projects/${id}`)
             .then(res => res.json())
             .then(data => {
                 if (data.name) setProjectName(data.name);
@@ -107,7 +108,7 @@ function WorkspaceContent() {
             });
 
         // Fetch Project Stats independently for Sidebar
-        fetch(`${API_BASE_URL}/projects/${id}/stats`)
+        fetchWithAuth(`projects/${id}/stats`)
             .then(res => res.json())
             .then(data => {
                 if (data.core !== undefined) {
@@ -129,7 +130,7 @@ function WorkspaceContent() {
         setIsSaving(true);
         // Simulate autosave to backend
         try {
-            await fetch(`${API_BASE_URL}/projects/${id}/layout`, {
+            await fetchWithAuth(`projects/${id}/layout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ nodes })
@@ -155,7 +156,7 @@ function WorkspaceContent() {
             setOptimizedCode("# Generating PySpark...");
 
             try {
-                const response = await fetch(`${API_BASE_URL}/transpile/task`, {
+                const response = await fetchWithAuth(`transpile/task`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -197,20 +198,33 @@ function WorkspaceContent() {
     }, [activeView]);
 
     const handleApproveStage = async (targetStage: number) => {
-        if (!id) return;
+        if (!id) {
+            console.error("[Workspace] Missing project ID for stage update");
+            return;
+        }
+        console.log(`[Workspace] Attempting to transition to stage ${targetStage} for project ${id}`);
+
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${id}/stage`, {
+            const res = await fetchWithAuth(`projects/${id}/stage`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ stage: targetStage.toString() })
             });
+
+            console.log(`[Workspace] Stage update response status: ${res.status}`);
             const data = await res.json();
+            console.log("[Workspace] Stage update response data:", data);
+
             if (data.success) {
+                console.log("[Workspace] Transition successful. Updating local state.");
                 setProjectStage(targetStage);
                 setActiveView(targetStage);
+            } else {
+                console.error("[Workspace] Stage update reported failure:", data);
+                alert(`Failed to transition: ${data.detail || "Unknown error"}`);
             }
         } catch (e) {
-            console.error("Failed to update stage", e);
+            console.error("[Workspace] Network error during stage update:", e);
+            alert("Connection error while moving to next stage.");
         }
     };
 
@@ -220,7 +234,7 @@ function WorkspaceContent() {
         if (!window.confirm(confirmMsg)) return;
 
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${id}/reset`, { method: 'POST' });
+            const res = await fetchWithAuth(`projects/${id}/reset`, { method: 'POST' });
             if (res.ok) {
                 alert("✅ Project reset successfully!");
                 // Clear state
@@ -289,10 +303,20 @@ function WorkspaceContent() {
                             <div className="flex items-center gap-3">
                                 {/* Ghost Badge */}
                                 {ghostTenantId && (
-                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-full text-xs font-bold animate-pulse">
-                                        <Eye size={12} />
-                                        <span>Viewing as Tenant</span>
-                                    </div>
+                                    <>
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-full text-xs font-bold animate-pulse">
+                                            <Eye size={12} />
+                                            <span>Viewing as Tenant</span>
+                                        </div>
+                                        <a
+                                            href="/admin"
+                                            className="flex items-center gap-1.5 px-3 py-1 bg-gray-800 text-white hover:bg-gray-700 border border-gray-700 rounded-full text-xs font-bold transition-all shadow-sm"
+                                            title="Return to Admin Console to switch users"
+                                        >
+                                            <Shield size={12} />
+                                            <span>Admin Console</span>
+                                        </a>
+                                    </>
                                 )}
                                 {isSaving && <span className="text-xs text-gray-400 animate-pulse flex items-center gap-1"><Save size={12} /> Saving...</span>}
                                 {!isSaving && lastSaved && <span className="text-xs text-gray-400">Saved</span>}
@@ -359,27 +383,15 @@ function WorkspaceContent() {
                             </div>
                         )}
 
-                        {/* Global Stage Controls (Always Visible) */}
-                        <div className="absolute top-2 right-6 z-[60] flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-                            {activeView < projectStage && (
-                                <button
-                                    onClick={() => setActiveView(projectStage)}
-                                    className="text-[10px] font-bold text-amber-800 dark:text-amber-300 underline bg-amber-100 dark:bg-amber-900/40 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-200 transition-colors"
-                                >
-                                    Back to Current Stage
-                                </button>
-                            )}
-                            <StageControls
-                                isMaximized={!isSidebarOpen}
-                                onToggleMaximize={() => setIsSidebarOpen(!isSidebarOpen)}
-                                onReload={handleReloadStage}
-                            />
-                        </div>
 
                         {activeView === 1 && (
                             <DiscoveryView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
                         {activeView === 2 && (
@@ -389,6 +401,10 @@ function WorkspaceContent() {
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                                 onStatsUpdate={handleStatsUpdate}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
                         {activeView === 3 && (
@@ -398,6 +414,10 @@ function WorkspaceContent() {
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                                 onCompletion={(completed) => setIsStageComplete(completed)}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
                         {activeView === 4 && (
@@ -405,12 +425,20 @@ function WorkspaceContent() {
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
                         {activeView === 5 && (
                             <GovernanceView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
                         {activeView === 6 && (
@@ -418,6 +446,10 @@ function WorkspaceContent() {
                                 projectId={id}
                                 projectName={projectName || undefined}
                                 onStageChange={(s: number) => handleApproveStage(s)}
+                                isFullscreen={!isSidebarOpen}
+                                onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
+                                onReset={handleReloadStage}
+                                onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                             />
                         )}
 

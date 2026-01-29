@@ -14,31 +14,36 @@ except ImportError:
         from ..persistence_service import PersistenceService
 
 class OpsAuditorService:
-    def __init__(self):
-        pass
+    def __init__(self, tenant_id: str = None):
+        self.tenant_id = tenant_id
+
+    def _log(self, log: list, msg: str, level: str = "OpsAuditor", model: str = "Compliance Auditor"):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
     def audit_project(self, project_id: str, architect_output: dict, log: list = None) -> dict:
         """
         Validates the refined project and generates operational artifacts.
         """
         if log is None: log = []
-        log.append("[OpsAuditor] Starting Operational Audit...")
+        self._log(log, "Starting Operational Audit...")
 
         refined_files = architect_output.get("refined_files", {})
-        project_path = PersistenceService.ensure_solution_dir(project_id)
+        # [Fix] Multi-tenant path resolution
+        project_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
         refined_dir = os.path.join(project_path, PersistenceService.STAGE_REFINEMENT)
 
         # 1. Validation Engine
         validation_results = self._perform_validation(refined_files, log)
 
         # 2. Artifact Generation
-        log.append("[OpsAuditor] Generating Infrastructure-as-Code (IaC) manifests...")
+        self._log(log, "Generating Infrastructure-as-Code (IaC) manifests...")
         iac_path = self._generate_iac_manifest(project_id, refined_files, refined_dir)
         
-        log.append("[OpsAuditor] Generating Operational Handbook (README_DEVOPS.md)...")
+        self._log(log, "Generating Operational Handbook (README_DEVOPS.md)...")
         handbook_path = self._generate_handbook(project_id, refined_files, refined_dir)
 
-        log.append("[OpsAuditor] Audit Complete.")
+        self._log(log, "Audit Complete.")
         
         return {
             "status": "COMPLETED",
@@ -57,16 +62,16 @@ class OpsAuditorService:
             files = refined_files.get(layer, [])
             if not files:
                 msg = f"MISSING LAYER: {layer.upper()} has no files."
-                log.append(f"[OpsAuditor] ERROR: {msg}")
+                self._log(log, f"ERROR: {msg}", model="System")
                 results["issues"].append(msg)
                 results["passed"] = False
             else:
-                log.append(f"[OpsAuditor] OK: {layer.upper()} layer contains {len(files)} files.")
+                self._log(log, f"OK: {layer.upper()} layer contains {len(files)} files.")
 
         # Check for config/utils
         if not refined_files.get("config"):
             msg = "MISSING ARTIFACT: config.py not found."
-            log.append(f"[OpsAuditor] ERROR: {msg}")
+            self._log(log, f"ERROR: {msg}", model="System")
             results["issues"].append(msg)
             results["passed"] = False
         
@@ -93,17 +98,17 @@ class OpsAuditorService:
                     merge_cond = " AND ".join([f"target.{k} = source.{k}" for k in pk_expected])
                     
                     if ".merge(" in content and merge_cond in content:
-                        log.append(f"[OpsAuditor] OK: {os.path.basename(sf)} uses PK '{pk_expected}' for MERGE.")
+                        self._log(log, f"OK: {os.path.basename(sf)} uses PK '{pk_expected}' for MERGE.")
                     elif ".merge(" in content:
                         msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} has MERGE logic but might use wrong keys. Expected: {merge_cond}"
-                        log.append(f"[OpsAuditor] WARNING: {msg}")
+                        self._log(log, f"WARNING: {msg}")
                         results["issues"].append(msg)
                     else:
                         msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} missing explicit MERGE logic."
-                        log.append(f"[OpsAuditor] WARNING: {msg}")
+                        self._log(log, f"WARNING: {msg}")
                         # We don't fail for warnings, but we log them
             except Exception as e: 
-                log.append(f"[OpsAuditor] Error validating {sf}: {e}")
+                self._log(log, f"Error validating {sf}: {e}", model="System")
 
         return results
 

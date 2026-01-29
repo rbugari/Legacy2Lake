@@ -51,6 +51,13 @@ class GovernanceService:
             })
 
         # 2. Get AI Audit from Agent G
+        llm_config = await db.resolve_agent_model("agent-g")
+        if llm_config:
+            provider = llm_config.get('provider', 'UNKNOWN').upper()
+            model = llm_config.get('deployment') or llm_config.get('model_name', 'UNKNOWN')
+            # Using the same format as other agents
+            print(f"[GOVERNANCE] Initiating Agent G (Auditor) via {provider} using model {model}")
+
         governance_data = await self.agent_g.generate_governance(
             project_name=project_name,
             mesh={}, # Layout data could go here

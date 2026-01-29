@@ -23,27 +23,19 @@ class AgentFService:
         self.client_id = client_id
 
     async def _get_llm(self, project_id: Optional[str] = None):
-        """Resolves LLM client from Agent Matrix / Catalog."""
+        """Resolves LLM client strictly from Agent Matrix (DB)."""
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         config = await db.resolve_agent_model("agent-f")
         
         if not config:
-            logger.warning("Using fallback LLM for agent-f.")
-            # Fallback to env for safety during transition
-            return AzureChatOpenAI(
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4"),
-                openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                temperature=0
-            )
+            raise ValueError(f"LLM configuration not found for 'agent-f' (Tenant: {self.tenant_id}). Please check Agent Matrix and Provider Vault.")
 
         if config["provider"] == "azure":
             return AzureChatOpenAI(
                 azure_endpoint=config["endpoint"],
                 azure_deployment=config["deployment"],
-                openai_api_version=config["api_version"] or os.getenv("AZURE_OPENAI_API_VERSION"),
-                api_key=config.get("api_key") or os.getenv("AZURE_OPENAI_API_KEY"),
+                openai_api_version=config["api_version"],
+                api_key=config.get("api_key"),
                 temperature=config["temperature"]
             )
         else:

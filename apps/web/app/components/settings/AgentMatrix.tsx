@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { fetchWithAuth } from "../../lib/auth-client";
 import { Bot, Save, RefreshCw, ChevronDown, Check } from "lucide-react";
+import { getAgentDisplayName } from "../../lib/constants";
 
 interface MatrixEntry {
     agent: string;
@@ -157,7 +158,7 @@ export default function AgentMatrix() {
                                     <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg">
                                         <Bot size={18} />
                                     </div>
-                                    <span className="font-semibold">{entry.agent}</span>
+                                    <span className="font-semibold">{getAgentDisplayName(entry.agent)}</span>
                                 </td>
                                 <td className="p-4">
                                     <select

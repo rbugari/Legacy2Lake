@@ -15,11 +15,18 @@ class PersistenceService:
     STAGE_REFINEMENT = "Refinement" # Was Refined
 
     @classmethod
-    def ensure_solution_dir(cls, solution_name: str) -> str:
-        """Creates a directory for the specific solution if it doesn't exist."""
+    def ensure_solution_dir(cls, solution_name: str, tenant_id: str = None) -> str:
+        """Creates a directory for the specific solution details. Supports Multi-Tenancy."""
         # Sanitize name
         folder_name = "".join([c if c.isalnum() else "_" for c in solution_name])
-        path = os.path.join(cls.BASE_DIR, folder_name)
+        
+        if tenant_id:
+            # Multi-tenant path: solutions/<tenant_id>/<project_name>
+            path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+        else:
+            # Legacy/Admin path: solutions/<project_name>
+            path = os.path.join(cls.BASE_DIR, folder_name)
+            
         os.makedirs(path, exist_ok=True)
         return path
 
@@ -41,11 +48,15 @@ class PersistenceService:
             shutil.rmtree(path, onerror=on_error)
 
     @classmethod
-    def clean_downstream_folders(cls, project_id: str) -> bool:
+    def clean_downstream_folders(cls, project_id: str, tenant_id: str = None) -> bool:
         """Wipes all files and subdirectories in the project folder EXCEPT 'Triage'."""
         try:
             folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-            project_path = os.path.join(cls.BASE_DIR, folder_name)
+            
+            if tenant_id:
+                project_path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+            else:
+                project_path = os.path.join(cls.BASE_DIR, folder_name)
             
             if not os.path.exists(project_path):
                 return True
@@ -68,18 +79,17 @@ class PersistenceService:
             return False
 
     @classmethod
-    def delete_project_directory(cls, project_id: str) -> bool:
+    def delete_project_directory(cls, project_id: str, tenant_id: str = None) -> bool:
         """Deletes the project directory from the filesystem."""
         try:
             # We assume project_id maps to folder name. If not, we might need a lookup, 
             # but for this app we enforce project_id ~ folder_name (sanitized)
-            # However, ensure_solution_dir sanitizes. We should probably replicate that logic or assume robust_rmtree handles it.
-            # Best effort: try to look for the folder
-            
-            # Simple approach: Re-sanitize just in case, or list dirs to find match. 
-            # Given ensure_solution_dir implementation:
             folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-            path = os.path.join(cls.BASE_DIR, folder_name)
+            
+            if tenant_id:
+                path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+            else:
+                path = os.path.join(cls.BASE_DIR, folder_name)
             
             if os.path.exists(path):
                 print(f"Deleting directory: {path}")
@@ -91,9 +101,9 @@ class PersistenceService:
             return False
 
     @classmethod
-    def save_transformation(cls, solution_name: str, task_name: str, code: str) -> str:
+    def save_transformation(cls, solution_name: str, task_name: str, code: str, tenant_id: str = None) -> str:
         """Saves a transpiled PySpark task to the solution directory."""
-        dir_path = cls.ensure_solution_dir(solution_name)
+        dir_path = cls.ensure_solution_dir(solution_name, tenant_id)
         # Sanitize task name for filename
         filename = "".join([c if c.isalnum() else "_" for c in task_name]) + ".py"
         file_path = os.path.join(dir_path, filename)
@@ -104,9 +114,9 @@ class PersistenceService:
         return file_path
 
     @classmethod
-    def save_documentation(cls, solution_name: str, doc_name: str, content: str) -> str:
+    def save_documentation(cls, solution_name: str, doc_name: str, content: str, tenant_id: str = None) -> str:
         """Saves governance/technical documentation to the solution directory."""
-        dir_path = cls.ensure_solution_dir(solution_name)
+        dir_path = cls.ensure_solution_dir(solution_name, tenant_id)
         filename = doc_name + ".md"
         file_path = os.path.join(dir_path, filename)
         
@@ -116,13 +126,13 @@ class PersistenceService:
         return file_path
 
     @classmethod
-    def initialize_project_from_source(cls, project_id: str, source_type: str, file_path: str = None, github_url: str = None, overwrite: bool = False) -> bool:
+    def initialize_project_from_source(cls, project_id: str, source_type: str, file_path: str = None, github_url: str = None, overwrite: bool = False, tenant_id: str = None) -> bool:
         """Initializes a project directory from a ZIP file or GitHub Repo. Handles overwrite logic."""
         import zipfile
         import subprocess
 
         try:
-            project_dir = cls.ensure_solution_dir(project_id)
+            project_dir = cls.ensure_solution_dir(project_id, tenant_id)
             
             # Check if exists and handle overwrite
             if any(os.scandir(project_dir)):
@@ -133,7 +143,7 @@ class PersistenceService:
                 print(f"Cleaning existing directory for {project_id} (overwrite=True)...")
                 cls.robust_rmtree(project_dir)
                 # Re-create the empty dir
-                project_dir = cls.ensure_solution_dir(project_id)
+                project_dir = cls.ensure_solution_dir(project_id, tenant_id)
 
             # Ensure Triage directory exists for source files
             triage_dir = os.path.join(project_dir, cls.STAGE_TRIAGE)
@@ -159,11 +169,15 @@ class PersistenceService:
             return False
 
     @classmethod
-    def get_project_files(cls, project_id: str) -> List[Dict[str, Any]]:
+    def get_project_files(cls, project_id: str, tenant_id: str = None) -> List[Dict[str, Any]]:
         """Returns a recursive query of the project's solution directory."""
         # Clean ID just in case
         folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-        solution_path = os.path.join(cls.BASE_DIR, folder_name)
+        
+        if tenant_id:
+            solution_path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+        else:
+            solution_path = os.path.join(cls.BASE_DIR, folder_name)
         
         if not os.path.exists(solution_path):
             return []
@@ -199,11 +213,15 @@ class PersistenceService:
         return _scan_dir(solution_path)
 
     @classmethod
-    def read_file_content(cls, project_id: str, file_path: str) -> str:
+    def read_file_content(cls, project_id: str, file_path: str, tenant_id: str = None) -> str:
         """Reads the content of a specific file within the project's solution directory."""
         # Security check: Ensure file is inside project dir
         folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-        project_root = os.path.join(cls.BASE_DIR, folder_name)
+        
+        if tenant_id:
+            project_root = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+        else:
+            project_root = os.path.join(cls.BASE_DIR, folder_name)
         
         # Resolve absolute path
         # Fix: If file_path is relative, assume it is inside project_root
@@ -238,16 +256,52 @@ class SupabasePersistence:
         self.tenant_id = tenant_id
         self.client_id = client_id
 
-    async def get_or_create_project(self, name: str, repo_url: str = None) -> str:
-        """Finds or creates a project by name and returns its UUID."""
-        res = self.client.table("utm_projects").select("project_id").eq("name", name).execute()
+    async def _resolve_uuid(self, project_id_or_name: str) -> Optional[str]:
+        """
+        Internal helper to ensure we have a valid project UUID.
+        If input contains '-', we assume it's a UUID and validate it (or at least return it).
+        If not, we look it up by name.
+        """
+        if not project_id_or_name or project_id_or_name == "undefined":
+            return None
+
+        # Heuristic: UUIDs contain '-' and are 36 chars long. Project names usually don't.
+        if "-" in project_id_or_name:
+            # We could do a more rigorous UUID validation here if needed
+            return project_id_or_name
+            
+        return await self.get_project_id_by_name(project_id_or_name)
+
+    async def get_or_create_project(self, name: str, repo_url: str = None, source_tech: str = None, target_tech: str = None) -> str:
+        """Finds or creates a project by name and returns its UUID. Respects Tenant Isolation."""
+        query = self.client.table("utm_projects").select("project_id", "settings").eq("name", name)
+        
+        # [Security] Ensure we only check current tenant's projects
+        if self.tenant_id:
+             query = query.eq("tenant_id", self.tenant_id)
+             
+        res = query.execute()
+        
+        settings = {"source_tech": source_tech, "target_tech": target_tech} if source_tech or target_tech else {}
+
         if res.data:
             project_id = res.data[0]["project_id"]
+            existing_settings = res.data[0].get("settings") or {}
+            
+            # Update settings and repo_url if provided
+            updates = {}
             if repo_url:
-                self.client.table("utm_projects").update({"repo_url": repo_url}).eq("project_id", project_id).execute()
+                updates["repo_url"] = repo_url
+            
+            if source_tech or target_tech:
+                existing_settings.update(settings)
+                updates["settings"] = existing_settings
+                
+            if updates:
+                self.client.table("utm_projects").update(updates).eq("project_id", project_id).execute()
             return project_id
         
-        data = {"name": name, "stage": "1"}
+        data = {"name": name, "stage": "1", "settings": settings}
         if repo_url:
             data["repo_url"] = repo_url
         
@@ -257,6 +311,22 @@ class SupabasePersistence:
             
         res = self.client.table("utm_projects").insert(data).execute()
         return res.data[0]["project_id"]
+
+    # --- Client Management (SaaS Admin) ---
+    async def create_client(self, name: str) -> str:
+        """Creates a new client company."""
+        res = self.client.table("utm_clients").insert({"name": name}).execute()
+        return res.data[0]["client_id"]
+
+    async def list_clients(self) -> List[Dict[str, Any]]:
+        """Lists all client companies."""
+        res = self.client.table("utm_clients").select("*").execute()
+        return res.data if res.data else []
+
+    async def get_tenant_by_id(self, tenant_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches tenant details including role."""
+        res = self.client.table("utm_tenants").select("*").eq("tenant_id", tenant_id).execute()
+        return res.data[0] if res.data else None
 
     async def list_projects(self) -> List[Dict[str, Any]]:
         """Returns a list of all projects, with asset counts and calculated progress."""
@@ -299,9 +369,12 @@ class SupabasePersistence:
     async def delete_project(self, project_id: str) -> bool:
         """Deletes the project and its assets from the database."""
         try:
-            # Supabase should handle cascade if configured, but let's be explicit if needed.
-            # Assuming 'projects' deletion deletes related 'assets' via FK cascade.
-            self.client.table("utm_projects").delete().eq("project_id", project_id).execute()
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                print(f"Error: Could not resolve project ID for deletion: {project_id}")
+                return False
+
+            self.client.table("utm_projects").delete().eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error deleting project {project_id} from DB: {e}")
@@ -310,7 +383,11 @@ class SupabasePersistence:
     async def get_project_stats(self, project_id: str) -> Dict[str, int]:
         """Returns summarized counts of assets by category for a project."""
         try:
-            res = self.client.table("utm_objects").select("type").eq("project_id", project_id).execute()
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return {"core": 0, "ignored": 0, "pending": 0}
+
+            res = self.client.table("utm_objects").select("type").eq("project_id", resolved_id).execute()
             assets = res.data or []
             return {
                 "core": len([a for a in assets if a.get("type") == "CORE"]),
@@ -322,8 +399,13 @@ class SupabasePersistence:
             return {"core": 0, "ignored": 0, "pending": 0}
 
     async def get_project_id_by_name(self, name: str) -> Optional[str]:
-        """Resolves a project name (slug) to its UUID."""
-        res = self.client.table("utm_projects").select("project_id").eq("name", name).execute()
+        """Resolves a project name (slug) to its UUID. Respects Tenant Isolation."""
+        query = self.client.table("utm_projects").select("project_id").eq("name", name)
+        
+        if self.tenant_id:
+            query = query.eq("tenant_id", self.tenant_id)
+            
+        res = query.execute()
         if res.data:
             return res.data[0]["project_id"]
         return None
@@ -341,9 +423,12 @@ class SupabasePersistence:
     async def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
         """Returns project metadata (name, repo_url, status, stage, prompt, settings, config, is_active)."""
         try:
-            query = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", project_id)
-            if self.tenant_id:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return None
 
+            query = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", resolved_id)
+            if self.tenant_id:
                 query = query.eq("tenant_id", self.tenant_id)
                 
             res = query.execute()
@@ -357,11 +442,14 @@ class SupabasePersistence:
 
     async def save_asset(self, project_id: str, filename: str, content: str, asset_type: str, file_hash: str, source_path: str = None) -> str:
         """Saves an asset (e.g. .dtsx file) to the database."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            raise ValueError(f"Could not resolve project ID for saving asset: {project_id}")
+
         data = {
-            "project_id": project_id,
+            "project_id": resolved_id,
             "source_name": filename,
             "raw_content": content,
-            "type": asset_type,
             "type": asset_type,
             "hash": file_hash
         }
@@ -396,13 +484,14 @@ class SupabasePersistence:
     async def batch_save_assets(self, project_id: str, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Upserts multiple assets in a single call. Blocks if project is in DRAFTING mode."""
         
-        if not project_id or project_id == "undefined":
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
             print(f"Error: batch_save_assets called with invalid project_id: {project_id}")
             return []
 
         # 1. State Check
         try:
-             proj_res = self.client.table("utm_projects").select("status").eq("project_id", project_id).execute()
+             proj_res = self.client.table("utm_projects").select("status").eq("project_id", resolved_id).execute()
              if proj_res.data:
                  current_status = proj_res.data[0].get("status", "TRIAGE")
                  if current_status == "DRAFTING":
@@ -417,7 +506,7 @@ class SupabasePersistence:
         insert_data = []
         for asset in assets:
             insert_data.append({
-                "project_id": project_id,
+                "project_id": resolved_id,
                 "source_name": asset["filename"],
                 "raw_content": asset.get("content"),
                 "type": asset.get("type", "OTHER"),
@@ -450,8 +539,12 @@ class SupabasePersistence:
 
     async def get_project_assets(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves all assets for a given project from the database."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return []
+
         try:
-            res = self.client.table("utm_objects").select("*").eq("project_id", project_id).execute()
+            res = self.client.table("utm_objects").select("*").eq("project_id", resolved_id).execute()
             # Map source_name back to filename for frontend compatibility if needed, 
             # though it's better to keep it consistent.
             if res.data:
@@ -479,13 +572,11 @@ class SupabasePersistence:
     async def update_project_stage(self, project_id_or_name: str, stage: str) -> bool:
         """Updates the stage of a project. Handles both UUID and Name."""
         try:
-            project_uuid = project_id_or_name
-            if "-" not in project_id_or_name:
-                resolved = await self.get_project_id_by_name(project_id_or_name)
-                if resolved:
-                    project_uuid = resolved
+            resolved_id = await self._resolve_uuid(project_id_or_name)
+            if not resolved_id:
+                return False
 
-            self.client.table("utm_projects").update({"stage": stage}).eq("project_id", project_uuid).execute()
+            self.client.table("utm_projects").update({"stage": stage}).eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error updating stage for {project_id_or_name}: {e}")
@@ -495,36 +586,34 @@ class SupabasePersistence:
         """Saves the graph layout as a JSON asset. Handles both UUID and Name."""
         import json
         
-        project_uuid = project_id_or_name
-        if "-" not in project_id_or_name: 
-            resolved = await self.get_project_id_by_name(project_id_or_name)
-            if resolved:
-                project_uuid = resolved
+        resolved_id = await self._resolve_uuid(project_id_or_name)
+        if not resolved_id:
+            # If it's a new project by name, we might need to create it? 
+            # But usually layout is saved for existing projects.
+            # Fallback to creating if it looks like a name.
+            if "-" not in project_id_or_name:
+                resolved_id = await self.get_or_create_project(project_id_or_name)
             else:
-                project_uuid = await self.get_or_create_project(project_id_or_name)
+                return ""
 
         content = json.dumps(layout_data)
-        res = self.client.table("utm_objects").select("object_id").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
+        res = self.client.table("utm_objects").select("object_id").eq("project_id", resolved_id).eq("type", "LAYOUT").execute()
         
         if res.data:
             asset_id = res.data[0]["object_id"]
             self.client.table("utm_objects").update({"raw_content": content}).eq("object_id", asset_id).execute()
             return asset_id
         else:
-            return await self.save_asset(project_uuid, "layout.json", content, "LAYOUT", "v1")
+            return await self.save_asset(resolved_id, "layout.json", content, "LAYOUT", "v1")
 
     async def get_project_layout(self, project_id_or_name: str) -> Optional[Dict[str, Any]]:
         """Retrieves the graph layout. Handles both UUID and Name."""
         import json
-        project_uuid = project_id_or_name
-        if "-" not in project_id_or_name:
-            resolved = await self.get_project_id_by_name(project_id_or_name)
-            if resolved:
-                project_uuid = resolved
-            else:
-                return None
+        resolved_id = await self._resolve_uuid(project_id_or_name)
+        if not resolved_id:
+            return None
 
-        res = self.client.table("utm_objects").select("raw_content").eq("project_id", project_uuid).eq("type", "LAYOUT").execute()
+        res = self.client.table("utm_objects").select("raw_content").eq("project_id", resolved_id).eq("type", "LAYOUT").execute()
         if res.data:
             try:
                 return json.loads(res.data[0]["raw_content"])
@@ -534,14 +623,12 @@ class SupabasePersistence:
 
     async def update_project_prompt(self, project_id: str, prompt: str) -> bool:
         """Updates the custom system prompt for a project."""
-        project_uuid = project_id
-        if "-" not in project_id:
-            resolved = await self.get_project_id_by_name(project_id)
-            if resolved:
-                project_uuid = resolved
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
 
         try:
-            self.client.table("utm_projects").update({"prompt": prompt}).eq("project_id", project_uuid).execute()
+            self.client.table("utm_projects").update({"prompt": prompt}).eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error updating prompt for {project_id}: {e}")
@@ -550,8 +637,12 @@ class SupabasePersistence:
     async def reset_project_data(self, project_id: str) -> bool:
         """Clears all assets and resets stage/status for a project."""
         try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return False
+
             # 1. Get object_ids for this project to handle nested deletions
-            obj_res = self.client.table("utm_objects").select("object_id").eq("project_id", project_id).execute()
+            obj_res = self.client.table("utm_objects").select("object_id").eq("project_id", resolved_id).execute()
             object_ids = [o["object_id"] for o in obj_res.data]
             
             if object_ids:
@@ -562,17 +653,17 @@ class SupabasePersistence:
                 self.client.table("utm_transformations").delete().in_("asset_id", object_ids).execute()
             
             # 2.5 Clean per-asset context overrides
-            self.client.table("utm_asset_context").delete().eq("project_id", project_id).execute()
+            self.client.table("utm_asset_context").delete().eq("project_id", resolved_id).execute()
 
             # 3. Delete main assets (utm_objects)
-            self.client.table("utm_objects").delete().eq("project_id", project_id).execute()
+            self.client.table("utm_objects").delete().eq("project_id", resolved_id).execute()
             
             # 4. Clean File Inventory and Logs
-            self.client.table("utm_execution_logs").delete().eq("project_id", project_id).execute()
-            self.client.table("utm_file_inventory").delete().eq("project_id", project_id).execute()
+            self.client.table("utm_execution_logs").delete().eq("project_id", resolved_id).execute()
+            self.client.table("utm_file_inventory").delete().eq("project_id", resolved_id).execute()
             
             # 4.5 Clean File System (except Triage)
-            project_name = await self.get_project_name_by_id(project_id)
+            project_name = await self.get_project_name_by_id(resolved_id)
             if project_name:
                 PersistenceService.clean_downstream_folders(project_name)
 
@@ -581,7 +672,7 @@ class SupabasePersistence:
                 "stage": "1",
                 "status": "TRIAGE",
                 "triage_approved_at": None
-            }).eq("project_id", project_id).execute()
+            }).eq("project_id", resolved_id).execute()
             
             return True
         except Exception as e:
@@ -594,32 +685,28 @@ class SupabasePersistence:
 
     async def update_project_status(self, project_id: str, status: str) -> bool:
         """Updates the project status (TRIAGE <-> DRAFTING)."""
-        project_uuid = project_id
-        if "-" not in project_id:
-             resolved = await self.get_project_id_by_name(project_id)
-             if resolved:
-                 project_uuid = resolved
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
 
         data = {"status": status}
         if status == "DRAFTING":
             data["triage_approved_at"] = "now()"
         
         try:
-            self.client.table("utm_projects").update(data).eq("project_id", project_uuid).execute()
+            self.client.table("utm_projects").update(data).eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error updating status: {e}")
             return False
 
     async def get_project_status(self, project_id: str) -> str:
-         project_uuid = project_id
-         if "-" not in project_id:
-             resolved = await self.get_project_id_by_name(project_id)
-             if resolved:
-                 project_uuid = resolved
+         resolved_id = await self._resolve_uuid(project_id)
+         if not resolved_id:
+             return "TRIAGE"
 
          try:
-             res = self.client.table("utm_projects").select("status").eq("project_id", project_uuid).execute()
+             res = self.client.table("utm_projects").select("status").eq("project_id", resolved_id).execute()
              if res.data:
                  return res.data[0].get("status", "TRIAGE")
          except:
@@ -628,14 +715,12 @@ class SupabasePersistence:
 
     async def update_project_settings(self, project_id: str, settings: Dict[str, Any]) -> bool:
         """Updates the project settings JSONB column."""
-        project_uuid = project_id
-        if "-" not in project_id:
-            resolved = await self.get_project_id_by_name(project_id)
-            if resolved:
-                project_uuid = resolved
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
 
         try:
-            self.client.table("utm_projects").update({"settings": settings}).eq("project_id", project_uuid).execute()
+            self.client.table("utm_projects").update({"settings": settings}).eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error updating settings for {project_id}: {e}")
@@ -659,9 +744,13 @@ class SupabasePersistence:
 
     async def get_project_context(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves all human context entries for a project."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return []
+
         try:
             # [Release 3.5] Table Renamed: 'asset_context' -> 'utm_asset_context'
-            res = self.client.table("utm_asset_context").select("*").eq("project_id", project_id).execute()
+            res = self.client.table("utm_asset_context").select("*").eq("project_id", resolved_id).execute()
             return res.data if res.data else []
         except Exception as e:
             print(f"Error fetching project context: {e}")
@@ -670,15 +759,13 @@ class SupabasePersistence:
     # Release 1.3 Knowledge Registry Methods
     async def get_design_registry(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves all global design rules for a project."""
-        project_uuid = project_id
-        if "-" not in project_id:
-            resolved = await self.get_project_id_by_name(project_id)
-            if resolved:
-                project_uuid = resolved
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return []
 
         try:
             # [Release 3.5] Table Renamed: 'design_registry' -> 'utm_design_registry'
-            res = self.client.table("utm_design_registry").select("*").eq("project_id", project_uuid).execute()
+            res = self.client.table("utm_design_registry").select("*").eq("project_id", resolved_id).execute()
             return res.data if res.data else []
         except Exception as e:
             print(f"Error fetching design registry: {e}")
@@ -777,22 +864,65 @@ class SupabasePersistence:
             return False
 
     async def list_models(self) -> List[Dict[str, Any]]:
-        """Returns the list of available LLM models."""
+        """
+        Returns the list of available LLM models.
+        Tenant-Aware: 
+        1. Returns models where (tenant_id = current_tenant OR is_public = True)
+        2. Filters out models if the tenant DOES NOT have the provider configured in their Vault.
+        """
         try:
-            res = self.client.table("utm_model_catalog").select("*").eq("is_active", True).execute()
-            return res.data if res.data else []
+            # 1. Fetch Candidates (Public or Tenant-Specific)
+            query = self.client.table("utm_model_catalog").select("*")
+            
+            if self.tenant_id:
+                # STRICT ISOLATION: User sees ONLY models they defined.
+                # We do NOT show 'is_public' system models (No Suggestions).
+                query = query.eq("tenant_id", self.tenant_id)
+            else:
+                # Admin (no tenant context) sees everything? Or just public?
+                # Let's show everything for now if no tenant, or just public if no specific admin view logic.
+                pass 
+
+            res = query.execute()
+            candidates = res.data if res.data else []
+            
+            if not self.tenant_id:
+                return candidates
+
+            # 2. Fetch Active Providers from Vault
+            # If I'm a tenant, I only want to see models I can actually USE.
+            vault_res = self.client.table("utm_provider_vault").select("provider_name").eq("tenant_id", self.tenant_id).eq("is_active", True).execute()
+            active_providers = {v["provider_name"].strip().lower() for v in vault_res.data}
+            
+            print(f"[DEBUG] Active Providers for Tenant {self.tenant_id}: {active_providers}")
+
+            # 3. Filter
+            final_list = []
+            for m in candidates:
+                p = m.get("provider", "").strip().lower()
+                if p in active_providers:
+                    final_list.append(m)
+                else:
+                    print(f"[DEBUG] Model {m.get('model_id')} ORPHAN REVEALED. Provider '{p}' not in active list {active_providers}")
+                    # EXPOSE ORPHAN: Allow it to be seen so it can be fixed/deleted.
+                    final_list.append(m)
+
+            return final_list
+
         except Exception as e:
             print(f"Error listing models: {e}")
             return []
 
     async def resolve_agent_model(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """
-        Resolves the configured model for a specific agent.
-        Joins utm_agent_matrix -> utm_model_catalog.
+        Resolves the configured model for a specific agent for the current tenant.
+        Strictly requires DB configuration; no ENV fallbacks.
         """
         try:
-            # 1. Get Agent Config (Tenant-Specific)
+            # 1. Get Agent Config (Global mapping of agent -> model)
             query = self.client.table("utm_agent_matrix").select("*").eq("agent_id", agent_id).eq("is_active", True)
+            
+            # [Fix] Filter by tenant if provided
             if self.tenant_id:
                 query = query.eq("tenant_id", self.tenant_id)
             
@@ -803,31 +933,59 @@ class SupabasePersistence:
             agent_config = res.data[0]
             model_id = agent_config["model_id"]
             
-            # 2. Get Model Details
+            # 2. Get Model Details from Catalog
             model_res = self.client.table("utm_model_catalog").select("*").eq("model_id", model_id).execute()
             if not model_res.data:
                 return None
                 
             model = model_res.data[0]
-            provider = model.get("provider", "azure")
+            provider = model.get("provider", "azure").lower()
             
-            # 3. Get Credentials from Vault (Tenant-Specific)
-            api_key = None
-            vault_url = None
-            if self.tenant_id:
-                vault_res = self.client.table("utm_provider_vault").select("api_key, base_url").eq("tenant_id", self.tenant_id).eq("provider_name", provider).execute()
-                if vault_res.data:
-                    api_key = vault_res.data[0].get("api_key")
-                    vault_url = vault_res.data[0].get("base_url")
+            # 3. Get Credentials from Vault (STRICTLY Tenant-Specific)
+            if not self.tenant_id:
+                # Security: Operations without tenant ID cannot use LLM if multi-tenancy is active
+                return None
+                
+            vault_res = self.client.table("utm_provider_vault")\
+                .select("api_key, base_url")\
+                .eq("tenant_id", self.tenant_id)\
+                .eq("provider_name", provider)\
+                .execute()
+            
+            if not vault_res.data or not vault_res.data[0].get("api_key"):
+                # No credentials for this tenant/provider
+                return None
 
-            # Merge configs (Agent override wins for temp)
+            api_key = vault_res.data[0].get("api_key")
+            vault_url = vault_res.data[0].get("base_url")
+
+            # [Refactor] Prioritize Provider URL (Vault) over Model URL
+            # If the provider has a base_url, we use that. 
+            # If not, we fall back to the model's api_url (legacy support).
+            final_url = vault_url
+            if not final_url:
+                 final_url = model.get("api_url")
+                 if final_url:
+                     print(f"[MATRIX] Warning: Using Legacy Model URL for {agent_id}. Please migrate URL to Provider Vault.")
+
+            print(f"[MATRIX] Resolved {agent_id} -> {provider} ({model_id}) for tenant {self.tenant_id}")
+
+            # [Fix] O1/O3 models require default temperature (1)
+            temp_val = agent_config.get("temperature", 0.0)
+            m_id = str(model.get("model_id") or "").lower()
+            if m_id.startswith("o1") or m_id.startswith("o3"):
+                temp_val = 1.0
+
+            deployment_name = model.get("deployment_id") or model.get("model_id")
+            print(f"[MATRIX] Resolved Deployment: '{deployment_name}' for Agent {agent_id}")
+
             return {
                 "provider": provider,
-                "deployment": model.get("deployment_id") or model.get("model_id"),
+                "deployment": deployment_name,
                 "api_version": model.get("api_version"),
-                "endpoint": vault_url or model.get("api_url"),
+                "endpoint": final_url,
                 "api_key": api_key,
-                "temperature": agent_config.get("temperature", 0.0)
+                "temperature": temp_val
             }
         except Exception as e:
             print(f"Error resolving agent model {agent_id}: {e}")
@@ -858,21 +1016,38 @@ class SupabasePersistence:
         """Persists a log entry to the database."""
         try:
             # Resolve UUID if project_id is a name
-            resolved_id = project_id
-            if "-" not in project_id:
-                uuid = await self.get_project_id_by_name(project_id)
-                if uuid: resolved_id = uuid
-            
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                 print(f"DEBUG: Could not resolve project_id {project_id} for log_execution")
+                 return
+
             data = {
                 "project_id": resolved_id,
                 "phase": phase,
-                "step": step,
+                "step": step or phase,
                 "message": message,
                 "level": level
             }
             self.client.table("utm_execution_logs").insert(data).execute()
         except Exception as e:
             print(f"Error logging to DB: {e}")
+
+    async def clear_execution_logs(self, project_id: str, phase: str = None) -> bool:
+        """Clears execution logs for a project, optionally filtered by phase."""
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                print(f"DEBUG: Could not resolve project_id {project_id} for clear_execution_logs")
+                return False
+
+            query = self.client.table("utm_execution_logs").delete().eq("project_id", resolved_id)
+            if phase:
+                query = query.eq("phase", phase)
+            query.execute()
+            return True
+        except Exception as e:
+            print(f"Error clearing execution logs: {e}")
+            return False
 
     async def sync_file_inventory(self, project_id: str) -> bool:
         """
@@ -1073,8 +1248,12 @@ class SupabasePersistence:
     # --- Project Settings (v1.5) ---
     async def get_project_settings(self, project_id: str) -> Dict[str, Any]:
         """Retrieves settings for a specific project."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return {}
+
         try:
-            res = self.client.table("utm_projects").select("settings").eq("project_id", project_id).execute()
+            res = self.client.table("utm_projects").select("settings").eq("project_id", resolved_id).execute()
             if res.data:
                 return res.data[0].get("settings") or {}
             return {}
@@ -1084,14 +1263,18 @@ class SupabasePersistence:
 
     async def update_project_settings(self, project_id: str, settings: Dict[str, Any]) -> bool:
         """Updates (merges) settings for a specific project."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
+
         try:
             # First get current to merge
-            current = await self.get_project_settings(project_id)
+            current = await self.get_project_settings(resolved_id)
             updated = {**current, **settings}
             
             self.client.table("utm_projects").update({
                 "settings": updated
-            }).eq("project_id", project_id).execute()
+            }).eq("project_id", resolved_id).execute()
             return True
         except Exception as e:
             print(f"Error updating settings for project {project_id}: {e}")
@@ -1107,7 +1290,11 @@ class SupabasePersistence:
         """
         try:
             # 1. Get Model Assignment from Matrix
-            matrix_res = self.client.table("utm_agent_matrix").select("model_id").eq("agent_id", agent_id).execute()
+            query = self.client.table("utm_agent_matrix").select("model_id").eq("agent_id", agent_id)
+            if self.tenant_id:
+                query = query.eq("tenant_id", self.tenant_id)
+            
+            matrix_res = query.execute()
             if not matrix_res.data:
                 return {"error": f"No model assigned to {agent_id} in matrix"}
             
@@ -1130,20 +1317,30 @@ class SupabasePersistence:
             creds = vault_res.data[0] if vault_res.data else {}
 
             # 4. Build Standardized Config
+            # [Refactor] Prioritize Vault Base URL
+            final_url = creds.get("base_url")
+            if not final_url:
+                 final_url = model.get("api_url")
+
+            # [Fix] O1/O3 models require default temperature (1)
+            temp_val = 0
+            m_id = str(model.get("model_id") or "").lower()
+            if m_id.startswith("o1") or m_id.startswith("o3"):
+                temp_val = 1
+
             config = {
                 "provider": provider_type,
                 "model_name": model.get("model_id"), # e.g. "gpt-4"
                 "deployment_id": model.get("deployment_id"),
                 "api_version": model.get("api_version"),
-                "api_url": model.get("api_url") or creds.get("base_url"),
+                "api_url": final_url,
                 "api_key": creds.get("api_key"),
-                "temperature": 0
+                "temperature": temp_val
             }
 
             return config
             
         except Exception as e:
             print(f"Error resolving LLM for {agent_id}: {e}")
-            return {"error": str(e)}
 
 

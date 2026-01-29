@@ -1,0 +1,12 @@
+--- Triage Started for c89ebc1d-32a9-47d3-8284-e03c30274366 ---
+Tenant: bb579c64-c8c1-4602-bd8e-4f7c1e228419
+[2026-01-29 17:22:50] [SYSTEM] Initializing Shift-T Triage Agent for Project: c89ebc1d-32a9-47d3-8284-e03c30274366
+[2026-01-29 17:22:50] [SCANNER] Running Deep Scanner (Python Engine)...
+[2026-01-29 17:22:50] [SCANNER] Scanned 1 files.
+[2026-01-29 17:22:50] [SCANNER] Tech Stack Detected: {'dtsx': 1}
+[2026-01-29 17:22:50] [ORCHESTRATOR] Invoking Agent A (Mesh Architect)...
+[2026-01-29 17:22:50] [ORCHESTRATOR] Applying custom System Prompt override.
+[2026-01-29 17:22:50] [AGENT_A] Initiating Agent A (Detective) via GROQ using model llama-3.3-70b-versatile
+[2026-01-29 17:22:56] [AGENT_A] Analysis Complete. Total Nodes (AI + Inferred): 1
+[2026-01-29 17:22:56] [DATABASE] Persisting Mesh Graph and Discovered Assets...
+[2026-01-29 17:22:56] [DATABASE] Graph and Assets saved to database.

@@ -46,13 +46,15 @@ export default function Dashboard() {
     const handleCreateProject = async (wizardData: any) => {
         setIsCreating(true);
 
-        const { name, sourceType, githubUrl, file } = wizardData;
+        const { name, sourceType, githubUrl, file, origin, destination } = wizardData;
         const projectId = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
         const formData = new FormData();
         formData.append("name", name);
         formData.append("project_id", projectId);
         formData.append("source_type", sourceType);
+        formData.append("origin", origin || "");
+        formData.append("destination", destination || "");
         formData.append("overwrite", "true"); // Defaulting to true for demo speed
 
         if (sourceType === "github") {
@@ -70,7 +72,8 @@ export default function Dashboard() {
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
-                    router.push(`/workspace?id=${projectId}`);
+                    // Redirect to Dashboard (or just reload to show new project)
+                    window.location.reload();
                 } else {
                     alert(`Error: ${data.error || "Could not create project."}`);
                 }

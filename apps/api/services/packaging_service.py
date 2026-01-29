@@ -12,10 +12,11 @@ class PackagingService:
     Transforms the internal project structure into a vendor-agnostic delivery bundle.
     """
     
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str, tenant_id: str = None, client_id: str = None):
         self.project_id = project_id
+        self.tenant_id = tenant_id
         # We need to resolve the name for FS paths
-        self.persistence = SupabasePersistence()
+        self.persistence = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
         
     async def prepare_bundle(self) -> str:
         """
@@ -26,7 +27,7 @@ class PackagingService:
         if not project_name:
             raise ValueError(f"Project not found: {self.project_id}")
 
-        source_dir = PersistenceService.ensure_solution_dir(project_name)
+        source_dir = PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
         
         # Create temp staging area
         staging_dir = os.path.join(source_dir, "_package_staging")

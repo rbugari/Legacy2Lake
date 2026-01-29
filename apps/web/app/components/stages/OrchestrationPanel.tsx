@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Copy, Download, Code, Server, Database, FileCode, Terminal, CheckCircle2 } from "lucide-react";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { API_BASE_URL } from "../../lib/config";
 
 interface OrchestrationPanelProps {
@@ -117,9 +119,15 @@ export default function OrchestrationPanel({ projectId }: OrchestrationPanelProp
                             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                         </div>
                     )}
-                    <pre className="flex-1 p-6 font-mono text-sm overflow-auto custom-scrollbar bg-gray-50 dark:bg-gray-950/50 text-gray-700 dark:text-gray-300 pointer-events-auto leading-relaxed">
-                        <code>{code}</code>
-                    </pre>
+                    <SyntaxHighlighter
+                        language={selectedOrchestrator === 'airflow' ? 'python' : selectedOrchestrator === 'databricks' ? 'json' : 'yaml'}
+                        style={vscDarkPlus}
+                        customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5', flex: 1, overflow: 'auto' }}
+                        showLineNumbers={true}
+                        wrapLines={true}
+                    >
+                        {code}
+                    </SyntaxHighlighter>
                 </div>
 
                 {selectedOrchestrator === "databricks" && definition && (

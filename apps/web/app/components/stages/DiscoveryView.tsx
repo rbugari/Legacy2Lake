@@ -24,9 +24,13 @@ import { fetchWithAuth } from '../../lib/auth-client';
 interface DiscoveryViewProps {
     projectId: string;
     onStageChange: (stage: number) => void;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    onReset?: () => void;
+    onBackToCurrent?: () => void;
 }
 
-export default function DiscoveryView({ projectId, onStageChange }: DiscoveryViewProps) {
+export default function DiscoveryView({ projectId, onStageChange, isFullscreen, onToggleFullscreen, onReset, onBackToCurrent }: DiscoveryViewProps) {
     const [isScanning, setIsScanning] = useState(false);
     const [scanProgress, setScanProgress] = useState(0);
     const [scanLogs, setScanLogs] = useState<string[]>([]);
@@ -39,7 +43,8 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
         summary: string;
         score: number;
         gaps: any[];
-    }>({ summary: "", score: 0, gaps: [] });
+        detectedTech?: string;
+    }>({ summary: "", score: 0, gaps: [], detectedTech: "" });
 
     const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -103,17 +108,23 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
                 setAssessment({
                     summary: data.assessment_summary || "Assessment complete",
                     score: data.completeness_score || 0,
-                    gaps: data.detected_gaps || []
+                    gaps: data.detected_gaps || [],
+                    detectedTech: data.detected_technology || "UNKNOWN"
                 });
 
                 setScanLogs(prev => [...prev,
                 `✓ Completeness Score: ${data.completeness_score}%`,
                 `✓ Detected ${data.detected_gaps?.length || 0} gaps`,
+                `✓ Detected tech: ${data.detected_technology || "UNKNOWN"}`,
                     "Discovery Audit Complete."
                 ]);
 
-                // Trigger conflict if low score
-                if (data.completeness_score < 70) {
+                // Trigger conflict if low score OR tech mismatch
+                const mismatch = data.detected_technology &&
+                    sourceTech !== "UNKNOWN" &&
+                    !data.detected_technology.toUpperCase().includes(sourceTech.toUpperCase());
+
+                if (data.completeness_score < 70 || mismatch || (sourceTech === "UNKNOWN" && data.detected_technology)) {
                     setShowConflict(true);
                 }
             }
@@ -143,6 +154,27 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
         runScan();
     };
 
+    const handleUpdateTech = async () => {
+        if (!assessment.detectedTech) return;
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/settings`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    settings: { source_tech: assessment.detectedTech }
+                })
+            });
+
+            if (res.ok) {
+                setSourceTech(assessment.detectedTech);
+                setShowConflict(false);
+                setScanLogs(prev => [...prev, `✓ Updated project source technology to ${assessment.detectedTech}`]);
+            }
+        } catch (err) {
+            console.error("Failed to update project settings", err);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
@@ -153,6 +185,10 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
                 onApprove={() => onStageChange(2)}
                 approveLabel="Start Triage"
                 isApproveDisabled={scanProgress < 100 || showConflict}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={onToggleFullscreen}
+                onReset={onReset}
+                onBackToCurrent={onBackToCurrent}
             >
                 <div className="flex gap-2">
                     <button
@@ -277,12 +313,12 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
                                     <span className="text-xs font-black text-white uppercase">{sourceTech}</span>
                                 </div>
                             </div>
-                            <div className={`p-4 border rounded-2xl transition-all ${showConflict ? 'bg-amber-500/10 border-amber-500/30' : 'bg-black/40 border-white/5'}`}>
+                            <div className={`p-4 border rounded-2xl transition-all ${showConflict ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
                                 <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-2">Detected</span>
                                 <div className="flex items-center gap-2">
-                                    <Binary size={14} className={showConflict ? 'text-amber-500' : 'text-gray-400'} />
-                                    <span className={`text-xs font-black ${showConflict ? 'text-amber-500' : 'text-white'}`}>
-                                        {showConflict ? "SQL SERVER" : "PENDING"}
+                                    <Binary size={14} className={showConflict ? 'text-cyan-500' : 'text-gray-400'} />
+                                    <span className={`text-xs font-black ${showConflict ? 'text-cyan-500' : 'text-white'}`}>
+                                        {assessment.detectedTech || "PENDING"}
                                     </span>
                                 </div>
                             </div>
@@ -290,18 +326,26 @@ export default function DiscoveryView({ projectId, onStageChange }: DiscoveryVie
 
                         {showConflict && (
                             <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-2">
-                                <div className="flex items-start gap-3 p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
-                                    <ShieldAlert className="text-amber-500 shrink-0" size={16} />
-                                    <p className="text-[10px] text-amber-200/80 font-bold uppercase tracking-wide leading-relaxed">
-                                        Agent S detected SQL Server dialect instead of {sourceTech}. Resolve this conflict to proceed.
+                                <div className="flex items-start gap-3 p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
+                                    <ShieldCheck className="text-cyan-500 shrink-0" size={16} />
+                                    <p className="text-[10px] text-cyan-200/80 font-bold uppercase tracking-wide leading-relaxed">
+                                        You selected {sourceTech}, but my analysis thinks {assessment.detectedTech} is a better match. Do you want to update?
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() => setShowConflict(false)}
-                                    className="w-full py-3 bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-amber-400 transition-all active:scale-95"
-                                >
-                                    Override: Detected is correct
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleUpdateTech}
+                                        className="flex-1 py-3 bg-cyan-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-cyan-500 transition-all active:scale-95"
+                                    >
+                                        Update Selection
+                                    </button>
+                                    <button
+                                        onClick={() => setShowConflict(false)}
+                                        className="px-4 py-3 bg-white/5 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/10 transition-all"
+                                    >
+                                        Keep {sourceTech}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>

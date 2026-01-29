@@ -27,21 +27,12 @@ async def list_projects(db: SupabasePersistence = Depends(get_db)):
 @router.get("/{project_id}")
 async def get_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Returns project details, handling both UUID and Name."""
-    # 1. Try to find by UUID first
+    # 1. Try to find by UUID or name via resolution
     metadata = await db.get_project_metadata(project_id)
     if metadata:
         if metadata.get("is_active") is False:
             raise HTTPException(status_code=403, detail="Project Access Suspended (Kill-switch Active)")
         return metadata
-    
-    # 2. Fallback: maybe the string passed is the project Name?
-    uuid = await db.get_project_id_by_name(project_id)
-    if uuid:
-        metadata = await db.get_project_metadata(uuid)
-        if metadata:
-            if metadata.get("is_active") is False:
-                raise HTTPException(status_code=403, detail="Project Access Suspended (Kill-switch Active)")
-            return metadata
         
     return {"error": "Project not found"}
 
@@ -56,11 +47,13 @@ async def create_project(
     github_url: str = Form(None),
     overwrite: bool = Form(False),
     file: UploadFile = File(None),
+    origin: str = Form(None),
+    destination: str = Form(None),
     db: SupabasePersistence = Depends(get_db)
 ):
     """Creates a new project and initializes it from source."""
     # 1. Register in Database (Supabase)
-    real_id = await db.get_or_create_project(name, github_url)
+    real_id = await db.get_or_create_project(name, github_url, source_tech=origin, target_tech=destination)
     
     # 2. Handle File Upload (Save temporarily)
     temp_zip_path = None
@@ -76,7 +69,8 @@ async def create_project(
         source_type=source_type,
         file_path=temp_zip_path,
         github_url=github_url,
-        overwrite=overwrite
+        overwrite=overwrite,
+        tenant_id=db.tenant_id  # Pass Tenant ID for isolation
     )
     
     if success:
@@ -97,10 +91,10 @@ async def delete_project(project_id: str, db: SupabasePersistence = Depends(get_
     # 3. Delete from FS
     fs_success = False
     if project_name:
-        fs_success = PersistenceService.delete_project_directory(project_name)
+        fs_success = PersistenceService.delete_project_directory(project_name, db.tenant_id)
     else:
         # Fallback: maybe the ID passed IS the name
-        fs_success = PersistenceService.delete_project_directory(project_id)
+        fs_success = PersistenceService.delete_project_directory(project_id, db.tenant_id)
     
     return {
         "success": True, 
@@ -144,7 +138,8 @@ async def list_project_files(project_id: str, db: SupabasePersistence = Depends(
             project_name = n
 
     # Use direct FS scanning for real-time updates
-    tree = PersistenceService.get_project_files(project_name)
+    # Pass Tenant ID for isolation
+    tree = PersistenceService.get_project_files(project_name, db.tenant_id)
     
     return {
         "name": project_name,
@@ -164,7 +159,7 @@ async def get_file_content(project_id: str, path: str, db: SupabasePersistence =
             project_name = n
         
     try:
-        content = PersistenceService.read_file_content(project_name, path)
+        content = PersistenceService.read_file_content(project_name, path, db.tenant_id)
         return {"content": content}
     except ValueError as e:
         return {"error": str(e)}
@@ -194,6 +189,8 @@ async def get_layout(project_id: str, db: SupabasePersistence = Depends(get_db))
 async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePersistence = Depends(get_db)):
     """Updates the project stage."""
     success = await db.update_project_stage(project_id, payload.get("stage"))
+    if not success:
+         raise HTTPException(status_code=400, detail="Failed to update stage. Project not found or invalid ID.")
     return {"success": success}
 
 
@@ -263,14 +260,15 @@ async def get_project_logs_simple(
         if n: 
             project_name = n
         
-    log_file = "migration.log"
     if type.lower() == "triage":
         log_file = "triage.log"
     elif type.lower() == "refinement":
+        log_file = "refinement.log"
+    else:
         log_file = "migration.log"
 
     try:
-        content = PersistenceService.read_file_content(project_name, log_file)
+        content = PersistenceService.read_file_content(project_name, log_file, db.tenant_id)
         return {"logs": content}
     except Exception:
         return {"logs": ""}
@@ -319,7 +317,7 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
             project_folder = resolved_name
     
     # Get Triage path
-    project_base = PersistenceService.ensure_solution_dir(project_folder)
+    project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
     triage_path = os.path.join(project_base, PersistenceService.STAGE_TRIAGE)
     
     if not os.path.exists(triage_path):
@@ -341,6 +339,10 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
         if '__pycache__' in dirs: dirs.remove('__pycache__')
         
         for filename in filenames:
+            # [Fix] Exclude system generated files
+            if filename in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+                continue
+                
             full_path = os.path.join(root, filename)
             rel_path = os.path.relpath(full_path, triage_path).replace("\\", "/")
             ext = filename.split('.')[-1].lower() if '.' in filename else 'no_ext'
@@ -392,7 +394,7 @@ async def export_project(project_id: str, db: SupabasePersistence = Depends(get_
     # 1. Use PackagingService to create COP structure
     try:
         from services.packaging_service import PackagingService
-        packager = PackagingService(project_id)
+        packager = PackagingService(project_id, tenant_id=db.tenant_id, client_id=db.client_id)
         # prepares "root_dir" inside "_package_staging"
         package_root = await packager.prepare_bundle()
         

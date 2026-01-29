@@ -1,0 +1,80 @@
+{
+    "analyzed_files": [
+        "DimCategory.py",
+        "DimCustomers.py",
+        "DimEmployee.py",
+        "DimProduct.py",
+        "DimShipper.py",
+        "DimSupplier.py",
+        "FactSales.py"
+    ],
+    "shared_connections": {},
+    "table_metadata": {
+        "DimCategory.py": {
+            "pk": [
+                "empid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimCustomers.py": {
+            "pk": [
+                "productid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimEmployee.py": {
+            "pk": [
+                " AND "
+            ],
+            "type": "DIMENSION"
+        },
+        "DimProduct.py": {
+            "pk": [
+                "productid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimShipper.py": {
+            "pk": [
+                "empid"
+            ],
+            "type": "DIMENSION"
+        },
+        "DimSupplier.py": {
+            "pk": [
+                "empid"
+            ],
+            "type": "DIMENSION"
+        },
+        "FactSales.py": {
+            "pk": [
+                "productid"
+            ],
+            "type": "FACT"
+        }
+    },
+    "primary_keys": {
+        "DimCategory.py": [
+            "empid"
+        ],
+        "DimCustomers.py": [
+            "productid"
+        ],
+        "DimEmployee.py": [
+            " AND "
+        ],
+        "DimProduct.py": [
+            "productid"
+        ],
+        "DimShipper.py": [
+            "empid"
+        ],
+        "DimSupplier.py": [
+            "empid"
+        ],
+        "FactSales.py": [
+            "productid"
+        ]
+    },
+    "total_files": 7
+}

@@ -37,6 +37,8 @@ Unique to Legacy2Lake is its simplified yet powerful 6-stage workflow, designed 
     - **Forensic Intelligence**: Automatic Volume, PII, and Partition detection.
     - **Smart Generation**: AI-optimized code based on data characteristics.
     - **Certification**: Compliance scoring and automated runbook delivery.
+    - **Multi-Tenancy Architecture**: True file system isolation per tenant/project (`solutions/<tenant_id>`).
+    - **Enhanced UI**: VSCode-style syntax highlighting for file inspection across all stages.
 
 ---
 *Legacy2Lake Documentation Framework v3.3 - Enterprise Ready*

@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Lock, Sparkles, Save, Trash2, RefreshCw, CheckCircle } from "lucide-react";
 import { API_BASE_URL } from "../lib/config";
+import { getAgentDisplayName } from "../lib/constants";
 
 interface PromptsExplorerProps {
     className?: string;
@@ -38,10 +39,10 @@ export default function PromptsExplorer({ className, projectId }: PromptsExplore
             ]);
 
             const agentData: AgentInfo[] = [
-                { id: "agent_a", name: "Agent A (Detective)", systemPrompt: a.prompt, userContext: "" },
-                { id: "agent_c", name: "Agent C (Developer)", systemPrompt: c.prompt, userContext: "" },
-                { id: "agent_f", name: "Agent F (Compliance)", systemPrompt: f.prompt, userContext: "" },
-                { id: "agent_g", name: "Agent G (Governance)", systemPrompt: g.prompt, userContext: "" }
+                { id: "agent-a", name: getAgentDisplayName("agent-a"), systemPrompt: a.prompt, userContext: "" },
+                { id: "agent-c", name: getAgentDisplayName("agent-c"), systemPrompt: c.prompt, userContext: "" },
+                { id: "agent-f", name: getAgentDisplayName("agent-f"), systemPrompt: f.prompt, userContext: "" },
+                { id: "agent-g", name: getAgentDisplayName("agent-g"), systemPrompt: g.prompt, userContext: "" }
             ];
 
             // Fetch user contexts if projectId provided

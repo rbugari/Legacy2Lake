@@ -17,74 +17,84 @@ The **Metadata Store** is the central repository where the "intelligence" of Leg
 
 ## 1. Entity-Relationship Diagram (Logical Structure)
 
-### 1.1 Table: `UTM_Project`
-Stores the global context of the modernization project.
-- `project_id (UUID, PK)`: Unique identifier.
-- `name (VARCHAR)`: Project name (e.g., "Legacy Sales Migration").
-- `created_at (TIMESTAMP)`: Start date.
-- `settings (JSONB)`: Global configuration including:
-  - `migration_limit`: Batch processing limit
-  - `variables`: **[Phase 8]** Key-value pairs for environment parameterization (e.g., `{S3_ROOT: "s3://bucket"}`)
-  - Design registry patterns (naming conventions, target paths)
+```mermaid
+erDiagram
+    UTM_TR_PROJECT ||--o{ UTM_TR_OBJECT : "has assets"
+    UTM_TR_PROJECT ||--o{ UTM_TR_DESIGN_REGISTRY : "configures"
+    UTM_TR_PROJECT ||--o{ UTM_TR_EXECUTION_LOG : "logs"
+    UTM_TR_PROJECT ||--o{ UTM_TR_FILE_INVENTORY : "indexes"
+    
+    UTM_TR_OBJECT ||--o{ UTM_TR_LOGICAL_STEP : "transforms to"
+    UTM_TR_OBJECT ||--o{ UTM_TR_TRANSFORMATION : "generates code"
+    UTM_TR_OBJECT ||--o{ UTM_TR_COLUMN_MAPPING : "maps columns"
+    
+    UTM_TR_LOGICAL_STEP ||--o{ UTM_TR_USER_OVERRIDE : "adjusted by"
+    
+    UTM_TR_TENANT ||--o{ UTM_TR_PROJECT : "owns"
+    UTM_TR_CLIENT ||--o{ UTM_TR_TENANT : "employs"
+    UTM_TR_TENANT ||--o{ UTM_TR_PROVIDER_VAULT : "manages keys"
+    
+    UTM_TR_AGENT_MATRIX }|--|| UTM_TR_AGENT_CATALOG : "defines"
 
-### 1.2 Table: `UTM_Object`
-Represents an individual artifact from the source system.
-- `object_id (UUID, PK)`: Unique ID.
-- `project_id (UUID, FK)`: Relation to the project.
-- `source_name (VARCHAR)`: Filename (e.g., `Load_Sales.dtsx`).
-- `source_tech (ENUM)`: SSIS, Informatica, SQL_Proc, etc.
-- `raw_content (TEXT)`: Original content for traceability.
-- `metadata (JSONB)`: **[Phase 5 - Architect v2.0]** Inferred operational metadata:
-  - `volume`: LOW | MED | HIGH (estimated data volume)
-  - `is_pii`: Boolean flag if PII detected
-  - `pii_columns`: Array of column names containing PII
-  - `partition_key`: Suggested partitioning column (e.g., `transaction_date`)
-  - `latency`: DAILY | HOURLY | REAL_TIME (execution frequency)
-  - `criticality`: Business criticality score
+    utm_projects {
+        uuid project_id PK
+        string name
+        jsonb settings
+        jsonb config
+        uuid tenant_id FK
+        uuid client_id FK
+    }
 
-### 1.3 Table: `UTM_Logical_Step` (The IR Core)
-Stores each ETL step transformed into the Universal Grammar.
-- `step_id (UUID, PK)`: Unique step ID.
-- `object_id (UUID, FK)`: Parent object.
-- `step_order (INT)`: Logical execution order.
-- `step_type (ENUM)`: READ, TRANSFORM, JOIN, FILTER, AGGREGATE, WRITE.
-- `ir_payload (JSONB)`: The Universal Grammar JSON object.
-- `status (ENUM)`: DRAFT, VALIDATED, OVERRIDDEN, ERROR.
+    utm_objects {
+        uuid object_id PK
+        uuid project_id FK
+        string source_name
+        string type
+        jsonb metadata
+    }
 
-### 1.4 Table: `UTM_Column_Mapping` (Extended in v3.2)
-Stores column-level transformations and metadata.
-- `mapping_id (UUID, PK)`: Unique ID.
-- `object_id (UUID, FK)`: Parent asset.
-- `source_column (VARCHAR)`: Source column name.
-- `target_column (VARCHAR)`: Target column name.
-- `source_datatype (VARCHAR)`: Original data type.
-- `target_datatype (VARCHAR)`: Modernized data type.
-- `is_nullable (BOOLEAN)`: Nullability constraint.
-- `is_pii (BOOLEAN)`: PII flag for masking.
-- `logic (TEXT)`: **[Phase 6]** Custom transformation SQL expression (e.g., `CASE WHEN age < 18 THEN 'Minor'`).
-- `masking_rule (VARCHAR)`: PII masking strategy (e.g., `SHA2`, `REDACT`).
+    utm_logical_steps {
+        uuid step_id PK
+        uuid object_id FK
+        string step_type
+        jsonb ir_payload
+        string status
+    }
+    
+    utm_column_mappings {
+        uuid id PK
+        uuid asset_id FK
+        string source_column
+        string target_column
+        text logic
+    }
+```
 
-### 1.5 Table: `UTM_User_Override`
-Stores manual adjustments made by the data architect over the automatic IR.
-- `override_id (UUID, PK)`: Unique ID.
-- `step_id (UUID, FK)`: Target step.
-- `field_path (VARCHAR)`: JSON path (e.g., `params.on_missing.action`).
-- `old_value (TEXT)`: Original value proposed by the Kernel.
-- `new_value (TEXT)`: Value adjusted by the user.
+### 1.1 Project & Multi-Tenancy Core
+*   **`utm_clients`**: Represents the customer organization.
+*   **`utm_tenants`**: Individual users with RBAC roles (`ADMIN`, `USER`) linked to a client.
+*   **`utm_projects`**: The central entity. Contains global `settings` (source/target tech) and `config` (variables).
+    *   *Relations*: Belongs to a Tenant and Client. Parent of Objects, Logs, and Inventory.
 
-### 1.6 Table: `UTM_Function_Registry`
-The translation dictionary for functions between languages.
-- `func_id (UUID, PK)`: Unique ID.
-- `canonical_name (VARCHAR)`: Name in the IR (e.g., `DATE_DIFF`).
-- `tech_context (VARCHAR)`: `Databricks_13.3`, `Snowflake`, `SQLServer`, etc.
-- `implementation_template (TEXT)`: Jinja2 template (e.g., `datediff({{end}}, {{start}})`).
+### 1.2 Asset Management (`utm_objects`)
+Represents artifacts (files) from the source system.
+*   `metadata` (JSONB): Stores "Architect" inferences (Volume, PII, Complexity).
+*   `type`: `LAYOUT` (Manifests), `DTSX` (SSIS), `SQL`, `NOTEBOOK`.
 
-### 1.7 Governance Artifacts (Virtual/Export)
-Not stored in DB, but generated on-demand in v3.2:
-- **Certification Report**: JSON structure with `score`, `checks[]`, `recommendations[]`
-- **Runbook**: Markdown document (`Modernization_Runbook.md`)
-- **Variable Manifest**: JSON file (`variables_manifest.json`)
-- **Quality Contracts**: GX/Soda suites in `quality_contracts/` folder
+### 1.3 The Refinement Core (`utm_logical_steps`)
+Stores the normalized Intermediate Representation (IR).
+*   `ir_payload` (JSONB): The Universal Grammar JSON (Source -> Transformation -> Sink).
+*   `status`: `DRAFT` -> `VALIDATED` -> `REFINED`.
+
+### 1.4 Transformation & Code Gen
+*   **`utm_transformations`**: Physical code generated from the Logical Steps.
+*   **`utm_user_overrides`**: Stores human edits to the IR, ensuring reproducibility.
+*   **`utm_column_mappings`**: Detailed field-level lineage and transformations.
+
+### 1.5 Agent Orchestration
+*   **`utm_agent_catalog`**: Registry of available agents (Name, Role).
+*   **`utm_agent_matrix`**: Configuration linking Agents to specific LLM Models per Tenant/Project.
+*   **`utm_provider_vault`**: Secure storage for LLM Provider API Keys (OpenAI, Azure) per Tenant.
 
 ---
 

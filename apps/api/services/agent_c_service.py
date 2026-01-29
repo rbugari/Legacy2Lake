@@ -29,27 +29,19 @@ class AgentCService:
         self.client_id = client_id
 
     async def _get_llm(self, project_id: Optional[str] = None):
-        """Resolves LLM client from Agent Matrix / Catalog."""
+        """Resolves LLM client strictly from Agent Matrix (DB)."""
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         config = await db.resolve_agent_model("agent-c")
         
         if not config:
-            logger.warning("Using fallback LLM for agent-c.")
-            # Fallback to env for safety during transition
-            return AzureChatOpenAI(
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4"),
-                openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                temperature=0
-            )
+            raise ValueError(f"LLM configuration not found for 'agent-c' (Tenant: {self.tenant_id}). Please check Agent Matrix and Provider Vault.")
 
         if config["provider"] == "azure":
             return AzureChatOpenAI(
                 azure_endpoint=config["endpoint"],
                 azure_deployment=config["deployment"],
-                openai_api_version=config["api_version"] or os.getenv("AZURE_OPENAI_API_VERSION"),
-                api_key=config.get("api_key") or os.getenv("AZURE_OPENAI_API_KEY"),
+                openai_api_version=config["api_version"],
+                api_key=config.get("api_key"),
                 temperature=config["temperature"]
             )
         else:
@@ -76,8 +68,6 @@ class AgentCService:
         Transpiles a task using the configured Destination Generator.
         'set_context' provides visibility into neighboring tasks for consistency.
         """
-        db = SupabasePersistence()
-        
         # 1. Resolve Target Engine
         project_id = node_data.get('project_id')
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
@@ -100,8 +90,6 @@ class AgentCService:
             dialect_instruction = "TARGET DIALECT: DUAL MODE (PYSPARK + ANSI SQL). Generate code for BOTH inside the same JSON response."
         else:
             cartridge = SparkDestination({"type": "spark", "version": "13.3"})
-            dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
-
             dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
 
         system_prompt = await self._load_prompt()
@@ -133,19 +121,8 @@ class AgentCService:
         # Metadata Extraction (Architect v2.0)
         metadata = node_data.get("metadata", {})
         
-        human_content = f"""
-        {style_block}
-
-        CODING STANDARDS TO FOLLOW:
-        {standards}
-
-        TRANSPILE THE FOLLOWING TASK:
-        Task Name: {node_data.get('name')}
-        Task Type: {node_data.get('type')}
-        Task Description: {node_data.get('description')}
-        
-        CONTEXT:
-        {json.dumps({
+        # Context Construction
+        transpile_context = {
             **(context or {}),
             "load_strategy": metadata.get("load_strategy", node_data.get("load_strategy", "FULL_OVERWRITE")),
             "frequency": metadata.get("latency", node_data.get("frequency", "DAILY")),
@@ -156,8 +133,26 @@ class AgentCService:
             "metadata": metadata, # Full v2.0 metadata
             "variables": node_data.get("variables", (context or {}).get("variables", {})), # Phase 8: Variables
             "global_design_registry": registry,
-            "project_set_overview": set_context # Visibility into other project assets
-        }, indent=2)}
+            "project_set_overview": set_context, # Visibility into other project assets
+            # High-Fidelity IO Context
+            "inputs": node_data.get("inputs", []),
+            "outputs": node_data.get("outputs", []),
+            "lookups": node_data.get("lookups", [])
+        }
+
+        human_content = f"""
+        {style_block}
+
+        CODING STANDARDS TO FOLLOW:
+        {standards}
+
+        TRANSPILE THE FOLLOWING TASK:
+        Task Name: {node_data.get('name', node_data.get('package_name'))}
+        Task Type: {node_data.get('type', 'Unknown')}
+        Task Description: {node_data.get('description', '')}
+        
+        CONTEXT:
+        {json.dumps(transpile_context, indent=2)}
         """
 
         messages = [
@@ -169,16 +164,25 @@ class AgentCService:
         response = await llm.ainvoke(messages)
         content = response.content.strip()
 
-        # Clean JSON if LLM added markdown blocks
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+        import re
+        
+        # Robust JSON Extraction: Find the outermost { ... }
+        json_match = re.search(r'(\{.*\})', content, re.DOTALL)
+        if json_match:
+            content = json_match.group(1)
+        else:
+            # Fallback to the old method if regex fails
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
 
         try:
             return json.loads(content)
         except json.JSONDecodeError:
+            # Last resort: Try to clean common JSON errors (like trailing commas)
+            # But for now, just return the error with more context
             return {
                 "error": "Failed to parse LLM response as JSON",
-                "raw_response": content
+                "raw_response": content[:1000] + ("..." if len(content) > 1000 else "")
             }

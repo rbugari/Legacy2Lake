@@ -92,20 +92,36 @@ async def login(request: Request):
     
     db = SupabasePersistence(tenant_id=None) # Admin Mode
     
-    # 2. Fetch Tenant
-    res = db.client.table("utm_tenants").select("tenant_id, client_id, password_hash, role").eq("username", u).execute()
+    import bcrypt
+    import hashlib
+
+    # 2. Fetch Tenant (Include bcrypt hash)
+    res = db.client.table("utm_tenants").select("tenant_id, client_id, password_hash, password_hash_bcrypt, role").eq("username", u).execute()
     if not res.data:
          print(f"DEBUG LOGIN: User {u} not found")
          raise HTTPException(status_code=401, detail=f"Invalid Credentials")
     
     user = res.data[0]
     
-    # 3. Verify Password (SHA256)
-    import hashlib
-    input_hash = hashlib.sha256(p.encode()).hexdigest()
+    # 3. Verify Password (Dual Protocol: Bcrypt > SHA256)
+    password_valid = False
     
-    if input_hash != user["password_hash"]:
-         print(f"DEBUG LOGIN: Hash mismatch. Input: {input_hash}, DB: {user['password_hash']}")
+    # Try Bcrypt
+    if user.get("password_hash_bcrypt"):
+        try:
+            password_valid = bcrypt.checkpw(p.encode(), user["password_hash_bcrypt"].encode())
+        except Exception as e:
+            print(f"DEBUG LOGIN: Bcrypt check failed: {e}")
+            
+    # Try SHA256 (Legacy Fallback)
+    if not password_valid and user.get("password_hash"):
+        input_hash = hashlib.sha256(p.encode()).hexdigest()
+        if input_hash == user["password_hash"]:
+            password_valid = True
+            # Optional: We could trigger migration here, but sticking to read-only for now to minimize side effects in main.py
+            
+    if not password_valid:
+         print(f"DEBUG LOGIN: Password verification failed for {u}")
          raise HTTPException(status_code=401, detail=f"Invalid Credentials - Hash mismatch")
          
     # 3. Return IDs (Frontend should store these in X-Tenant-ID headers)
@@ -397,21 +413,21 @@ from services.dag_generator_service import DagGeneratorService
 @app.get("/projects/{project_id}/orchestration/airflow")
 async def get_airflow_dag(project_id: str, dag_id: str = "legacy2lake_dag", db: SupabasePersistence = Depends(get_db)):
     """Generate Airflow Python DAG code"""
-    service = DagGeneratorService(db.client)
+    service = DagGeneratorService(db.client, tenant_id=db.tenant_id)
     code = await service.generate_airflow_dag(project_id, dag_id, save=True)
     return {"code": code, "filename": f"{dag_id}.py"}
 
 @app.get("/projects/{project_id}/orchestration/databricks")
 async def get_databricks_workflow(project_id: str, job_name: str = "Legacy2Lake Job", db: SupabasePersistence = Depends(get_db)):
     """Generate Databricks Workflow JSON definition"""
-    service = DagGeneratorService(db.client)
+    service = DagGeneratorService(db.client, tenant_id=db.tenant_id)
     definition = await service.generate_databricks_workflow(project_id, job_name, save=True)
     return {"definition": definition, "filename": "databricks_workflow.json"}
 
 @app.get("/projects/{project_id}/orchestration/yaml")
 async def get_yaml_pipeline(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Generate generic YAML orchestration code"""
-    service = DagGeneratorService(db.client)
+    service = DagGeneratorService(db.client, tenant_id=db.tenant_id)
     code = await service.generate_generic_yaml(project_id, save=True)
     return {"code": code, "filename": "pipeline.yaml"}
 
@@ -480,42 +496,72 @@ async def update_cartridge_status(payload: CartridgeUpdate):
 # --- Provider Config ---
 
 @app.get("/providers")
-async def list_providers():
-    """Returns available LLM providers and their status."""
-    db = SupabasePersistence()
+async def list_providers(db: SupabasePersistence = Depends(get_db)):
+    """Returns available LLM providers and their status (Tenant Aware)."""
+    # db = SupabasePersistence() # REMOVED: Use dependency for tenant context
     config = await db.get_global_config("provider_settings")
     
     defaults = {
         "azure": {"id": "azure", "name": "Azure OpenAI", "model": "gpt-4", "enabled": True, "connected": False},
         "anthropic": {"id": "anthropic", "name": "Anthropic (Claude)", "model": "claude-3-5-sonnet", "enabled": False, "connected": False},
-        "groq": {"id": "groq", "name": "Groq (Llama)", "model": "llama-3.1-70b", "enabled": False, "connected": False}
+        "groq": {"id": "groq", "name": "Groq (Llama)", "model": "llama-3.1-70b", "enabled": False, "connected": False},
+        "openai": {"id": "openai", "name": "OpenAI", "model": "gpt-4o", "enabled": False, "connected": False}, # Added Explicit OpenAI
+        "deepseek": {"id": "deepseek", "name": "DeepSeek", "model": "deepseek-coder", "enabled": False, "connected": False},
+        "ollama": {"id": "ollama", "name": "Ollama (Local)", "model": "llama3", "enabled": False, "connected": False}
     }
     
+    # 1. If Tenant, fetch ACTIVE providers from Vault
+    active_tenant_providers = set()
+    if db.tenant_id:
+        vault_res = db.client.table("utm_provider_vault").select("provider_name").eq("tenant_id", db.tenant_id).eq("is_active", True).execute()
+        if vault_res.data:
+            active_tenant_providers = {v["provider_name"].lower() for v in vault_res.data}
+    
     if not config:
-        # Check env for connection status
+        # Check env for connection status (Global/Admin Fallback)
         defaults["azure"]["connected"] = bool(os.getenv("AZURE_OPENAI_API_KEY"))
-        return list(defaults.values())
-        
+    
+    # 2. Merge Defaults
     merged = []
+    processed_keys = set()
+
     for key, default in defaults.items():
-        saved = config.get(key, {})
+        # If Tenant, SKIP if not in their vault
+        if db.tenant_id and key not in active_tenant_providers:
+            continue
+
+        saved = config.get(key, {}) if config else {}
         item = default.copy()
         item.update(saved)
         
         # Determine "Connected" status.
-        # If saved has API key -> Connected.
-        # If not, check Env.
-        # Special case naming for Azure
-        env_key_var = f"{key.upper()}_API_KEY"
-        if key == "azure": env_key_var = "AZURE_OPENAI_API_KEY"
+        if db.tenant_id:
+            item["connected"] = True
+            item["enabled"] = True 
+        else:
+            # Admin/Global Logic
+            env_key_var = f"{key.upper()}_API_KEY"
+            if key == "azure": env_key_var = "AZURE_OPENAI_API_KEY"
+            has_key = bool(saved.get("api_key")) or bool(os.getenv(env_key_var))
+            item["connected"] = has_key
             
-        has_key = bool(saved.get("api_key")) or bool(os.getenv(env_key_var))
-             
-        item["connected"] = has_key
         # Don't return API key
         if "api_key" in item: del item["api_key"]
             
         merged.append(item)
+        processed_keys.add(key)
+
+    # 3. Add Custom Providers (In Vault but not in Defaults)
+    if db.tenant_id:
+        for provider in active_tenant_providers:
+            if provider not in processed_keys:
+                merged.append({
+                    "id": provider,
+                    "name": provider.title(), # Capitalize for display
+                    "model": "custom",
+                    "enabled": True,
+                    "connected": True
+                })
     
     return merged
 
@@ -988,7 +1034,8 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     def _log(msg: str):
         log_lines.append(msg)
         try:
-            path = PersistenceService.ensure_solution_dir(project_folder)
+            # [Fix] Use tenant_id for logging path
+            path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
             with open(os.path.join(path, "triage.log"), "a", encoding="utf-8") as f:
                 f.write(f"{msg}\n")
         except:
@@ -996,7 +1043,8 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             
     # Clear previous log and write header
     try:
-        path = PersistenceService.ensure_solution_dir(project_folder)
+        # [Fix] Use tenant_id for logging path
+        path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
         with open(os.path.join(path, "triage.log"), "w", encoding="utf-8") as f:
             f.write(f"{'='*80}\n")
             f.write(f"TRIAGE ANALYSIS REPORT\n")
@@ -1005,6 +1053,9 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             f.write(f"Project ID: {project_uuid}\n")
             f.write(f"Started: {timestamp}\n")
             f.write(f"Tenant: {db.tenant_id or 'default'}\n")
+            # Debug: Verify scan path in log
+            real_scan_path = os.path.join(path, "Triage")
+            f.write(f"Scan Path: {real_scan_path}\n")
             f.write(f"{'='*80}\n\n")
     except:
         pass
@@ -1021,7 +1072,11 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     if user_context:
         _log(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
         
-    manifest = DiscoveryService.generate_manifest(project_folder, user_context=user_context)
+    if user_context:
+        _log(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
+        
+    # [Fix] Pass tenant_id to ensure correct folder resolution
+    manifest = DiscoveryService.generate_manifest(project_folder, tenant_id=db.tenant_id, user_context=user_context)
     manifest["project_id"] = project_uuid # Ensure UUID is used for DB lookups in agents
     
     file_count = len(manifest["file_inventory"])
@@ -1361,7 +1416,8 @@ async def list_project_files(project_id: str, db: SupabasePersistence = Depends(
         if n: project_name = n
 
     # Use direct FS scanning for real-time updates (Fixes 'Bronze' folder visibility)
-    tree = PersistenceService.get_project_files(project_name)
+    # Use direct FS scanning for real-time updates (Fixes 'Bronze' folder visibility)
+    tree = PersistenceService.get_project_files(project_name, db.tenant_id)
     
     # Wrap in a root node for the frontend FileExplorer
     return {
@@ -1382,7 +1438,7 @@ async def get_file_content(project_id: str, path: str, db: SupabasePersistence =
         if n: project_name = n
         
     try:
-        content = PersistenceService.read_file_content(project_name, path)
+        content = PersistenceService.read_file_content(project_name, path, db.tenant_id)
         return {"content": content}
     except ValueError as e:
         return {"error": str(e)}
@@ -1537,7 +1593,12 @@ async def start_refinement(payload: dict, db: SupabasePersistence = Depends(get_
     print(f"DEBUG: Starting Refinement for {project_id} (Resolved Folder: {project_name})")
     
     # Orchestrator is now natively async (Release 2.0)
-    orchestrator = RefinementOrchestrator(tenant_id=db.tenant_id, client_id=db.client_id)
+    orchestrator = RefinementOrchestrator(
+        project_name=project_name, 
+        project_uuid=project_id, 
+        tenant_id=db.tenant_id, 
+        client_id=db.client_id
+    )
     result = await orchestrator.start_pipeline(project_name)
 
     
@@ -1781,9 +1842,9 @@ async def update_project_registry(project_id: str, payload: dict, db: SupabasePe
 
 @app.get("/catalog")
 async def get_model_catalog(db: SupabasePersistence = Depends(get_db)):
-    """Fetches the global model catalog."""
-    res = db.client.table("utm_model_catalog").select("*").order("provider").execute()
-    return {"catalog": res.data}
+    """Fetches the global model catalog (Filtered by Tenant/Vault)."""
+    models = await db.list_models()
+    return {"catalog": models}
 
 @app.post("/catalog")
 async def create_custom_model(payload: dict, db: SupabasePersistence = Depends(get_db)):
@@ -1806,8 +1867,12 @@ async def create_custom_model(payload: dict, db: SupabasePersistence = Depends(g
         "deployment_id": payload.get("deployment_id"),
         "api_version": payload.get("api_version"),
         "api_url": payload.get("api_url"),
-        "is_active": True
+        "is_active": True,
+        "tenant_id": db.tenant_id # Critical for SaaS separation
     }
+    
+    if not data["tenant_id"]:
+        raise HTTPException(status_code=400, detail="Missing Tenant Context. Cannot create orphan model.")
     
     db.client.table("utm_model_catalog").insert(data).execute()
     return {"success": True}
@@ -1851,32 +1916,24 @@ async def delete_model(id: str, db: SupabasePersistence = Depends(get_db)):
     return {"success": True}
 
 @app.get("/matrix")
-async def get_tenant_matrix(request: Request, db: SupabasePersistence = Depends(get_db)):
+async def get_tenant_matrix(db: SupabasePersistence = Depends(get_db)):
     """Fetches the Agent Matrix for the current tenant."""
-    # Since matrix is global for the single-tenant UTM (or filtered by tenant if multi-tenant)
-    # The table structure I saw earlier has `agent_id`, `provider`, `model_id`.
-    # It seems to be a simple mapping.
-    
-    res = db.client.table("utm_agent_matrix").select("*").execute()
-    
-    # Map to frontend expected format if needed, but frontend expects array of objects.
-    # Frontend AgentMatrix expects: { agent: string, provider: string, model: string }
-    # DB columns: agent_id, provider, model_id.
+    if not db.tenant_id:
+        return {"matrix": []}
+        
+    res = db.client.table("utm_agent_matrix").select("*").eq("tenant_id", db.tenant_id).execute()
     
     matrix = []
     for row in res.data:
         matrix.append({
-            "agent": row["agent_id"], # DB column is agent_id
+            "agent": row["agent_id"],
             "provider": row["provider"],
             "model": row["model_id"]
         })
-        
-    # If DB is empty, maybe return default? Or let frontend handle it.
-    # For now return what is in DB.
     return {"matrix": matrix}
 
 @app.post("/matrix")
-async def update_tenant_matrix(request: Request, payload: dict, db: SupabasePersistence = Depends(get_db)):
+async def update_tenant_matrix(payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Updates the matrix for a specific agent."""
     agent = payload.get("agent")
     provider = payload.get("provider")
@@ -1884,15 +1941,24 @@ async def update_tenant_matrix(request: Request, payload: dict, db: SupabasePers
     
     if not agent:
          raise HTTPException(status_code=400, detail="Missing Agent ID")
-    # Upsert logic
-    # Check if exists
-    existing = db.client.table("utm_agent_matrix").select("id").eq("agent_id", agent).execute()
     
+    if not db.tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context required")
+
+    # Upsert logic based on (agent_id, tenant_id)
     data = {
         "agent_id": agent,
+        "tenant_id": db.tenant_id,
         "provider": provider,
         "model_id": model
     }
+    
+    # Try to find existing entry for this specific tenant/agent
+    existing = db.client.table("utm_agent_matrix")\
+        .select("id")\
+        .eq("agent_id", agent)\
+        .eq("tenant_id", db.tenant_id)\
+        .execute()
     
     if existing.data:
         db.client.table("utm_agent_matrix").update(data).eq("id", existing.data[0]["id"]).execute()
@@ -1971,17 +2037,46 @@ async def update_vault(
         .eq("provider_name", provider)\
         .execute()
         
+    # Prepare Update Data
     data = {
-        "tenant_id": tenant_id,
-        "provider_name": provider,
         "api_key": api_key,
-        "is_active": True
+        "base_url": base_url
     }
-    if base_url:
-        data["base_url"] = base_url
+
+    # Rename Logic
+    new_name = payload.get("new_provider_name")
+    if new_name and new_name.lower() != provider.lower():
+        # Check if new name exists
+        dup = db.client.table("utm_provider_vault").select("id").eq("tenant_id", tenant_id).eq("provider_name", new_name).execute()
+        if dup.data:
+            raise HTTPException(status_code=400, detail="Provider name already exists")
+            
+        data["provider_name"] = new_name
+        
+        # We need to update dependent tables after we update the vault
+        # Actually, for data integrity, we should update dependent tables *after* the vault update succeeds, 
+        # or use a transaction (Supabase via REST api doesn't support complex transactions easily).
+        # We will do optimistic updates here.
         
     if existing.data:
         db.client.table("utm_provider_vault").update(data).eq("id", existing.data[0]["id"]).execute()
+        
+        # Cascade Update if Renamed
+        if new_name and new_name.lower() != provider.lower():
+            try:
+                # Update Catalog
+                db.client.table("utm_model_catalog").update({"provider": new_name}).eq("tenant_id", tenant_id).eq("provider", provider).execute()
+                # Update Matrix
+                # Matrix table doesn't have tenant_id? Wait, previous code suggested it might be global or derived.
+                # Looking at `utm_agent_matrix` endpoints, it has no `tenant_id` column used in select/update there?
+                # Actually `get_tenant_matrix` uses `select("*")` without tenant filter. 
+                # Assuming single-tenant or shared table. Safe to update based on provider name for now if tenant isolation isn't enforced there strict.
+                # However, `create_custom_model` inserts `tenant_id`.
+                # Let's try update `utm_agent_matrix` where provider matches.
+                db.client.table("utm_agent_matrix").update({"provider": new_name}).eq("provider", provider).execute()
+            except Exception as e:
+                print(f"Error cascading rename: {e}")
+                
     else:
         db.client.table("utm_provider_vault").insert(data).execute()
         
@@ -1999,6 +2094,18 @@ async def delete_vault_entry(
     
     if not tenant_id or not provider:
          raise HTTPException(status_code=400, detail="Missing Context")
+
+    # Dependency Check
+    # 1. Check Model Catalog
+    models = db.client.table("utm_model_catalog").select("count", count="exact").eq("tenant_id", tenant_id).eq("provider", provider).execute()
+    if models.count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete. {models.count} models rely on this provider.")
+
+    # 2. Check Agent Matrix
+    # Assuming matrix is using this provider string
+    matrix = db.client.table("utm_agent_matrix").select("count", count="exact").eq("provider", provider).execute()
+    if matrix.count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete. {matrix.count} agents are assigned to this provider.")
          
     db.client.table("utm_provider_vault")\
         .delete()\

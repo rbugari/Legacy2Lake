@@ -1,0 +1,7 @@
+environment: PROD
+parameters: {}
+project_settings: {}
+storage_paths:
+  bronze: s3://{bucket}/bronze
+  gold: s3://{bucket}/gold
+  silver: s3://{bucket}/silver

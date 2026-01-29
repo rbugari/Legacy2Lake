@@ -10,6 +10,7 @@ interface DiscoveryDashboardProps {
 export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboardProps) {
     const total = assets.length;
     const coreCount = assets.filter(a => a.type === 'CORE' || a.category === 'CORE').length;
+    const selectedCount = assets.filter(a => a.selected).length;
     const highComplexity = assets.filter(a => a.complexity === 'HIGH').length;
 
     // Architect v2.0 PII detection
@@ -25,12 +26,18 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
                 <BarChart3 size={14} className="text-cyan-500" /> Discovery Metrics
             </h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-3">
                 <MetricCard
                     label="Total Assets"
                     value={total}
                     icon={<Database size={16} className="text-cyan-500" />}
                     color="cyan"
+                />
+                <MetricCard
+                    label="In Scope"
+                    value={selectedCount}
+                    icon={<Shield size={16} className="text-blue-500" />}
+                    color="blue"
                 />
                 <MetricCard
                     label="Core Logic"
@@ -79,7 +86,10 @@ export default function DiscoveryDashboard({ assets, nodes }: DiscoveryDashboard
 }
 
 function MetricCard({ label, value, icon, color }: any) {
-    const colorClasses = color === 'cyan' ? 'border-cyan-500/20' : 'border-emerald-500/20';
+    const colorClasses =
+        color === 'cyan' ? 'border-cyan-500/20' :
+            color === 'blue' ? 'border-blue-500/20' :
+                'border-emerald-500/20';
     return (
         <div className={`bg-[var(--background-secondary)] p-4 rounded-xl border ${colorClasses} transition-all hover:scale-[1.02]`}>
             <div className="flex items-center justify-between mb-2">

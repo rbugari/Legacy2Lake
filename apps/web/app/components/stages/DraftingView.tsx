@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import PromptsExplorer from "../PromptsExplorer";
 import DesignRegistryPanel from "./DesignRegistryPanel";
 import TechnologyMixer from "./TechnologyMixer";
@@ -23,9 +25,23 @@ interface DraftingViewProps {
     onCompletion?: (completed: boolean) => void;
     isReadOnly?: boolean;
     activeTenantId?: string; // [NEW] Contextual Execution
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    onReset?: () => void;
+    onBackToCurrent?: () => void;
 }
 
-export default function DraftingView({ projectId, onStageChange, onCompletion, isReadOnly, activeTenantId }: DraftingViewProps) {
+export default function DraftingView({
+    projectId,
+    onStageChange,
+    onCompletion,
+    isReadOnly,
+    activeTenantId,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent
+}: DraftingViewProps) {
     const [activeTab, setActiveTab] = useState<"execution" | "files" | "config">("execution");
     const [isRunning, setIsRunning] = useState(false);
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
@@ -134,15 +150,21 @@ export default function DraftingView({ projectId, onStageChange, onCompletion, i
         }
     };
 
+
     return (
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="Stage 3: AI Drafting"
-                subtitle="Code synthesis and architectural pattern application"
-                icon={<Code className="text-cyan-500" />}
-                helpText="Agent F (Factory) translates legacy code to PySpark following Medallion architecture standards. Initial drafts are generated for all CORE assets."
-                onApprove={() => onStageChange(4)}
-                approveLabel="Approve and Refine"
+                title="Stage 3: Cloud Drafting"
+                subtitle="Agent C: Cloud-native Medallion code generator"
+                icon={<Code className="text-emerald-500" />}
+                helpText="Generation of optimized PySpark, dbt or Snowflake code based on the approved design."
+                onApprove={handleApprove}
+                approveLabel="Finalize & Refine"
+                isApproveDisabled={isRunning || progress < 100}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={onToggleFullscreen}
+                onReset={onReset}
+                onBackToCurrent={onBackToCurrent}
             >
                 <div className="flex gap-2">
                     <button
@@ -346,9 +368,15 @@ function FileManagerTab({ projectId, activeTenantId }: { projectId: string; acti
                                         <RefreshCw size={16} className="animate-spin" /> Loading content...
                                     </div>
                                 ) : (
-                                    <pre className="text-xs font-mono text-gray-800 dark:text-gray-300 whitespace-pre-wrap">
+                                    <SyntaxHighlighter
+                                        language={selectedFile.name.endsWith('.py') ? 'python' : selectedFile.name.endsWith('.sql') ? 'sql' : selectedFile.name.endsWith('.json') ? 'json' : selectedFile.name.endsWith('.md') ? 'markdown' : 'text'}
+                                        style={vscDarkPlus}
+                                        customStyle={{ margin: 0, padding: '1.5rem', background: '#0a0a0a', fontSize: '13px', lineHeight: '1.5', minHeight: '100%' }}
+                                        showLineNumbers={true}
+                                        wrapLines={true}
+                                    >
                                         {fileContent}
-                                    </pre>
+                                    </SyntaxHighlighter>
                                 )}
                             </div>
                         </>

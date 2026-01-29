@@ -102,50 +102,66 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             "error": "Project is in DRAFTING mode"
         }
 
+    import datetime
     log_lines = []
-    log_lines.append(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id} (Folder: {project_folder})")
     
     # Helper to persist log incrementally
-    def _log(msg: str):
-        log_lines.append(msg)
+    def _log(msg: str, agent: str = "SYSTEM"):
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        formatted_msg = f"[{now}] [{agent}] {msg}"
+        log_lines.append(formatted_msg)
         try:
-            path = PersistenceService.ensure_solution_dir(project_folder)
+            path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
             with open(os.path.join(path, "triage.log"), "a", encoding="utf-8") as f:
-                f.write(f"{msg}\n")
+                f.write(f"{formatted_msg}\n")
         except:
             pass
             
     # Clear previous log
     try:
-        path = PersistenceService.ensure_solution_dir(project_folder)
+        path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
         with open(os.path.join(path, "triage.log"), "w", encoding="utf-8") as f:
             f.write(f"--- Triage Started for {project_id} ---\n")
+            f.write(f"Tenant: {db.tenant_id}\n")
     except:
         pass
     
-    _log(f"[Start] Initializing Shift-T Triage Agent for Project: {project_id}")
+    _log(f"Initializing Shift-T Triage Agent for Project: {project_id}")
 
     # 1. Deep Scan (The Scanner / Pre-processing)
-    _log("[Step 1] Running Deep Scanner (Python Engine)...")
+    _log("Running Deep Scanner (Python Engine)...", agent="SCANNER")
     
     # Fetch persistent human context
     user_context = await db.get_project_context(project_uuid)
     if user_context:
-        _log(f"   > Found {len(user_context)} human context overrides. Injecting into scanner...")
+        _log(f"Found {len(user_context)} human context overrides. Injecting into scanner...", agent="SCANNER")
         
-    manifest = DiscoveryService.generate_manifest(project_folder, user_context=user_context)
+    manifest = DiscoveryService.generate_manifest(project_folder, tenant_id=db.tenant_id, user_context=user_context)
     manifest["project_id"] = project_uuid
     
     file_count = len(manifest["file_inventory"])
     tech_stats = manifest["tech_stats"]
-    _log(f"   > Scanned {file_count} files.")
-    _log(f"   > Tech Stack Detected: {tech_stats}")
+    _log(f"Scanned {file_count} files.", agent="SCANNER")
+    _log(f"Tech Stack Detected: {tech_stats}", agent="SCANNER")
     
     # 2. Agent A Analysis (The Detective)
-    _log("[Step 2] Invoking Agent A (Mesh Architect)...")
+    _log("Invoking Agent A (Mesh Architect)...", agent="ORCHESTRATOR")
     if params.system_prompt:
-        _log("   > Applying custom System Prompt override.")
+        _log("Applying custom System Prompt override.", agent="ORCHESTRATOR")
     
+    # Resolve Model info for logging before calling agent
+    llm_config = await db.resolve_agent_model("agent-a")
+    if llm_config:
+        provider = llm_config.get('provider', 'UNKNOWN').upper()
+        model = llm_config.get('deployment') or llm_config.get('model_name', 'UNKNOWN')
+        _log(f"Initiating Agent A (Detective) via {provider} using model {model}", agent="AGENT_A")
+    else:
+        _log("FAILED: LLM configuration for 'agent-a' is missing or invalid for this tenant.", agent="AGENT_A")
+        return {
+            "log": "\n".join(log_lines),
+            "error": "LLM Configuration Missing. Please define Agent Matrix and Provider Vault for this tenant."
+        }
+
     agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         prompt = params.system_prompt
@@ -155,7 +171,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         result = await agent_a.analyze_manifest(manifest, system_prompt_override=prompt)
         
         if "error" in result:
-            _log(f"[ERROR] Agent A failed: {result['error']}")
+            _log(f"Agent A failed: {result['error']}", agent="AGENT_A")
             return {"log": "\n".join(log_lines), "error": result['error']}
              
         rf_nodes = result.get("mesh_graph", {}).get("nodes", [])
@@ -179,14 +195,14 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
                         "target_name": item["name"]
                     })
         
-        _log(f"   > Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}")
+        _log(f"Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}", agent="AGENT_A")
         
     except Exception as e:
-        _log(f"[CRITICAL] Architecture Analysis Failed: {e}")
+        _log(f"CRITICAL Architecture Analysis Failed: {e}", agent="AGENT_A")
         return {"log": "\n".join(log_lines), "error": str(e)}
 
     # 3. Persistence (Supabase)
-    _log("[Step 3] Persisting Mesh Graph and Discovered Assets...")
+    _log("Persisting Mesh Graph and Discovered Assets...", agent="DATABASE")
     
     db_assets = []
     for item in manifest["file_inventory"]:
@@ -240,7 +256,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         })
         
     await db.save_project_layout(project_uuid, {"nodes": final_nodes, "edges": final_edges})
-    _log("[Success] Graph and Assets saved to database.")
+    _log("Graph and Assets saved to database.", agent="DATABASE")
     
     # Map back to assets list for the frontend
     final_assets = []

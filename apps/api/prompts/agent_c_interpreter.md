@@ -40,6 +40,8 @@ Return a JSON object with:
 - **Optimization**: Use `OPTIMIZE` and `VACUUM` hints where appropriate.
 - **Performance**: Prefer Spark SQL for joins to allow the optimizer to do its job.
 
+**CRITICAL**: You MUST return ONLY a raw JSON object. Do not include markdown code blocks (```json), do not include conversational text, and do not include any prefixes or suffixes. If your response is not a valid JSON object starting with `{` and ending with `}`, the system will fail.
+
 ```json
 {
   "pyspark_code": "...",

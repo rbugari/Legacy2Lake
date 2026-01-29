@@ -1,0 +1,20 @@
+{
+    "analyzed_files": [
+        "DimCustomers.py"
+    ],
+    "shared_connections": {},
+    "table_metadata": {
+        "DimCustomers.py": {
+            "pk": [
+                "custid"
+            ],
+            "type": "DIMENSION"
+        }
+    },
+    "primary_keys": {
+        "DimCustomers.py": [
+            "custid"
+        ]
+    },
+    "total_files": 1
+}

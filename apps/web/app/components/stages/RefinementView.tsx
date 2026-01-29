@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain } from 'lucide-react';
-import { API_BASE_URL } from '../../lib/config';
-import CodeDiffViewer from '../CodeDiffViewer';
+import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import StageHeader from "../StageHeader";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { fetchWithAuth } from '../../lib/auth-client';
+import CodeDiffViewer from '../CodeDiffViewer';
 import PromptsExplorer from '../PromptsExplorer';
 import DesignRegistryPanel from './DesignRegistryPanel';
 import TechnologyMixer from './TechnologyMixer';
@@ -12,6 +14,10 @@ interface RefinementViewProps {
     projectId: string;
     onStageChange?: (stage: number) => void;
     isReadOnly?: boolean;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    onReset?: () => void;
+    onBackToCurrent?: () => void;
 }
 
 interface FileNode {
@@ -28,8 +34,16 @@ const TABS = [
     { id: 'artifacts', label: 'Artifacts', icon: <Database size={18} /> },
 ];
 
-export default function RefinementView({ projectId, onStageChange, isReadOnly }: RefinementViewProps) {
-    const [activeTab, setActiveTab] = useState('orchestrator');
+export default function RefinementView({
+    projectId,
+    onStageChange,
+    isReadOnly,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent
+}: RefinementViewProps) {
+    const [activeTab, setActiveTab] = useState<any>("orchestrator");
     const [isRunning, setIsRunning] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
@@ -40,12 +54,13 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     const [fileContent, setFileContent] = useState<string>("");
     const [originalContent, setOriginalContent] = useState<string>("");
     const [isLoadingFile, setIsLoadingFile] = useState(false);
+    const [isFinished, setIsFinished] = useState(false);
 
     // State Restoration on Mount
     useEffect(() => {
         const fetchState = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/projects/${projectId}/refinement/state`);
+                const res = await fetchWithAuth(`projects/${projectId}/refinement/state`);
                 const data = await res.json();
 
                 if (data.log && data.log.length > 0) {
@@ -63,7 +78,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
 
     const fetchRefinementLogs = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs?type=refinement`);
+            const res = await fetchWithAuth(`projects/${projectId}/logs?type=refinement`);
             const data = await res.json();
             if (data.logs) {
                 const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
@@ -95,9 +110,8 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
         setIsFinished(false);
         setLogs(["Starting Refinement Phase...", "Initializing Agents..."]);
         try {
-            const res = await fetch(`${API_BASE_URL}/refine/start`, {
+            const res = await fetchWithAuth(`refine/start`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ project_id: projectId })
             });
             const data = await res.json();
@@ -119,9 +133,8 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     const handleApprove = async () => {
         if (!confirm("Are you sure you want to approve the refinement phase and move the project to Governance?")) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
+            const res = await fetchWithAuth(`projects/${projectId}/stage`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ stage: "5" })
             });
             const data = await res.json();
@@ -135,7 +148,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
 
     useEffect(() => {
         if (activeTab === 'workbench' || activeTab === 'artifacts') {
-            fetch(`${API_BASE_URL}/projects/${projectId}/files`)
+            fetchWithAuth(`projects/${projectId}/files`)
                 .then(res => res.json())
                 .then(data => setFileTree(data.children || []))
                 .catch(err => console.error("Failed to load file tree", err));
@@ -145,10 +158,8 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     const findLegacyFile = (nodes: any[], targetBaseName: string): string | null => {
         for (const node of nodes) {
             if (node.type === "file") {
-                // Check if file is in Triage (heuristic based on path)
-                // and matches base name (ignoring extension)
                 if (node.path.includes("Triage")) {
-                    const nodeBase = node.name.replace(/\.[^/.]+$/, ""); // Remove extension
+                    const nodeBase = node.name.replace(/\.[^/.]+$/, "");
                     if (nodeBase.toLowerCase() === targetBaseName.toLowerCase()) {
                         return node.path;
                     }
@@ -163,16 +174,12 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
 
     const resolveOriginalPath = (refinedPath: string) => {
         if (!refinedPath.includes('Refinement')) return null;
-
-        // Extract base name from refined file (e.g. "proc_sales_bronze.py" -> "proc_sales")
         let filename = refinedPath.split(/[\\/]/).pop() || "";
         const baseName = filename
             .replace(/_bronze\..*$/, "")
             .replace(/_silver\..*$/, "")
             .replace(/_gold\..*$/, "")
-            .replace(/\..*$/, ""); // Remove extension
-
-        // Search in file tree for a matching file in Triage
+            .replace(/\..*$/, "");
         return findLegacyFile(fileTree, baseName);
     };
 
@@ -183,14 +190,14 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
         setOriginalContent("");
 
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
+            const res = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
             const data = await res.json();
             setFileContent(data.content || "");
 
             if (activeTab === 'workbench') {
                 const origPath = resolveOriginalPath(path);
                 if (origPath) {
-                    const resOrig = await fetch(`${API_BASE_URL}/projects/${projectId}/files/content?path=${encodeURIComponent(origPath)}`);
+                    const resOrig = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(origPath)}`);
                     const dataOrig = await resOrig.json();
                     setOriginalContent(dataOrig.content || "-- Original file not found --");
                 }
@@ -203,7 +210,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
         }
     };
 
-    const FileTree = ({ node, level, onSelect, selectedPath }: { node: FileNode, level: number, onSelect: (n: FileNode) => void, selectedPath?: string }) => {
+    const FileTreeSection = ({ node, level, onSelect, selectedPath }: { node: FileNode, level: number, onSelect: (n: FileNode) => void, selectedPath?: string }) => {
         const [isOpen, setIsOpen] = useState(level < 2);
         const isFolder = node.type === "folder" || (node.children && node.children.length > 0);
         const isSelected = node.path === selectedPath;
@@ -240,7 +247,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                 {isFolder && isOpen && node.children && (
                     <div className="border-l border-gray-200 dark:border-gray-700 ml-3 pl-1">
                         {node.children.map((child, i) => (
-                            <FileTree
+                            <FileTreeSection
                                 key={i}
                                 node={child}
                                 level={level + 1}
@@ -254,7 +261,6 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
         );
     };
 
-    const [isFinished, setIsFinished] = useState(false);
     const isComplete = isFinished || logs.some(l =>
         l.toUpperCase().includes("PIPELINE COMPLETE") ||
         l.toUpperCase().includes("COMPLETED") ||
@@ -270,31 +276,31 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
     return (
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
-                title="Stage 4: AI Refinement"
-                subtitle="Transpiled code optimization and quality audit"
-                icon={<GitBranch className="text-cyan-500" />}
-                helpText="Agent R (Reviewer) analyzes generated code for inefficiencies, type errors, or logic flaws, applying automatic corrections and suggesting performance improvements."
-                isReadOnly={isReadOnly}
-                isApproveDisabled={!isComplete}
+                title="Stage 4: Intelligent Refinement"
+                subtitle="Agent F: Quality enforcement and pattern optimization"
+                icon={<GitBranch className="text-purple-500" />}
+                helpText="Final code refinement ensuring adherence to established architectural patterns."
                 onApprove={handleApprove}
-                approveLabel="Approve Phase 3"
-                onRestart={async () => {
-                    if (window.confirm("Restart Refinement? Current transformations will be lost.")) {
-                        if (onStageChange) onStageChange(3);
-                    }
-                }}
+                approveLabel="Approve & Governance"
+                isApproveDisabled={isRunning || !isComplete}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={onToggleFullscreen}
+                onReset={onReset}
+                onBackToCurrent={onBackToCurrent}
             >
-                <button
-                    onClick={handleRunRefinement}
-                    disabled={isRunning || isReadOnly}
-                    className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                        : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/20 dark:shadow-none"
-                        }`}
-                >
-                    <Play size={12} className={isRunning ? "animate-spin" : ""} />
-                    {isRunning ? "Refining..." : "Refine & Modernize"}
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRunRefinement}
+                        disabled={isRunning || isReadOnly}
+                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/20 dark:shadow-none"
+                            }`}
+                    >
+                        <Play size={12} className={isRunning ? "animate-spin" : ""} />
+                        {isRunning ? "Refining..." : "Refine & Modernize"}
+                    </button>
+                </div>
             </StageHeader>
 
             <div className="flex bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4">
@@ -303,8 +309,8 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
                         className={`flex items-center gap-2 px-8 py-5 text-[10px] font-bold uppercase tracking-[0.2em] border-b-2 transition-all ${activeTab === tab.id
-                            ? 'border-cyan-500 text-cyan-500 bg-cyan-500/5'
-                            : 'border-transparent text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/5'
+                            ? 'border-purple-500 text-purple-500 bg-purple-500/5'
+                            : 'border-transparent text-[var(--text-tertiary)] hover:text-purple-500 hover:bg-purple-500/5'
                             }`}
                     >
                         {tab.icon} <span>{tab.label}</span>
@@ -331,7 +337,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                             <div className="grid grid-cols-2 gap-4 shrink-0">
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 shadow-sm">
                                     <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Files Analyzed</h3>
-                                    <p className="text-2xl font-bold text-cyan-500">{profile.total_files}</p>
+                                    <p className="text-2xl font-bold text-purple-500">{profile.total_files}</p>
                                 </div>
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 shadow-sm">
                                     <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Shared Connections</h3>
@@ -344,7 +350,6 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
 
                 {(activeTab === 'workbench' || activeTab === 'artifacts') && (
                     <div className="flex h-full gap-4">
-                        {/* Existing Workbench/Artifacts code... */}
                         <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                             <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
                                 <h3 className="font-bold text-sm uppercase text-gray-400">{activeTab === 'workbench' ? 'Files to Review' : 'Artifacts Explorer'}</h3>
@@ -356,7 +361,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                                 ) : (
                                     <div className="space-y-1">
                                         {fileTree.map((child, i) => (
-                                            <FileTree
+                                            <FileTreeSection
                                                 key={i}
                                                 node={child}
                                                 level={0}
@@ -372,7 +377,7 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                         <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
                             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
                                 <h3 className="font-bold text-sm flex items-center gap-2">
-                                    <FileText size={16} className="text-cyan-500" />
+                                    <FileText size={16} className="text-purple-500" />
                                     {selectedFile ? (
                                         <span>
                                             {selectedFile.split(/[\\/]/).pop()}
@@ -400,8 +405,16 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="p-4 bg-[#1e1e1e] text-gray-200 font-mono text-sm leading-relaxed h-full overflow-auto">
-                                            <pre className="whitespace-pre-wrap">{fileContent}</pre>
+                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+                                            <SyntaxHighlighter
+                                                language={selectedFile.endsWith('.py') ? 'python' : selectedFile.endsWith('.sql') ? 'sql' : selectedFile.endsWith('.json') ? 'json' : selectedFile.endsWith('.md') ? 'markdown' : 'text'}
+                                                style={vscDarkPlus}
+                                                customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
+                                                showLineNumbers={true}
+                                                wrapLines={true}
+                                            >
+                                                {fileContent}
+                                            </SyntaxHighlighter>
                                         </div>
                                     )
                                 ) : (
@@ -414,8 +427,6 @@ export default function RefinementView({ projectId, onStageChange, isReadOnly }:
                         </div>
                     </div>
                 )}
-
-
             </div>
         </div>
     );

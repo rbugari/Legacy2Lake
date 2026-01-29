@@ -12,6 +12,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@types/dagre": "^0.7.53",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@xyflow/react": "^12.10.0",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
@@ -19,6 +20,7 @@
     "next": "^16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-syntax-highlighter": "^16.1.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

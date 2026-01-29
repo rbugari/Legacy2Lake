@@ -122,12 +122,20 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
         if n: 
             project_name = n
 
-    service = GovernanceService()
+    service = GovernanceService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         report = await service.get_certification_report(project_id) # Consistent with UUID passing
         return report
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/audit")
+async def run_audit_endpoint(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Triggers a fresh audit execution (Alias for /governance)."""
+    return await get_governance(project_id, db)
 
 
 @router.post("/governance/document")

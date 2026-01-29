@@ -25,14 +25,42 @@ def get_supabase_client() -> Client:
 
 # --- Identity & Multi-tenancy ---
 async def get_identity(
+    request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"), 
-    x_client_id: Optional[str] = Header(None, alias="X-Client-ID")
+    x_client_id: Optional[str] = Header(None, alias="X-Client-ID"),
+    x_admin_tenant_id: Optional[str] = Header(None, alias="X-Admin-Tenant-ID")
 ) -> dict:
     """
     Extracts tenant identity from request headers.
-    Used for multi-tenant isolation.
+    Supports Admin Impersonation:
+    If X-Admin-Tenant-ID is provided and belongs to an ADMIN, 
+    the context is set to X-Tenant-ID / X-Client-ID.
     """
-    return {"tenant_id": x_tenant_id, "client_id": x_client_id}
+    db_admin = SupabasePersistence(tenant_id=None)
+    
+    # 1. Check for Impersonation Attempt
+    if x_admin_tenant_id:
+        admin_user = await db_admin.get_tenant_by_id(x_admin_tenant_id)
+        if admin_user and admin_user.get("role") == "ADMIN":
+            print(f"[AUTH] Admin {x_admin_tenant_id} impersonating Tenant {x_tenant_id} for Client {x_client_id}")
+            return {
+                "tenant_id": x_tenant_id, 
+                "client_id": x_client_id, 
+                "admin_id": x_admin_tenant_id,
+                "role": "ADMIN" # They keep their admin power even if impersonating
+            }
+        else:
+            print(f"[AUTH] Unauthorized impersonation attempt by {x_admin_tenant_id}")
+            raise HTTPException(status_code=403, detail="Unauthorized impersonation")
+
+    # 2. Standard Identity
+    # In a simple SaaS, we assume the frontend sends the correct headers.
+    # For extra security, we could verify the tenant_id exists here.
+    return {
+        "tenant_id": x_tenant_id, 
+        "client_id": x_client_id,
+        "role": request.headers.get("X-Role", "USER")
+    }
 
 
 async def get_db(identity: dict = Depends(get_identity)) -> SupabasePersistence:
@@ -46,15 +74,13 @@ async def get_db(identity: dict = Depends(get_identity)) -> SupabasePersistence:
 
 
 # --- Security Utilities ---
-def verify_tenant_access(identity: dict, required_role: Optional[str] = None) -> bool:
+async def require_admin(identity: dict = Depends(get_identity)):
     """
-    Verifies the current user has access.
-    Extend this for role-based access control.
+    Dependency that ensures the user has administrative privileges.
     """
-    if not identity.get("tenant_id"):
-        return False
-    # TODO: Add role verification when RBAC is implemented
-    return True
+    if identity.get("role") != "ADMIN":
+        raise HTTPException(status_code=403, detail="Forbidden: Admin access required")
+    return identity
 
 
 async def require_auth(identity: dict = Depends(get_identity)):

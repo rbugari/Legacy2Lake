@@ -1,42 +1,59 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import {
-    CheckCircle,
-    ShieldCheck,
-    FileText,
-    Download,
+    ArrowLeft,
     ArrowRight,
-    Github,
-    Server,
+    Binary,
     Database,
-    AlertCircle,
-    TrendingUp,
-    ScrollText,
-    ExternalLink,
-    Code,
-    Settings, // Added for v1.5
+    Github,
     Maximize2,
     Minimize2,
     RotateCcw,
-    ArrowLeft,
-    Share2, // Added for Phase B
+    Search,
+    Settings,
+    Share2,
+    Shield,
+    ShieldCheck,
     Zap,
-    Shield
+    Download,
+    CheckCircle,
+    Info,
+    FileText,
+    TrendingUp,
+    AlertCircle,
+    ScrollText,
+    Code,
+    ShieldAlert,
+    Cpu,
+    LucideIcon
 } from 'lucide-react';
-import { API_BASE_URL } from '../../lib/config';
-import DesignRegistryPanel from './DesignRegistryPanel'; // Added for v1.5
-import OrchestrationPanel from './OrchestrationPanel'; // Added for Phase B
+import StageHeader from '../StageHeader';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { fetchWithAuth } from '../../lib/auth-client';
+import DesignRegistryPanel from './DesignRegistryPanel';
+import OrchestrationPanel from './OrchestrationPanel';
 
 interface GovernanceViewProps {
     projectId: string;
     onStageChange: (stage: number) => void;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    onReset?: () => void;
+    onBackToCurrent?: () => void;
 }
 
-export default function GovernanceView({ projectId, onStageChange }: GovernanceViewProps) {
+export default function GovernanceView({
+    projectId,
+    onStageChange,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent
+}: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality">("report");
-    const [isFullscreen, setIsFullscreen] = useState(false);
     const [isPushing, setIsPushing] = useState(false);
     const [auditReport, setAuditReport] = useState<any>(null);
     const [isAuditing, setIsAuditing] = useState(false);
@@ -44,7 +61,7 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
     const runAudit = async () => {
         setIsAuditing(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/audit`);
+            const res = await fetchWithAuth(`projects/${projectId}/audit`);
             const data = await res.json();
             setAuditReport(data);
         } catch (e) {
@@ -66,13 +83,13 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
 
     useEffect(() => {
         // Fetch Project Metadata
-        fetch(`${API_BASE_URL}/projects/${projectId}`)
+        fetchWithAuth(`projects/${projectId}`)
             .then(res => res.json())
             .then(data => setProject(data))
             .catch(err => console.error("Failed to fetch project details:", err));
 
         // Fetch Governance Report
-        fetch(`${API_BASE_URL}/projects/${projectId}/governance`)
+        fetchWithAuth(`projects/${projectId}/governance`)
             .then(res => res.json())
             .then(data => {
                 setReport(data);
@@ -108,69 +125,90 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
 
     return (
         <div className={`h-full bg-gray-50/50 dark:bg-gray-950 overflow-y-auto custom-scrollbar transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950' : ''}`}>
-            {/* Standard Operational Bar */}
-            <div className="sticky top-0 z-20 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shadow-sm">
+            <StageHeader
+                title="Stage 5: Intelligent Governance"
+                subtitle="Agent G: Compliance audit and final quality gate"
+                icon={<ShieldCheck className="text-amber-500" />}
+                helpText="Final verification of dependencies, security patterns, and Medallion architecture compliance."
+                onApprove={() => onStageChange(6)}
+                approveLabel="Approve & Handover"
+                isApproveDisabled={isAuditing || !report}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={onToggleFullscreen}
+                onReset={onReset}
+                onBackToCurrent={onBackToCurrent}
+            >
+                <div className="flex gap-2">
+                    <button
+                        onClick={handlePush}
+                        disabled={isPushing}
+                        className="px-6 py-2.5 bg-blue-500/20 border border-blue-500/30 text-blue-500 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-500/30 transition-all disabled:opacity-50"
+                    >
+                        {isPushing ? (
+                            <>
+                                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                Pushing...
+                            </>
+                        ) : (
+                            <>
+                                <Github size={14} /> Push
+                            </>
+                        )}
+                    </button>
+                    <button
+                        onClick={runAudit}
+                        disabled={isAuditing}
+                        className="px-6 py-2.5 bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-[var(--accent)] rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-[var(--accent)]/30 transition-all disabled:opacity-50"
+                    >
+                        {isAuditing ? (
+                            <>
+                                <div className="w-3 h-3 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
+                                Auditing...
+                            </>
+                        ) : (
+                            <>
+                                <ShieldCheck size={14} /> Re-Audit
+                            </>
+                        )}
+                    </button>
+                </div>
+            </StageHeader>
 
-                {/* Left: Functional Tabs */}
-                <div className="flex gap-1 bg-gray-100/50 dark:bg-gray-900/50 p-1.5 rounded-2xl border border-gray-200/50 dark:border-gray-800">
+            {/* Navigation Tabs */}
+            <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-200 dark:border-white/5 px-8 py-3 flex items-center justify-between shadow-sm">
+                <div className="flex gap-1 bg-gray-100/50 dark:bg-white/5 p-1.5 rounded-2xl border border-gray-200/50 dark:border-white/10">
                     <button
                         onClick={() => setActiveTab("report")}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "report" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "report" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <ShieldCheck size={16} /> Certification
+                        <ShieldCheck size={14} /> Certification
                     </button>
                     <button
                         onClick={() => setActiveTab("registry")}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "registry" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "registry" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <Settings size={16} /> Design Standards
+                        <Settings size={14} /> Design Standards
                     </button>
                     <button
                         onClick={() => setActiveTab("orchestration")}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "orchestration" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "orchestration" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <Share2 size={16} /> Orchestration
+                        <Share2 size={14} /> Orchestration
                     </button>
                     <button
                         onClick={() => setActiveTab("quality")}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${activeTab === "quality" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "quality" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                     >
-                        <Shield size={16} /> Data Quality
+                        <Shield size={14} /> Data Quality
                     </button>
                 </div>
 
-                {/* Right: Operational Controls */}
-                <div className="flex items-center gap-3">
-                    {/* View Controls */}
-                    <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
-                        <button
-                            onClick={() => setIsFullscreen(!isFullscreen)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 rounded-md transition-all"
-                            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                        >
-                            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                        </button>
-                        <button
-                            onClick={() => window.location.reload()}
-                            className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-white dark:hover:bg-gray-800 rounded-md transition-all"
-                            title="Reset Process"
-                        >
-                            <RotateCcw size={16} />
-                        </button>
-                    </div>
-
-                    <div className="h-6 w-px bg-gray-200 dark:bg-gray-800" />
-
-                    {/* Navigation */}
-                    <button
-                        // In a real app, this would use router.back() or similar. 
-                        // For now, we simulate "Step Back" visually.
-                        onClick={() => window.history.back()}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-                    >
-                        <ArrowLeft size={14} /> Back to Refinement
-                    </button>
-                </div>
+                <button
+                    onClick={() => window.history.back()}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm text-[10px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                    <ArrowLeft size={12} /> Back
+                </button>
             </div>
 
             <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -203,7 +241,8 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
                                     Great Expectations (JSON)
                                 </h3>
                                 <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-blue-600 dark:text-blue-400 overflow-hidden">
-                                    <pre>{`{
+                                    <SyntaxHighlighter language="json" style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '12px' }}>
+                                        {`{
   "expectation_suite_name": "orders.warning",
   "expectations": [
     {
@@ -211,7 +250,8 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
       "kwargs": { "column": "email" }
     }
   ]
-}`}</pre>
+}`}
+                                    </SyntaxHighlighter>
                                 </div>
                                 <p className="text-xs text-gray-400 italic">
                                     * Included in export if rules are detected.
@@ -224,9 +264,11 @@ export default function GovernanceView({ projectId, onStageChange }: GovernanceV
                                     Soda Core (YAML)
                                 </h3>
                                 <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-orange-600 dark:text-orange-400 overflow-hidden">
-                                    <pre>{`checks for orders:
+                                    <SyntaxHighlighter language="yaml" style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '12px' }}>
+                                        {`checks for orders:
   - missing_count(email) = 0
-  - invalid_percent(phone) < 5%`}</pre>
+  - invalid_percent(phone) < 5%`}
+                                    </SyntaxHighlighter>
                                 </div>
                                 <p className="text-xs text-gray-400 italic">
                                     * Generated alongside GX suites.

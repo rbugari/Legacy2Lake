@@ -1,0 +1,102 @@
+{
+    "name": "Legacy2Lake Job",
+    "tasks": [
+        {
+            "task_key": "destino_DW_sql",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/destino_DW.sql",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimCategory_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimCategory.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimCustomers_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimCustomers.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimEmployee_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimEmployee.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimProduct_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimProduct.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimShipper_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimShipper.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "DimSupplier_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/DimSupplier.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "FactSales_dtsx",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/FactSales.dtsx",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "origen_sql",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/origen.sql",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "readme_md",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/readme.md",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "layout_json",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/layout.json",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        },
+        {
+            "task_key": "layout_json",
+            "notebook_task": {
+                "notebook_path": "/Repos/Legacy2Lake/layout.json",
+                "source": "WORKSPACE"
+            },
+            "depends_on": []
+        }
+    ],
+    "format": "MULTI_TASK"
+}

@@ -6,6 +6,7 @@ import { fetchWithAuth } from "../lib/auth-client";
 import Link from "next/link";
 import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users } from "lucide-react";
 import CartridgeList from "../components/admin/CartridgeList";
+import { getAgentDisplayName } from "../lib/constants";
 
 interface Prompt {
     id: string;
@@ -231,7 +232,7 @@ export default function SystemPage() {
                                         : "text-[var(--text-tertiary)] hover:bg-cyan-500/5 hover:text-cyan-500 hover:translate-x-1"
                                         }`}
                                 >
-                                    {p.name}
+                                    {getAgentDisplayName(p.id)}
                                     {!isAdmin && <Lock size={12} className={`opacity-50 group-hover:opacity-100`} />}
                                 </button>
                             ))}
@@ -244,7 +245,7 @@ export default function SystemPage() {
                             <>
                                 <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-[var(--surface)]/50">
                                     <div>
-                                        <h2 className="text-xl font-bold">{selectedPrompt.name}</h2>
+                                        <h2 className="text-xl font-bold">{getAgentDisplayName(selectedPrompt.id)}</h2>
                                         <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">ID: {selectedPrompt.id}</p>
                                     </div>
                                     <div className="flex gap-2">

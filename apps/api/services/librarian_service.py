@@ -35,14 +35,14 @@ class LibrarianService:
     Scans DDLs and Flat Files to build a 'Single Source of Truth' (schema_reference.json).
     """
 
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str, tenant_id: str = None):
         # We assume project_id maps to a folder name or we resolve it.
         # For this implementation, we assume the persistence service has already ensured the folder exists.
         # But here we need to know the path.
         # TODO: Refactor to use PersistenceService to resolve paths cleanly.
         self.project_id = project_id
         # Strict I/O: Data flows IN from 'Data' folder
-        self.base_path = PersistenceService.ensure_solution_dir(project_id)
+        self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
         self.data_path = os.path.join(self.base_path, "Data")
         self.output_path = os.path.join(self.base_path, "Output")
         

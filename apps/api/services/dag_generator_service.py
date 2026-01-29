@@ -12,8 +12,9 @@ from services.dependency_service import DependencyService
 from services.persistence_service import SupabasePersistence
 
 class DagGeneratorService:
-    def __init__(self, db_client):
+    def __init__(self, db_client, tenant_id: str = None):
         self.db = db_client
+        self.tenant_id = tenant_id
         self.dependency_service = DependencyService(db_client)
 
     async def _get_project_path(self, project_id: str) -> str:
@@ -25,7 +26,7 @@ class DagGeneratorService:
                 project_name = res.data[0]['name']
         
         from services.persistence_service import PersistenceService
-        return PersistenceService.ensure_solution_dir(project_name)
+        return PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
 
     async def generate_airflow_dag(self, project_id: str, dag_id: str = "legacy2lake_dag", save: bool = False) -> str:
         """Generates an Airflow Python DAG file"""

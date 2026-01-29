@@ -1,0 +1,198 @@
+================================================================================
+REFINEMENT PIPELINE EXECUTION
+================================================================================
+Date      : 2026-01-28 19:40:52
+Project   : PruebaUsr
+Tenant    : 461b0d87-57a4-4ce5-b990-977bec9603eb
+Client    : 92c0987e-852f-478a-9136-7cbb7b62ddcd
+
+AGENT MATRIX CONFIGURATION:
+- Profiler    : Pattern Discovery (Provider: Openai, Model: gpt-4o-mini-2024-07-18)
+- Architect   : Medallion Mapper (Provider: Openai, Model: gpt-4o-mini-2024-07-18)
+- Refactoring : Spark Optimizer (Provider: Openai, Model: gpt-4o-2024-08-06)
+- OpsAuditor  : Compliance Auditor (Provider: Openai, Model: o3-mini-2025-01-31)
+================================================================================
+
+--- [PHASE 1] PROFILER: Pattern Discovery (Provider: Openai, Model: gpt-4o-mini-2024-07-18) ---
+[2026-01-28 19:40:52] [Profiler] [Pattern Discovery (Provider: Openai, Model: gpt-4o-mini-2024-07-18)] Starting analysis...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Target Project Directory: C:\proyectos_dev\UTM\solutions\PruebaUsr
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Found 7 Python files in Drafting.
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimCategory.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimCategory.py (DIMENSION): ['empid']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimCustomers.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[Profiler DEBUG] dropDuplicates MATCH: "productid"
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimCustomers.py (DIMENSION): ['productid']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimEmployee.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimEmployee.py (DIMENSION): [' AND ']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimProduct.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimProduct.py (DIMENSION): ['productid']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimShipper.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimShipper.py (DIMENSION): ['empid']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: DimSupplier.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for DimSupplier.py (DIMENSION): ['empid']
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery] Analyzing file: FactSales.py...
+[Profiler DEBUG] Checking dropDuplicates pattern: \.dropDuplicates\(\s*\[\s*(.*?)\s*\]\s*\) on content snippet...
+[Profiler DEBUG] dropDuplicates MATCH: 'productid'
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery]   > Detected PK candidates for FactSales.py (FACT): ['productid']
+[Profiler] Profile metadata saved to C:\proyectos_dev\UTM\solutions\PruebaUsr\Refinement\profile_metadata.json
+[2026-01-28 19:40:53] [Profiler] [Pattern Discovery (Provider: Openai, Model: gpt-4o-mini-2024-07-18)] Complete. Analyzed 7 files.
+
+--- [PHASE 2] ARCHITECT: Medallion Mapper (Provider: Openai, Model: gpt-4o-mini-2024-07-18) ---
+[2026-01-28 19:40:53] [Architect] [Medallion Mapper (Provider: Openai, Model: gpt-4o-mini-2024-07-18)] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...
+[2026-01-28 19:40:53] [Architect] [Medallion Mapper] Solutions Directory: C:\proyectos_dev\UTM\solutions\PruebaUsr
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Using Cartridge: PySparkCartridge
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Ensuring Medallion folder structure (Bronze/Silver/Gold)...
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Generated Scaffolding: config.py
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Generated Scaffolding: utils.py
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Processing 7 source files with .py extension...
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper] Generated Orchestration: orchestration_dag.py
+[2026-01-28 19:40:54] [Architect] [Medallion Mapper (Provider: Openai, Model: gpt-4o-mini-2024-07-18)] Medallion structure created.
+
+--- [PHASE 3] REFACTORING: Spark Optimizer (Provider: Openai, Model: gpt-4o-2024-08-06) ---
+[2026-01-28 19:40:54] [Refactoring] [Spark Optimizer (Provider: Openai, Model: gpt-4o-2024-08-06)] Applying Spark Optimizations and Security Controls...
+[2026-01-28 19:40:54] [Refactoring] [Spark Optimizer] Scanning generated files for optimization candidates...
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer] Target Stack: PYSPARK
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer] Optimizing BRONZE layer (14 files)...
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCategory_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimCustomers_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimEmployee_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimProduct_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimShipper_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > DimSupplier_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > FactSales_bronze.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer] Optimizing SILVER layer (14 files)...
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCategory.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimCustomers.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimEmployee.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimProduct.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimShipper.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_DimSupplier.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.sql: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.sql: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > stg_FactSales.sql: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer] Optimizing GOLD layer (14 files)...
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCategory.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCategory.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCategory.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCustomers.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCustomers.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimCustomers.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimEmployee.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimEmployee.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimEmployee.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimProduct.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimProduct.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimProduct.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimShipper.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimShipper.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimShipper.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimSupplier.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimSupplier.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_DimSupplier.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_FactSales.py: Added Optimization hint for pyspark
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_FactSales.py: Validated Security Scopes
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer]   > dim_FactSales.py: Validated Secret Scope usage
+[2026-01-28 19:40:55] [Refactoring] [Spark Optimizer (Provider: Openai, Model: gpt-4o-2024-08-06)] Optimized 42 files.
+
+--- [PHASE 4] OPS AUDITOR: Compliance Auditor (Provider: Openai, Model: o3-mini-2025-01-31) ---
+[2026-01-28 19:40:55] [OpsAuditor] [Compliance Auditor (Provider: Openai, Model: o3-mini-2025-01-31)] Validating operational readiness and generating DevOps assets...
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] Starting Operational Audit...
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] OK: BRONZE layer contains 14 files.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] OK: SILVER layer contains 14 files.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] OK: GOLD layer contains 14 files.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimCategory.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimCategory.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimCustomers.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimCustomers.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimEmployee.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimEmployee.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimProduct.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimProduct.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimShipper.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimShipper.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimSupplier.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_DimSupplier.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_FactSales.py has MERGE logic but might use wrong keys. Expected: target.id = source.id
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] WARNING: COMPLIANCE WARNING: stg_FactSales.sql missing explicit MERGE logic.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] Generating Infrastructure-as-Code (IaC) manifests...
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] Generating Operational Handbook (README_DEVOPS.md)...
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor] Audit Complete.
+[2026-01-28 19:40:56] [OpsAuditor] [Compliance Auditor (Provider: Openai, Model: o3-mini-2025-01-31)] Audit result: COMPLETED
+
+================================================================================
+[2026-01-28 19:40:56] [Orchestrator] [System] Pipeline Complete.
+================================================================================

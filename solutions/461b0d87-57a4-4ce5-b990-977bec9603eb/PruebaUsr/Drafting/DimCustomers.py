@@ -1,0 +1,369 @@
+# L2L MODERNIZATION TRACE
+# Source: SQLServer Asset 'Sales+Production+HR ETL'
+# Component: TranspiledPackage
+# Logic: Transpiled from SSIS Packages (Dim*/FactSales)
+# Refactoring: Consolidated SCD2 for Dimensions + Idempotent MERGE for Facts (Delta Lake)
+# Generated At: 2026-01-28T00:00:00Z
+
+"""
+Principal Engineer Transpilation
+This module contains idempotent PySpark/Delta logic for a subset of legacy SSIS packages:
+  - DimProduct (SCD Type 2)
+  - FactSales (Idempotent MERGE using surrogate keys)
+
+Pattern implemented (can be extended to other Dim* packages listed in project_set_overview):
+  1) Extract from source (Production/Sales tables via spark.table)
+  2) Transform (generate SCD2 inserts, determine changed members)
+  3) Type-safety casts to match target DDL (high-fidelity casting)
+  4) Load using Delta MERGE INTO for idempotency
+
+Operational notes:
+  - Uses SCD2 for dimensions to preserve history
+  - Uses COALESCE(dim_sk, F.lit(-1)) for lookup misses in facts
+  - Uses try/except with logging
+  - Uses Gold naming prefix 'dim_' and Silver stage prefix 'stg_'
+
+Assumptions about schemas are documented in the `assumptions` field returned alongside this code.
+"""
+
+from datetime import datetime
+import logging
+
+from pyspark.sql import functions as F
+from pyspark.sql import Window
+from pyspark.sql.types import (
+    LongType,
+    StringType,
+    DecimalType,
+    BooleanType,
+    TimestampType,
+    IntegerType,
+)
+
+from delta.tables import DeltaTable
+
+logging.basicConfig()
+logger = logging.getLogger("l2l_transpile")
+logger.setLevel(logging.INFO)
+
+
+def execute_task(spark, context: dict) -> bool:
+    """
+    Principal Engineer Transpilation Executor
+
+    Args:
+        spark: SparkSession (assumed available)
+        context: dict containing runtime params (keys used below):
+            - variables (optional): mapping for externalized paths
+            - env (optional): environment tag used for naming
+
+    Returns:
+        True on success, False on failure
+    """
+    try:
+        # 1. PARAMETERS & CONFIG
+        variables = context.get("variables", {})
+        env = context.get("env", "prod")
+
+        # Naming conventions (registry enforced)
+        SILVER_PREFIX = "stg_"  # for staging/silver datasets
+        GOLD_PREFIX = "dim_"    # for gold dimensions
+        GOLD_SCHEMA = "gold"    # target DB/schema for gold assets
+        SILVER_SCHEMA = "silver"  # staging schema (if required)
+
+        # Tables (concrete targets for this transpilation)
+        target_dim_product = f"{GOLD_SCHEMA}.{GOLD_PREFIX}product"
+        target_fact_sales = f"{GOLD_SCHEMA}.fact_sales"
+
+        # Operational timestamps
+        now_ts = datetime.utcnow().isoformat()
+
+        # 2. EXTRACTION
+        # Source system tables (assumed available as catalog tables)
+        # These map to the legacy queries from the SSIS packages.
+        df_products_src = spark.table("production.products")
+        df_orders_src = spark.table("sales.orders")
+        df_order_details_src = spark.table("sales.orderdetails")
+
+        # Read existing dimension if exists; otherwise create empty DataFrame with expected schema
+        if DeltaTable.isDeltaTable(spark, f"/mnt/delta/{target_dim_product.replace('.', '/')}"):
+            df_dim_product = spark.table(target_dim_product)
+        else:
+            # Create an empty schema matching our assumed target DDL for dim_product
+            df_dim_product = spark.createDataFrame([], schema=None)
+
+        # 3. TRANSFORM: DimProduct (SCD Type 2)
+        # Business key: productid
+        # Capture the columns we care about from source
+        df_products = (
+            df_products_src
+            .select(
+                F.col("productid").alias("productid"),
+                F.col("productname").alias("productname"),
+                F.col("supplierid").alias("supplierid"),
+                F.col("categoryid").alias("categoryid"),
+                F.col("unitprice").alias("unitprice"),
+                F.col("discontinued").alias("discontinued")
+            )
+            .withColumn("_etl_loaded_at", F.current_timestamp())
+        )
+
+        # Prepare current (is_current = true) snapshot from target to detect changes
+        if len(df_dim_product.columns) > 0:
+            df_dim_current = (
+                df_dim_product
+                .filter(F.col("is_current") == True)
+                .select(
+                    "sk",
+                    "productid",
+                    "productname",
+                    "supplierid",
+                    "categoryid",
+                    "unitprice",
+                    "discontinued",
+                    "start_date",
+                    "end_date",
+                    "is_current"
+                )
+            )
+        else:
+            # empty DataFrame fallback
+            df_dim_current = spark.createDataFrame([], df_products.schema.add("sk", LongType()))
+
+        # Join source to current to find new or changed rows
+        join_cond = [df_products.productid == df_dim_current.productid]
+        df_joined = df_products.alias("src").join(df_dim_current.alias("tgt"), join_cond, how="left")
+
+        # Define attribute change detection expression
+        attr_change_expr = (
+            (F.coalesce(F.col("tgt.productname"), F.lit("")) != F.coalesce(F.col("src.productname"), F.lit("")))
+            | (F.coalesce(F.col("tgt.supplierid"), F.lit(-1)) != F.coalesce(F.col("src.supplierid"), F.lit(-1)))
+            | (F.coalesce(F.col("tgt.categoryid"), F.lit(-1)) != F.coalesce(F.col("src.categoryid"), F.lit(-1)))
+            | (F.coalesce(F.col("tgt.unitprice"), F.lit(0.0)) != F.coalesce(F.col("src.unitprice"), F.lit(0.0)))
+            | (F.coalesce(F.col("tgt.discontinued"), F.lit(False)) != F.coalesce(F.col("src.discontinued"), F.lit(False)))
+        )
+
+        df_changes = (
+            df_joined
+            .filter((F.col("tgt.productid").isNull()) | attr_change_expr)
+            .select(
+                F.col("src.productid").alias("productid"),
+                F.col("src.productname").alias("productname"),
+                F.col("src.supplierid").alias("supplierid"),
+                F.col("src.categoryid").alias("categoryid"),
+                F.col("src.unitprice").alias("unitprice"),
+                F.col("src.discontinued").alias("discontinued")
+            )
+            .dropDuplicates(["productid"])  # ensure one row per business key
+        )
+
+        # Compute next surrogate key (SK) start value from target
+        # Safe fallback to 0 when table empty
+        if len(df_dim_product.columns) > 0:
+            max_sk_row = df_dim_product.agg(F.max(F.col("sk")).alias("max_sk")).collect()[0]
+            max_sk = int(max_sk_row["max_sk"] or 0)
+        else:
+            max_sk = 0
+
+        # Assign new SKs using row_number offset from max_sk
+        w = Window.orderBy("productid")
+        df_new_dim_inserts = (
+            df_changes
+            .withColumn("sk", (F.row_number().over(w) + F.lit(max_sk)).cast(LongType()))
+            .withColumn("start_date", F.current_timestamp().cast(TimestampType()))
+            .withColumn("end_date", F.lit(None).cast(TimestampType()))
+            .withColumn("is_current", F.lit(True).cast(BooleanType()))
+        )
+
+        # 3.1 TYPE SAFETY LOOP (Mandatory): Define target schema types for dim_product
+        # Assumed target DDL for gold.dim_product
+        dim_product_schema = [
+            ("sk", LongType()),
+            ("productid", LongType()),
+            ("productname", StringType()),
+            ("supplierid", LongType()),
+            ("categoryid", LongType()),
+            ("unitprice", DecimalType(18, 2)),
+            ("discontinued", BooleanType()),
+            ("start_date", TimestampType()),
+            ("end_date", TimestampType()),
+            ("is_current", BooleanType()),
+        ]
+
+        # Apply high-fidelity casts to df_new_dim_inserts
+        df_new_dim_inserts_casted = df_new_dim_inserts
+        for col_name, col_type in dim_product_schema:
+            df_new_dim_inserts_casted = df_new_dim_inserts_casted.withColumn(col_name, F.col(col_name).cast(col_type))
+
+        # 4. LOAD (Delta MERGE) for DimProduct (SCD Type 2)
+        # We will: 
+        #  - For matched current records where attributes changed: set end_date and is_current=false
+        #  - Insert new records for new/changed business keys
+
+        # Create temp view for merge source
+        df_new_dim_inserts_casted.createOrReplaceTempView("__stg_new_dim_product")
+
+        # Compose attribute equality condition in SQL to decide when a MATCHED row is truly changed
+        # Note: In the WHEN MATCHED branch we only update the existing record to set it to not current
+        merge_sql = f"""
+        MERGE INTO {target_dim_product} tgt
+        USING (SELECT * FROM __stg_new_dim_product) src
+        ON tgt.productid = src.productid AND tgt.is_current = true
+        WHEN MATCHED THEN
+          UPDATE SET tgt.end_date = src.start_date, tgt.is_current = false
+        WHEN NOT MATCHED
+          THEN INSERT (sk, productid, productname, supplierid, categoryid, unitprice, discontinued, start_date, end_date, is_current)
+          VALUES (src.sk, src.productid, src.productname, src.supplierid, src.categoryid, src.unitprice, src.discontinued, src.start_date, src.end_date, src.is_current)
+        """
+
+        # Ensure target table exists before merge: create empty delta table with expected schema when missing
+        try:
+            spark.sql(f"CREATE SCHEMA IF NOT EXISTS {GOLD_SCHEMA}")
+        except Exception:
+            # ignore if schema creation not permitted
+            pass
+
+        # If target doesn't exist, create it via write of zero-row DataFrame with correct schema
+        try:
+            spark.table(target_dim_product)
+            target_exists = True
+        except Exception:
+            target_exists = False
+
+        if not target_exists:
+            # Create empty DataFrame with right schema
+            empty_df = df_new_dim_inserts_casted.limit(0)
+            # Write as Delta table (single time) - allowed for bootstrap
+            empty_df.write.format("delta").mode("overwrite").saveAsTable(target_dim_product)
+
+        # Execute MERGE (idempotent SCD2 step)
+        spark.sql("SET spark.databricks.delta.schema.autoMerge.enabled = true")
+        spark.sql(merge_sql)
+
+        # OPTIONAL: insert newly created rows are already in target; no further action
+
+        # 5. TRANSFORM & LOAD: FactSales (Idempotent MERGE into fact table)
+        # Build fact staging by joining orders + orderdetails
+        df_fact_stage = (
+            df_orders_src.alias("o")
+            .join(df_order_details_src.alias("od"), F.col("o.orderid") == F.col("od.orderid"))
+            .select(
+                F.col("o.orderid").alias("orderid"),
+                F.col("od.orderid").alias("orderid_od"),
+                F.col("od.productid").alias("productid"),
+                F.col("o.custid").alias("custid"),
+                F.col("o.empid").alias("empid"),
+                F.col("o.shipperid").alias("shipperid"),
+                F.col("od.qty").alias("qty"),
+                F.col("od.unitprice").alias("unitprice"),
+                F.col("od.discount").alias("discount")
+            )
+            .withColumn("etl_loaded_at", F.current_timestamp())
+        )
+
+        # Lookup surrogate keys from dimension table(s)
+        # We assume gold.dim_product exists and contains current records
+        dim_product_curr = None
+        try:
+            dim_product_curr = spark.table(target_dim_product).filter(F.col("is_current") == True).select("sk", "productid")
+        except Exception:
+            # If not found, create empty to enable joins
+            dim_product_curr = spark.createDataFrame([], schema=None)
+
+        # Broadcast small dimension if applicable
+        if len(dim_product_curr.columns) > 0:
+            dim_product_b = F.broadcast(dim_product_curr)
+            df_fact_with_sk = (
+                df_fact_stage.join(dim_product_b, on=[df_fact_stage.productid == dim_product_b.productid], how="left")
+                .withColumn("product_sk", F.coalesce(F.col("sk"), F.lit(-1)).cast(LongType()))
+            )
+        else:
+            df_fact_with_sk = df_fact_stage.withColumn("product_sk", F.lit(-1).cast(LongType()))
+
+        # Map other surrogate keys similarly (cust, emp, shipper) => Not implemented here (placeholders)
+        df_fact_prepared = (
+            df_fact_with_sk
+            .withColumn("cust_sk", F.lit(-1).cast(LongType()))
+            .withColumn("emp_sk", F.lit(-1).cast(LongType()))
+            .withColumn("shipper_sk", F.lit(-1).cast(LongType()))
+            .withColumn("amount", (F.col("qty") * F.col("unitprice") * (1 - F.col("discount"))).cast(DecimalType(18, 2)))
+        )
+
+        # Define target fact schema
+        fact_schema = [
+            ("orderid", LongType()),
+            ("product_sk", LongType()),
+            ("cust_sk", LongType()),
+            ("emp_sk", LongType()),
+            ("shipper_sk", LongType()),
+            ("qty", IntegerType()),
+            ("unitprice", DecimalType(18, 2)),
+            ("discount", DecimalType(18, 2)),
+            ("amount", DecimalType(18, 2)),
+            ("etl_loaded_at", TimestampType())
+        ]
+
+        # Apply strict casting
+        df_fact_final = df_fact_prepared
+        for col_name, col_type in fact_schema:
+            df_fact_final = df_fact_final.withColumn(col_name, F.col(col_name).cast(col_type))
+
+        # Create staging view for MERGE
+        df_fact_final.createOrReplaceTempView("__stg_fact_sales")
+
+        # Ensure target fact table exists
+        try:
+            spark.table(target_fact_sales)
+            fact_exists = True
+        except Exception:
+            fact_exists = False
+
+        if not fact_exists:
+            # bootstrap empty fact table
+            spark.sql(f"CREATE TABLE IF NOT EXISTS {target_fact_sales} USING DELTA AS SELECT * FROM __stg_fact_sales WHERE 1=0")
+
+        # MERGE into fact table using natural business key (orderid, product_sk) to enforce idempotency
+        merge_fact_sql = f"""
+        MERGE INTO {target_fact_sales} tgt
+        USING (SELECT * FROM __stg_fact_sales) src
+        ON tgt.orderid = src.orderid AND tgt.product_sk = src.product_sk
+        WHEN MATCHED THEN
+          UPDATE SET
+            tgt.qty = src.qty,
+            tgt.unitprice = src.unitprice,
+            tgt.discount = src.discount,
+            tgt.amount = src.amount,
+            tgt.etl_loaded_at = src.etl_loaded_at
+        WHEN NOT MATCHED THEN
+          INSERT (orderid, product_sk, cust_sk, emp_sk, shipper_sk, qty, unitprice, discount, amount, etl_loaded_at)
+          VALUES (src.orderid, src.product_sk, src.cust_sk, src.emp_sk, src.shipper_sk, src.qty, src.unitprice, src.discount, src.amount, src.etl_loaded_at)
+        """
+
+        spark.sql("SET spark.databricks.delta.schema.autoMerge.enabled = true")
+        spark.sql(merge_fact_sql)
+
+        # Post-load optimization hints (operator must run as job with privileges):
+        # - Optimize dimension by SK and frequent predicates
+        # - Consider Z-ORDER by productid or amount for fact table queries
+        # Example commands (commented):
+        # spark.sql(f"OPTIMIZE {target_dim_product} ZORDER BY (productid)")
+        # spark.sql(f"OPTIMIZE {target_fact_sales} ZORDER BY (orderid, product_sk)")
+
+        logger.info("Transpilation and load completed successfully at %s", now_ts)
+        return True
+
+    except Exception as e:
+        logger.exception("Transpilation failed: %s", e)
+        return False
+
+
+# If module executed directly, provide a minimal runner (for debugging only)
+if __name__ == "__main__":
+    # In Databricks, `spark` is available; this runner is only for local debug
+    try:
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession.builder.appName("l2l_transpile_debug").getOrCreate()
+        execute_task(spark, {})
+    except Exception as ex:
+        logger.exception("Local run failed: %s", ex)

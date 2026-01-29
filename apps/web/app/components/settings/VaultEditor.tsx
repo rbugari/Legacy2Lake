@@ -19,6 +19,7 @@ export default function VaultEditor() {
     // Form State
     const [apiKey, setApiKey] = useState("");
     const [baseUrl, setBaseUrl] = useState("");
+    const [newProviderName, setNewProviderName] = useState("");
     const [saving, setSaving] = useState(false);
 
     // Dynamic State
@@ -59,6 +60,7 @@ export default function VaultEditor() {
         const cred = credentials.find(c => c.provider_name === providerId);
         setApiKey("");
         setBaseUrl(cred?.base_url || "");
+        setNewProviderName(providerId);
         setEditingProvider(providerId);
     };
 
@@ -70,7 +72,8 @@ export default function VaultEditor() {
             const payload = {
                 provider: editingProvider,
                 api_key: apiKey,
-                base_url: baseUrl || undefined
+                base_url: baseUrl || undefined,
+                new_provider_name: newProviderName
             };
 
             const res = await fetchWithAuth("vault/update", {
@@ -81,9 +84,12 @@ export default function VaultEditor() {
             if (res.ok) {
                 await fetchVault();
                 setEditingProvider(null);
+                setEditingProvider(null);
                 setApiKey("");
+                setNewProviderName("");
             } else {
-                alert("Error saving credentials");
+                const err = await res.json();
+                alert(err.detail || "Error saving credentials");
             }
         } catch (error) {
             console.error(error);
@@ -152,6 +158,13 @@ export default function VaultEditor() {
                             {isEditing ? (
                                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                                     <input
+                                        type="text"
+                                        placeholder="Provider Name (ID)"
+                                        className="w-full text-sm p-2 rounded-md border border-[var(--border)] bg-[var(--background)] font-medium"
+                                        value={newProviderName}
+                                        onChange={(e) => setNewProviderName(e.target.value)}
+                                    />
+                                    <input
                                         type="password"
                                         placeholder="Paste API Key here..."
                                         className="w-full text-sm p-2 rounded-md border border-[var(--border)] bg-[var(--background)]"
@@ -160,7 +173,7 @@ export default function VaultEditor() {
                                     />
                                     <input
                                         type="text"
-                                        placeholder="Base URL / Endpoint (Optional)"
+                                        placeholder="Base URL for all models (e.g. https://your-resource.openai.azure.com/)"
                                         className="w-full text-sm p-2 rounded-md border border-[var(--border)] bg-[var(--background)]"
                                         value={baseUrl}
                                         onChange={(e) => setBaseUrl(e.target.value)}
@@ -183,14 +196,20 @@ export default function VaultEditor() {
                                         <button
                                             onClick={async () => {
                                                 if (!confirm("Are you sure you want to delete these credentials?")) return;
-                                                await fetchWithAuth("vault/delete", { method: "POST", body: JSON.stringify({ provider: p.id }) });
-                                                await fetchVault();
-                                                setEditingProvider(null);
+                                                const res = await fetchWithAuth("vault/delete", { method: "POST", body: JSON.stringify({ provider: p.id }) });
+
+                                                if (res.ok) {
+                                                    await fetchVault();
+                                                    setEditingProvider(null);
+                                                } else {
+                                                    const err = await res.json();
+                                                    alert(err.detail || "Cannot delete provider");
+                                                }
                                             }}
                                             className="text-xs px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 rounded hover:bg-red-200"
-                                            title="Clear Credentials"
+                                            title="Delete Credentials"
                                         >
-                                            Clear
+                                            Delete
                                         </button>
                                     </div>
                                 </div>

@@ -33,9 +33,21 @@ interface HandoverViewProps {
     projectId: string;
     projectName?: string;
     onStageChange: (stage: number) => void;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    onReset?: () => void;
+    onBackToCurrent?: () => void;
 }
 
-export default function HandoverView({ projectId, projectName, onStageChange }: HandoverViewProps) {
+export default function HandoverView({
+    projectId,
+    projectName,
+    onStageChange,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent
+}: HandoverViewProps) {
     const [variables, setVariables] = useState<Variable[]>([
         { key: "ENV", value: "prod", description: "Environment tag for naming" },
         { key: "ROOT_PATH", value: "/mnt/data/modernized", description: "Base path for Lakehouse tables" },
@@ -78,12 +90,17 @@ export default function HandoverView({ projectId, projectName, onStageChange }: 
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
-                title="SaaS Handover"
-                subtitle="Phase 5: Operational Context Injection and Final Bundling"
+                title="Stage 6: Intelligent Handover"
+                subtitle="Artifact generation and deployment package Export"
                 icon={<Package className="text-emerald-500" />}
-                helpText="Finalize the process by injecting environment variables and generating technical deployment documentation."
-                onApprove={() => alert("Project finalized and closed successfully.")}
-                approveLabel="Close Project"
+                helpText="Final modernization package ready for deployment. Includes code, config, and runbooks."
+                onApprove={handleExport}
+                approveLabel={isExporting ? "Exporting..." : "Generate & Download"}
+                isApproveDisabled={isExporting}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={onToggleFullscreen}
+                onReset={onReset}
+                onBackToCurrent={onBackToCurrent}
             >
                 <div className="flex gap-2">
                     <button

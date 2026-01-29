@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import datetime
 from typing import List, Dict, Any
 
 try:
@@ -18,8 +19,12 @@ class ProfilerService:
     shared connections, and dependency candidates.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, tenant_id: str = None):
+        self.tenant_id = tenant_id
+
+    def _log(self, log: List[str], msg: str, level: str = "Profiler", model: str = "Pattern Discovery"):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
     def analyze_codebase(self, project_id: str, log: List[str] = None) -> Dict[str, Any]:
         """
@@ -30,26 +35,26 @@ class ProfilerService:
         if log is None: log = []
         
         # Resolve project path robustly
-        project_path = PersistenceService.ensure_solution_dir(project_id)
-        log.append(f"[Profiler] Target Project Directory: {project_path}")
+        project_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        self._log(log, f"Target Project Directory: {project_path}")
 
         input_dir = os.path.join(project_path, PersistenceService.STAGE_DRAFTING)
         profile_output = os.path.join(project_path, PersistenceService.STAGE_REFINEMENT, "profile_metadata.json")
 
         if not os.path.exists(input_dir):
             error_msg = f"Input directory not found: {input_dir}"
-            log.append(f"[Profiler] ERROR: {error_msg}")
+            self._log(log, f"ERROR: {error_msg}", level="Profiler", model="System")
             return {"error": error_msg, "total_files": 0}
 
         py_files = [f for f in os.listdir(input_dir) if f.endswith(".py")]
-        log.append(f"[Profiler] Found {len(py_files)} Python files in {PersistenceService.STAGE_DRAFTING}.")
+        self._log(log, f"Found {len(py_files)} Python files in {PersistenceService.STAGE_DRAFTING}.")
         
         shared_connections = {}
         bronze_candidates = {}
         
         for py_file in py_files:
             file_path = os.path.join(input_dir, py_file)
-            log.append(f"[Profiler] Analyzing file: {py_file}...")
+            self._log(log, f"Analyzing file: {py_file}...")
             
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -57,7 +62,7 @@ class ProfilerService:
                 # Detect JDBC URLs (Basic Heuristic)
                 jdbc_matches = re.findall(r'option\("url",\s*"([^"]+)"\)', content)
                 for jdbc in jdbc_matches:
-                    log.append(f"[Profiler]   > Found JDBC Connection: {jdbc}")
+                    self._log(log, f"  > Found JDBC Connection: {jdbc}")
                     if jdbc not in shared_connections:
                         shared_connections[jdbc] = []
                     shared_connections[jdbc].append(py_file)
@@ -68,7 +73,7 @@ class ProfilerService:
                 # Detect PK candidates (Basic Heuristic)
                 pks = self._detect_primary_keys(content, log)
                 if pks:
-                    log.append(f"[Profiler]   > Detected PK candidates for {py_file} ({table_type}): {pks}")
+                    self._log(log, f"  > Detected PK candidates for {py_file} ({table_type}): {pks}")
                     bronze_candidates[py_file] = {
                         "pk": pks,
                         "type": table_type

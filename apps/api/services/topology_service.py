@@ -24,9 +24,9 @@ class TopologyService:
     Builds the execution DAG by analyzing inter-package dependencies (Lookups/Sources).
     """
 
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str, tenant_id: str = None):
         self.project_id = project_id
-        self.base_path = PersistenceService.ensure_solution_dir(project_id)
+        self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
         self.output_path = os.path.join(self.base_path, "Output")
 
     def build_orchestration_plan(self) -> Dict[str, Any]:

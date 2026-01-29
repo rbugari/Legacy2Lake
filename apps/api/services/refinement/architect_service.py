@@ -3,6 +3,7 @@ import os
 import shutil
 from pathlib import Path
 import json
+import datetime
 
 try:
     from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
@@ -16,8 +17,12 @@ except ImportError:
         from ..knowledge_service import KnowledgeService
 
 class ArchitectService:
-    def __init__(self):
-        pass
+    def __init__(self, tenant_id: str = None):
+        self.tenant_id = tenant_id
+
+    def _log(self, log: list, msg: str, level: str = "Architect", model: str = "Medallion Mapper"):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
     async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None) -> dict:
         """
@@ -26,15 +31,16 @@ class ArchitectService:
         """
         if log is None: log = []
         
-        base_path = PersistenceService.ensure_solution_dir(project_id)
+        # [Fix] Multi-tenant path resolution
+        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
         project_path = Path(base_path)
         input_dir = project_path / PersistenceService.STAGE_DRAFTING
         output_dir = project_path / PersistenceService.STAGE_REFINEMENT
         
-        log.append(f"[Architect] Solutions Directory: {base_path}")
+        self._log(log, f"Solutions Directory: {base_path}")
         
         # Release 2.0: Fetch Design Registry
-        db = SupabasePersistence()
+        db = SupabasePersistence(tenant_id=self.tenant_id)
         # Release 3.0: Cartridge Pattern
         from .cartridges.factory import CartridgeFactory
         from ..knowledge_service import KnowledgeService
@@ -74,14 +80,14 @@ class ArchitectService:
         registry = KnowledgeService.flatten_knowledge(registry_list)
         
         cartridge = CartridgeFactory.get_cartridge(project_id, registry)
-        log.append(f"[Architect] Using Cartridge: {cartridge.__class__.__name__}")
+        self._log(log, f"Using Cartridge: {cartridge.__class__.__name__}")
 
         # Create Medallion Structure
         bronze_dir = output_dir / "Bronze"
         silver_dir = output_dir / "Silver"
         gold_dir = output_dir / "Gold"
         
-        log.append("[Architect] Ensuring Medallion folder structure (Bronze/Silver/Gold)...")
+        self._log(log, "Ensuring Medallion folder structure (Bronze/Silver/Gold)...")
         for d in [bronze_dir, silver_dir, gold_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
@@ -105,18 +111,18 @@ class ArchitectService:
             elif "utils" in filename: refined_files["utils"].append(str(file_path))
             else: refined_files["config"].append(str(file_path)) # Fallback
             
-            log.append(f"[Architect] Generated Scaffolding: {filename}")
+            self._log(log, f"Generated Scaffolding: {filename}")
 
         # 2. Process each analyzed file
         files_to_process = profile_metadata.get("analyzed_files", [])
-        log.append(f"[Architect] Processing {len(files_to_process)} source files with {cartridge.get_file_extension()} extension...")
+        self._log(log, f"Processing {len(files_to_process)} source files with {cartridge.get_file_extension()} extension...")
         
         ext = cartridge.get_file_extension()
         
         for filename in files_to_process:
             file_path = input_dir / filename
             if not file_path.exists():
-                log.append(f"[Architect] WARNING: File skipped (not found): {filename}")
+                self._log(log, f"WARNING: File skipped (not found): {filename}", level="Architect", model="System")
                 continue
             
             # Read original code/metadata
@@ -220,7 +226,7 @@ class ArchitectService:
                 f.write(orch_content)
             
             refined_files["orchestration"] = [str(orch_path)]
-            log.append(f"[Architect] Generated Orchestration: {orch_path.name}")
+            self._log(log, f"Generated Orchestration: {orch_path.name}")
 
         return {
             "status": "COMPLETED",

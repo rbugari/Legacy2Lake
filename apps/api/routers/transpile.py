@@ -38,7 +38,7 @@ class OptimizeRequest(BaseModel):
 # --- Single Task Transpilation ---
 
 @router.post("/task")
-async def transpile_task(payload: TranspileRequest):
+async def transpile_task(payload: TranspileRequest, db: SupabasePersistence = Depends(get_db)):
     """Chain Agent C (Interpreter) and Agent F (Critic) for a robust result."""
     node_data = payload.node_data
     context = payload.context or {}
@@ -85,7 +85,7 @@ async def transpile_task(payload: TranspileRequest):
 # --- Batch Transpilation ---
 
 @router.post("/all")
-async def transpile_all(payload: TranspileAllRequest):
+async def transpile_all(payload: TranspileAllRequest, db: SupabasePersistence = Depends(get_db)):
     """Iteratively transpile all nodes in a mesh."""
     nodes = payload.nodes
     context = payload.context or {}
@@ -142,7 +142,7 @@ async def transpile_all(payload: TranspileAllRequest):
 # --- Optimization ---
 
 @router.post("/optimize")
-async def optimize_task_code(payload: OptimizeRequest):
+async def optimize_task_code(payload: OptimizeRequest, db: SupabasePersistence = Depends(get_db)):
     """Re-runs Agent F with specific optimization flags."""
     code = payload.code
     optimizations = payload.optimizations or []

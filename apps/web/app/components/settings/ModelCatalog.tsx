@@ -29,7 +29,6 @@ export default function ModelCatalog() {
     const [currentModelContext, setCurrentModelContext] = useState<string>("0");
     const [deploymentId, setDeploymentId] = useState("");
     const [apiVersion, setApiVersion] = useState("");
-    const [apiUrl, setApiUrl] = useState("");
 
     const [availableProviders, setAvailableProviders] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
@@ -37,8 +36,8 @@ export default function ModelCatalog() {
     const fetchCatalog = () => {
         Promise.all([
             fetchWithAuth("catalog").then(res => res.json()),
-            fetchWithAuth("vault").then(res => res.json())
-        ]).then(([catalogData, vaultData]) => {
+            fetchWithAuth("providers").then(res => res.json())
+        ]).then(([catalogData, providersData]) => {
             const mapped = (catalogData.catalog || []).map((m: any) => ({
                 id: m.model_id,
                 provider: m.provider,
@@ -51,9 +50,13 @@ export default function ModelCatalog() {
             }));
             setModels(mapped);
 
-            const vaultProviders = (vaultData.credentials || []).map((c: any) => c.provider_name);
-            const unique = Array.from(new Set([...vaultProviders, "openai", "azure", "anthropic", "groq", "deepseek", "ollama"]));
-            setAvailableProviders(unique);
+            // Use the filtered list from backend (already tenant-aware)
+            // providersData is an array of objects: { id: "openai", name: "OpenAI", connected: true ... }
+            const activeProviders = (providersData || [])
+                .filter((p: any) => p.connected) // Only show connected/active providers
+                .map((p: any) => p.id);
+
+            setAvailableProviders(activeProviders);
 
             setLoading(false);
         }).catch(err => console.error("Failed to fetch data", err));
@@ -97,7 +100,7 @@ export default function ModelCatalog() {
         setCurrentModelContext("128000");
         setDeploymentId("");
         setApiVersion("2024-05-01-preview");
-        setApiUrl("");
+        setApiVersion("2024-05-01-preview");
         setShowModal(true);
     };
 
@@ -109,7 +112,7 @@ export default function ModelCatalog() {
         setCurrentModelContext(model.context_window.toString());
         setDeploymentId(model.deployment_id || "");
         setApiVersion(model.api_version || "");
-        setApiUrl(model.api_url || "");
+        setApiVersion(model.api_version || "");
         setShowModal(true);
     };
 
@@ -121,8 +124,7 @@ export default function ModelCatalog() {
             provider: currentModelProvider,
             context: parseInt(currentModelContext) || 0,
             deployment_id: deploymentId,
-            api_version: apiVersion,
-            api_url: apiUrl
+            api_version: apiVersion
         };
 
         try {
@@ -294,15 +296,6 @@ export default function ModelCatalog() {
                                             </div>
                                         </>
                                     )}
-                                    <div>
-                                        <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase block mb-1">Endpoint URL (Opcional)</label>
-                                        <input
-                                            className="w-full p-2 rounded border border-[var(--border)] bg-[var(--background)] text-xs font-mono"
-                                            placeholder="https://your-resource.openai.azure.com/"
-                                            value={apiUrl}
-                                            onChange={e => setApiUrl(e.target.value)}
-                                        />
-                                    </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase block mb-1">Context Window (Tokens)</label>
                                         <input

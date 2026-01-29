@@ -10,9 +10,11 @@ import {
 } from '@xyflow/react';
 import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
-import { Map, CheckCircle, Layout, List, Terminal, MessageSquare, Play, FileText, RotateCcw, PanelLeftClose, PanelLeftOpen, Expand, Shrink, Save, ShieldCheck, AlertTriangle, Shield, ShieldAlert, Zap, Clock, Database, Infinity, FileEdit, Activity, RefreshCw } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, Zap } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
-import { API_BASE_URL } from '../../lib/config';
+import { fetchWithAuth } from '../../lib/auth-client';
 import PromptsExplorer from '../PromptsExplorer'; // Added Phase 0
 import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
 
@@ -24,6 +26,7 @@ const TABS = [
     { id: 'prompt', label: 'AI Prompts', icon: <Terminal size={14} />, group: 'Config' },
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
     { id: 'logs', label: 'Execution', icon: <FileText size={14} />, group: 'Config' },
+    { id: 'files', label: 'File Explorer', icon: <FolderOpen size={14} />, group: 'Config' }, // Added per request
 ];
 
 export default function TriageView({
@@ -31,18 +34,25 @@ export default function TriageView({
     activeTenantId,
     onStageChange,
     isReadOnly: propReadOnly,
-    onStatsUpdate
+    onStatsUpdate,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent
 }: {
     projectId: string,
     activeTenantId?: string,
     onStageChange?: (stage: number) => void,
     isReadOnly?: boolean,
-    onStatsUpdate?: (stats: any) => void
+    onStatsUpdate?: (stats: any) => void,
+    isFullscreen?: boolean,
+    onToggleFullscreen?: () => void,
+    onReset?: () => void,
+    onBackToCurrent?: () => void
 }) {
     // Safety check: prioritize Prop ReadOnly (from parent) but keep internal state for fallback
     const isReadOnly = propReadOnly ?? false;
     const [activeTab, setActiveTab] = useState('graph');
-    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Data State
     const [assets, setAssets] = useState<any[]>([]);
@@ -51,6 +61,12 @@ export default function TriageView({
     // Graph State
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+
+    // Files State
+    const [triageFiles, setTriageFiles] = useState<any[]>([]);
+    const [loadingFiles, setLoadingFiles] = useState(false);
+    const [viewingFile, setViewingFile] = useState<any | null>(null);
+    const [fileContent, setFileContent] = useState("");
 
     // Prompt & Context State
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -127,9 +143,8 @@ export default function TriageView({
 
         // Persist to Backend
         try {
-            await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            await fetchWithAuth(`assets/${assetId}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type: newCategory })
             });
         } catch (e) {
@@ -147,9 +162,8 @@ export default function TriageView({
 
         // Persist to Backend
         try {
-            await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            await fetchWithAuth(`assets/${assetId}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)
             });
         } catch (e) {
@@ -157,30 +171,10 @@ export default function TriageView({
         }
     }, [setAssets, isReadOnly]);
 
-    const handleSelectionChange = useCallback(async (assetId: string, isSelected: boolean) => {
-        if (isReadOnly) return;
-
-        // Optimistic Update
-        setAssets(prev => prev.map(a =>
-            a.id === assetId ? { ...a, selected: isSelected } : a
-        ));
-
-        // Persist (Batch update or per-check? Current UI does per-check persistence)
-        try {
-            await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ selected: isSelected })
-            });
-        } catch (e) {
-            console.error("Failed to persist selection change", e);
-        }
-    }, [isReadOnly]);
-
     const handleSyncGraph = useCallback(async () => {
         if (isReadOnly) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/sync-graph`, {
+            const res = await fetchWithAuth(`projects/${projectId}/sync-graph`, {
                 method: 'POST'
             });
             if (res.ok) {
@@ -193,17 +187,76 @@ export default function TriageView({
         }
     }, [projectId, isReadOnly, enrichNodes, setNodes, setEdges]);
 
+    // Debounced Sync to avoid overloading the backend during rapid toggling
+    const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+    const debouncedSync = useCallback(() => {
+        if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = setTimeout(() => {
+            handleSyncGraph();
+        }, 1000); // 1 second debounce
+    }, [handleSyncGraph]);
+
+    const handleSelectionChange = useCallback(async (assetId: string, isSelected: boolean) => {
+        if (isReadOnly) return;
+
+        // 1. Optimistic Assets Update
+        setAssets(prev => prev.map(a =>
+            a.id === assetId ? { ...a, selected: isSelected } : a
+        ));
+
+        // 2. Optimistic Nodes Update
+        setNodes(nds => {
+            const exists = nds.some(n => n.id === assetId);
+            if (isSelected && !exists) {
+                // Find asset data to build a new node
+                const asset = assets.find(a => a.id === assetId);
+                if (asset) {
+                    const newNode = {
+                        id: assetId,
+                        type: 'custom',
+                        position: { x: 300, y: 300 }, // Default position, sync will fix it
+                        data: {
+                            label: asset.name,
+                            category: asset.type || 'CORE',
+                            complexity: asset.complexity || 'LOW',
+                            status: 'pending'
+                        }
+                    };
+                    return enrichNodes([...nds, newNode]);
+                }
+            } else if (!isSelected && exists) {
+                // Remove from graph if unselected
+                return nds.filter(n => n.id !== assetId);
+            }
+            return nds;
+        });
+
+        // 3. Persist and Re-sync (Debounced)
+        try {
+            await fetchWithAuth(`assets/${assetId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ selected: isSelected })
+            });
+            debouncedSync();
+        } catch (e) {
+            console.error("Failed to persist selection change", e);
+        }
+    }, [isReadOnly, assets, enrichNodes, debouncedSync, setNodes, setAssets]);
+
 
     // Initialization
     const fetchProject = useCallback(async () => {
         try {
             // Check Status first
-            const statusRes = await fetch(`${API_BASE_URL}/discovery/status/${projectId}`);
+            const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
             const statusData = await statusRes.json();
 
             if (statusData.status === 'COMPLETED' || statusData.status === 'TRIAGED' || statusData.status === 'TRIAGE' || statusData.status === 'DRAFTING') {
-                const projectRes = await fetch(`${API_BASE_URL}/discovery/project/${projectId}`);
+                const projectRes = await fetchWithAuth(`discovery/project/${projectId}`);
                 const projectData = await projectRes.json();
+
+                // Filter out system assets like LAYOUT from the UI list if needed, 
+                // or just rely on the pending filter.
                 setAssets(projectData.assets || []);
                 setSystemPrompt(projectData.prompt || "");
             }
@@ -216,7 +269,7 @@ export default function TriageView({
 
     const fetchLayout = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/layout`);
+            const res = await fetchWithAuth(`projects/${projectId}/layout`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.nodes) setNodes(enrichNodes(data.nodes));
@@ -258,9 +311,8 @@ export default function TriageView({
     const saveLayout = useCallback(async (nds: any[], eds: any[]) => {
         if (isReadOnly) return; // Block saves in read-only
         try {
-            await fetch(`${API_BASE_URL}/projects/${projectId}/layout`, {
+            await fetchWithAuth(`projects/${projectId}/layout`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ nodes: nds, edges: eds })
             });
         } catch (e) {
@@ -271,9 +323,8 @@ export default function TriageView({
     const handleSaveContext = useCallback(async (sourcePath: string, notes: string) => {
         setIsSavingContext(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/context`, {
+            const res = await fetchWithAuth(`projects/${projectId}/context`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     source_path: sourcePath,
                     notes,
@@ -366,16 +417,14 @@ export default function TriageView({
             await saveLayout(nodes, edges);
 
             // 2. Call Approve Endpoint (updates status to DRAFTING)
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/approve`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+            const res = await fetchWithAuth(`projects/${projectId}/approve`, {
+                method: 'POST'
             });
 
             if (res.ok) {
                 // 3. Also update stage for UI stepper consistency (optional if backend does it, but safer here for now)
-                await fetch(`${API_BASE_URL}/projects/${projectId}/stage`, {
+                await fetchWithAuth(`projects/${projectId}/stage`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ stage: '3' })
                 });
 
@@ -392,7 +441,7 @@ export default function TriageView({
 
     const fetchTriageLogs = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/logs?type=triage`);
+            const res = await fetchWithAuth(`projects/${projectId}/logs?type=triage`);
             const data = await res.json();
             if (data.logs) {
                 setTriageLog(data.logs);
@@ -410,6 +459,47 @@ export default function TriageView({
         }
         return () => clearInterval(interval);
     }, [isLoading, fetchTriageLogs]);
+
+    // Fetch Files
+    const fetchFiles = useCallback(async () => {
+        setLoadingFiles(true);
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/triage/files`);
+            const data = await res.json();
+            if (data.files) setTriageFiles(data.files);
+        } catch (e) {
+            console.error("Failed to load files", e);
+        } finally {
+            setLoadingFiles(false);
+        }
+    }, [projectId]);
+
+    useEffect(() => {
+        if (activeTab === 'files') {
+            fetchFiles();
+        }
+    }, [activeTab, fetchFiles]);
+
+    const handleViewFile = async (file: any) => {
+        setViewingFile(file);
+        setFileContent("Loading...");
+        try {
+            // Re-using generic content reader but pointing to triage path logic if needed
+            // For now, using the generic reader which reads from project root. 
+            // Triage files are in /Triage, so we pass relative path "Triage/filename" 
+            // BUT list_triage_files returns "path" relative to triage folder.
+            // So we need to prepend "Triage/" or rely on the backend being smart.
+            // Let's rely on the paths returned by list_triage_files which are relative to Triage folder.
+            // projects/{id}/files/content expects path relative to project root.
+            const fullRelPath = `Triage/${file.path}`;
+            const res = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(fullRelPath)}`);
+            const data = await res.json();
+            if (data.content !== undefined) setFileContent(data.content);
+            else setFileContent("Error reading file.");
+        } catch (e) {
+            setFileContent("Error loading content.");
+        }
+    };
 
 
     const handleRunTriage = async () => {
@@ -439,9 +529,8 @@ export default function TriageView({
         setTriageLog("Initializing Triage Agent..."); // Reset log
 
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/triage`, {
+            const res = await fetchWithAuth(`projects/${projectId}/triage`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     system_prompt: systemPrompt,
                     user_context: userContext
@@ -485,7 +574,7 @@ export default function TriageView({
 
         setIsLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/reset`, {
+            const res = await fetchWithAuth(`projects/${projectId}/reset`, {
                 method: 'POST'
             });
             if (res.ok) {
@@ -505,15 +594,19 @@ export default function TriageView({
 
     return (
         <ReactFlowProvider>
-            <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'
-                }`}>
+            <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'}`}>
                 <StageHeader
-                    title="Stage 2: Structural Triage"
-                    subtitle="Asset classification and contextual enrichment"
-                    icon={<FileEdit className="text-cyan-500" />}
-                    helpText="Define which assets are CORE, SUPPORT or IGNORE. You can inject business context to improve AI precision."
+                    title="Stage 2: Technical Triage"
+                    subtitle="Agent R: Reasoning engine for object classification and mapping"
+                    icon={<Cpu className="text-blue-500" />}
+                    helpText="Classification of source objects into Medallion layers and complexity assessment."
                     onApprove={handleApprove}
-                    approveLabel="Approve Design"
+                    approveLabel="Start Drafting"
+                    isApproveDisabled={isLoading || assets.length === 0}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={onToggleFullscreen}
+                    onReset={onReset}
+                    onBackToCurrent={onBackToCurrent}
                 >
                     <div className="flex gap-2">
                         <button
@@ -597,6 +690,77 @@ export default function TriageView({
                 {/* Tab Content */}
                 <div className="flex-1 overflow-hidden relative">
 
+                    {/* FILES TAB (NEW) */}
+                    {activeTab === 'files' && (
+                        <div className="h-full w-full p-8 overflow-y-auto">
+                            <div className="max-w-4xl mx-auto space-y-6">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xl font-black text-white uppercase tracking-wider">Triage Files</h3>
+                                    <button onClick={fetchFiles} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-cyan-500">
+                                        <RefreshCw size={16} className={loadingFiles ? "animate-spin" : ""} />
+                                    </button>
+                                </div>
+
+                                {triageFiles.length === 0 ? (
+                                    <div className="p-12 text-center border border-dashed border-white/10 rounded-2xl">
+                                        <FolderOpen size={48} className="mx-auto text-gray-600 mb-4" />
+                                        <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">No files found in Triage folder</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-3">
+                                        {triageFiles.map(file => (
+                                            <div key={file.path} className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-cyan-500/30 transition-all group">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-black/20 rounded-lg text-cyan-500">
+                                                        <FileCode size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-white">{file.name}</p>
+                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">{(file.size / 1024).toFixed(1)} KB</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleViewFile(file)}
+                                                    className="px-4 py-2 bg-black/20 text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-black/40 rounded-lg transition-colors"
+                                                >
+                                                    View Content
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* File Viewer Modal */}
+                            {viewingFile && (
+                                <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm">
+                                    <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-5xl h-[80vh] rounded-2xl flex flex-col shadow-2xl">
+                                        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+                                            <div className="flex items-center gap-3">
+                                                <FileText size={16} className="text-cyan-500" />
+                                                <span className="text-sm font-bold text-white">{viewingFile.name}</span>
+                                            </div>
+                                            <button onClick={() => setViewingFile(null)} className="p-2 hover:bg-white/10 rounded-lg text-gray-400">
+                                                <PanelLeftClose size={18} />
+                                            </button>
+                                        </div>
+                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+                                            <SyntaxHighlighter
+                                                language={viewingFile.name.endsWith('.py') ? 'python' : viewingFile.name.endsWith('.sql') ? 'sql' : viewingFile.name.endsWith('.json') ? 'json' : viewingFile.name.endsWith('.md') ? 'markdown' : 'text'}
+                                                style={vscDarkPlus}
+                                                customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
+                                                showLineNumbers={true}
+                                                wrapLines={true}
+                                            >
+                                                {fileContent}
+                                            </SyntaxHighlighter>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* 1. GRAPH TAB */}
                     {activeTab === 'graph' && (
                         <div className="h-full w-full flex relative">
@@ -629,12 +793,12 @@ export default function TriageView({
                                         ) : (
                                             <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-6">
                                                 {/* PENDING REVIEW SECTION */}
-                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length > 0 && (
+                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length > 0 && (
                                                     <div className="space-y-3">
                                                         <h5 className="text-[9px] font-black text-amber-500 uppercase tracking-widest pl-2">
-                                                            Pending Review ({assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length})
+                                                            Pending Review ({assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length})
                                                         </h5>
-                                                        {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').map(asset => (
+                                                        {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').map(asset => (
                                                             <div
                                                                 key={asset.id}
                                                                 draggable

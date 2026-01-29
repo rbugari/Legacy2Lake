@@ -2,7 +2,7 @@ var http = require('http');
 var fs = require('fs');
 var path = require('path');
 
-var port = 3000;
+var port = 3005;
 var root = './apps/web/out'; // Adjust if build output is elsewhere, assuming Next.js static export or similar
 
 // Basic static file server
@@ -38,11 +38,21 @@ http.createServer(function (request, response) {
 
     fs.readFile(filePath, function (error, content) {
         if (error) {
-            if (error.code == 'ENOENT') {
-                // Spa fallback
-                fs.readFile(root + '/index.html', function (error, content) {
-                    response.writeHead(200, { 'Content-Type': contentType });
-                    response.end(content, 'utf-8');
+            if (error.code == 'ENOENT' || error.code == 'EISDIR') {
+                // Try adding .html extension first (e.g. /settings -> /settings.html)
+                var htmlPath = filePath + '.html';
+                fs.readFile(htmlPath, function (err2, content2) {
+                    if (!err2) {
+                        response.writeHead(200, { 'Content-Type': 'text/html' });
+                        response.end(content2, 'utf-8');
+                        return;
+                    }
+
+                    // Spa fallback
+                    fs.readFile(root + '/index.html', function (error, content) {
+                        response.writeHead(200, { 'Content-Type': contentType });
+                        response.end(content, 'utf-8');
+                    });
                 });
             }
             else {

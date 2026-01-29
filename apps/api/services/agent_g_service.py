@@ -14,25 +14,19 @@ except ImportError:
 
 class AgentGService:
     async def _get_llm(self):
-        """Resolves LLM client from Agent Matrix (DB)."""
+        """Resolves LLM client strictly from Agent Matrix (DB)."""
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-        
         resolved = await db.resolve_agent_model("agent-g")
         
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        key = os.getenv("AZURE_OPENAI_API_KEY")
-        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_ID", "gpt-4")
-        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-        temperature = 0
-        provider = "azure"
-
-        if resolved:
-            provider = resolved.get("provider", "azure")
-            if resolved.get("endpoint"): endpoint = resolved.get("endpoint")
-            if resolved.get("api_key"): key = resolved.get("api_key")
-            if resolved.get("deployment"): deployment = resolved.get("deployment")
-            if resolved.get("api_version"): api_version = resolved.get("api_version")
-            if "temperature" in resolved: temperature = resolved["temperature"]
+        if not resolved:
+            raise ValueError(f"LLM configuration not found for 'agent-g' (Tenant: {self.tenant_id}). Please check Agent Matrix and Provider Vault.")
+            
+        provider = resolved.get("provider", "azure").lower()
+        endpoint = resolved.get("endpoint")
+        key = resolved.get("api_key")
+        deployment = resolved.get("deployment")
+        api_version = resolved.get("api_version")
+        temperature = resolved.get("temperature", 0)
             
         if provider == "azure":
             return AzureChatOpenAI(
