@@ -6,18 +6,19 @@ This guide covers the setup process for the Legacy2Lake platform (Backend API + 
 
 - **Python**: 3.10 or higher.
 - **Node.js**: 18.0 or higher.
-- **Database**: Access to a Supabase PostgreSQL instance (or compatible Postgres).
+- **Database**: Supabase PostgreSQL instance (Service Role Key required for maintenance tasks).
+- **Storage**: Cloudflare R2 Bucket (S3-compatible API).
 - **Environment**: Windows, Linux, or macOS.
 
 ---
 
 ## 1. Backend Setup (API)
 
-The backend handles logic, AI orchestration, and file system operations.
+The backend handles logic, AI orchestration, and cloud-native storage operations.
 
-1.  **Navigate to the API directory**:
+1.  **Navigate to the project root**:
     ```bash
-    cd apps/api
+    cd [project-dir]
     ```
 
 2.  **Install Dependencies**:
@@ -26,15 +27,14 @@ The backend handles logic, AI orchestration, and file system operations.
     ```
 
 3.  **Environment Configuration**:
-    - Copy `.env.example` to `.env`:
-        ```bash
-        cp .env.example .env
-        ```
-    - Edit `.env` to include your Supabase credentials (`SUPABASE_URL`, `SUPABASE_KEY`) and Azure OpenAI settings.
+    - Ensure your `.env` includes the following mandatory keys:
+        - **Supabase**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+        - **Cloudflare R2**: `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`.
+        - **AI**: Azure OpenAI credentials (`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`).
 
 4.  **Start the Server**:
     ```bash
-    python run.py
+    python main.py
     ```
     - The API will start on `http://localhost:8085`.
     - Health Check: `http://localhost:8085/ping-antigravity`

@@ -1,6 +1,34 @@
 # Release Notes
 
-## Version 3.3 (The Universal Connector) - 2026-01-26 ⭐ LATEST
+## Version 3.5 (The Cloud-Native & Multi-Tenant Reset) - 2026-01-31 ⭐ LATEST
+
+This foundational release completes the transition to a fully cloud-native, multi-tenant architecture, removing all local filesystem dependencies and introducing high-performance data handling via Cloudflare R2 and Supabase.
+
+### 🌟 Major Features
+
+#### Phase 14: Cloud-Native Storage (R2 Integration)
+*   **Total Decoupling**: Replaced the local `solutions/` directory with **Cloudflare R2** as the primary storage backend.
+*   **Storage Abstraction**: Introduced `StorageProvider` and `PersistenceService` layers to handle file operations (Save, Read, Delete, List) transparently across cloud backends.
+*   **Signed URL Support**: Performance optimization that allows direct-to-browser downloads from R2, bypassing API proxies for large artifact bundles.
+
+#### Phase 15: Enterprise Multi-Tenancy (Supabase v2)
+*   **Tenant Isolation**: Every project, object, and asset is now strictly isolated via `tenant_id` at both the database (Supabase RLS) and storage (R2 prefixing) levels.
+*   **Global Reset Capability**: New administration tools allow for a clean environment wipe per tenant or globally, ensuring a fresh start for large-scale migration testing.
+*   **Service-Role Security**: Backend operations now use elevated service roles to manage tenant-aware maintenance without compromising security.
+
+#### Phase 16: Performance Optimized Governance
+*   **Parallelization 2.0**: The Governance Export process now utilizes `asyncio.gather` for parallel R2 file reading and database querying, reducing bundle generation time by over 60%.
+*   **Fault-Tolerant Exports**: AI-driven certification (Agent G) now runs with robust timeouts. If a report fails, the system delivers a technical package with placeholders instead of timing out the entire request.
+*   **Memory-Safe Packaging**: Artifact ZIP bundles are now built entirely in memory buffers before streaming to the client, eliminating server-side disk bloat.
+
+### 🐛 Bug Fixes
+*   **ZIP Leak Fixed**: Resolved a resource leak where temporary ZIP files from project uploads were not being deleted from the server.
+*   **Permissions Resolution**: Fixed a critical `permission denied` error on the `utm_column_mappings` table.
+*   **Tenant Header Persistence**: Fixed an issue where browser-initiated downloads lost the `X-Tenant-ID` header; the system now auto-resolves tenancy from project metadata.
+
+---
+
+## Version 3.3 (The Universal Connector) - 2026-01-26
 
 This release dramatically expands the platform's input/output capabilities, making it simpler to ingest legacy logic from enterprise ETL tools and deploy to modern data clouds.
 

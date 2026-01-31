@@ -23,8 +23,11 @@
     - Use this to verify logic translation accuracy.
 
 ## ⚙️ Technical Details
-- **Service**: `RefactoringService`, `ProfilerService`
-- **Output**: `solutions/{project}/refinement/`
+- **Service**: `AgentCService`, `AgentFService`
+- **Output Storage**: Cloudflare R2 (`{tenant_id}/{project_id}/Refinement/`)
 - **Agents**: 
-    - Agent C (Coder) - Mode: `Implement`
-    - Agent F (Fixer) - Mode: `Debug`
+    - Agent C (The Interpreter) - Mode: `Synthesis`
+    - Agent F (The Fixer) - Mode: `Optimization`
+
+### Cloud-Scale Synthesis (v3.5)
+In v3.5, code generation is decentralized. The backend streams generated code directly to **Cloudflare R2**. This bypasses local file system bottlenecks and allows for massive parallel generation across multiple agents. The Workbench diff view pulls original and generated files directly from R2 using `PersistenceService.read_file_content`.

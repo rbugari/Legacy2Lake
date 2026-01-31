@@ -26,6 +26,9 @@
 - Example: *"This table is deprecated, map it to `sales_history` instead."*
 
 ## ⚙️ Technical Details
-- **Service**: `DependencyService`
-- **Output**: `solutions/{project}/triage/scope.json`
-- **Agents**: Agent S (Strategist) - Mode: `Graph`
+- **Service**: `DiscoveryService` / `ArchitectService`
+- **Output**: Persistent metadata in `utm_objects` (JSONB `metadata` field).
+- **Agents**: Agent A (Architect v2.0) - Mode: `Forensics`
+
+### Metadata Forensics (v3.5)
+In v3.5, Triage identifies **PII**, **Data Volumes**, and **Partition Keys** automatically using the Architect v2.0 engine. All inferred forensics are stored in Supabase with strict tenant isolation, ensuring that specific business context is never leaked between client projects.

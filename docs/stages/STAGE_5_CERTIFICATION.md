@@ -23,6 +23,13 @@
 - If the score is sufficient (typically >80), the **"Proceed to Handover"** button becomes active.
 
 ## ⚙️ Technical Details
-- **Service**: `AgentGService` (Governance)
-- **Output**: `solutions/{project}/governance/audit_report.json`
-- **Agents**: Agent G (Governor) - Mode: `Audit`
+- **Service**: `GovernanceService` (Apps/API/Services/Refinement)
+- **Primary Data Source**: Cloudflare R2 (`{tenant_id}/{project_id}/Refinement/`)
+- **Agents**: Agent G (Guardian) - Mode: `Certification`
+- **Output Artifacts**: 
+    - `Modernization_Runbook.md` (Self-documenting deployment guide)
+    - `compliance_audit.json` (Structured scorecard)
+    - `certified_bundle.zip` (Memory-buffered export)
+
+### Cloud-Native Performance (v3.5)
+The certification process is now parallelized. `GovernanceService` reads file inventory from Supabase and fetches file contents from R2 in parallel batches, ensuring fast packaging even for large migration projects.

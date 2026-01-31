@@ -2,77 +2,69 @@ import os
 import shutil
 from typing import Dict, Any, Optional, List
 from supabase import create_client, Client
+from .storage.factory import StorageFactory
 
 class PersistenceService:
-    print("LOADING PersistenceService v2 - WITH initialize_project_from_source")
-    # Base directory for local file storage (Solutions)
-    # Calculated relative to this file to be robust against CWD changes
+    print("LOADING PersistenceService v3 - WITH StorageProvider Abstraction")
+    
+    # Deprecated: Consumers should not rely on this.
+    # We keep it pointing to local solutions for fallback reference or temp operations.
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "solutions"))
 
     # Stage-aligned Directory Constants
-    STAGE_TRIAGE = "Triage"     # Was Input/Source
-    STAGE_DRAFTING = "Drafting"   # Was Output
-    STAGE_REFINEMENT = "Refinement" # Was Refined
+    STAGE_TRIAGE = "triage"
+    STAGE_DRAFTING = "drafting"
+    STAGE_REFINEMENT = "refinement"
+
+    @classmethod
+    def get_storage(cls):
+        return StorageFactory.get_provider()
+
+    @staticmethod
+    def normalize_name(name: str) -> str:
+        """Strict normalization: lowercase and alphanumeric only."""
+        if not name: return ""
+        import re
+        # Lowercase and remove non-alphanumeric
+        normalized = re.sub(r'[^a-z0-9]', '', name.lower())
+        return normalized
 
     @classmethod
     def ensure_solution_dir(cls, solution_name: str, tenant_id: str = None) -> str:
-        """Creates a directory for the specific solution details. Supports Multi-Tenancy."""
-        # Sanitize name
-        folder_name = "".join([c if c.isalnum() else "_" for c in solution_name])
+        """Ensures the project directory exists. Returns the path/key prefix."""
+        # Sanitize name using strict normalization
+        folder_name = cls.normalize_name(solution_name)
         
+        path = folder_name
         if tenant_id:
-            # Multi-tenant path: solutions/<tenant_id>/<project_name>
-            path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
-        else:
-            # Legacy/Admin path: solutions/<project_name>
-            path = os.path.join(cls.BASE_DIR, folder_name)
-            
-        os.makedirs(path, exist_ok=True)
-        return path
-
-    @classmethod
-    def robust_rmtree(cls, path: str):
-        """Robustly deletes a directory tree, handling read-only files (Windows .git issue)."""
-        import stat
-
-        def on_error(func, path, exc_info):
-            # Check if it's a permission error (Access denied)
-            if not os.access(path, os.W_OK):
-                # Change to writable and retry
-                os.chmod(path, stat.S_IWUSR)
-                func(path)
-            else:
-                raise # Re-raise if it's not a permission issue
-
-        if os.path.exists(path):
-            shutil.rmtree(path, onerror=on_error)
+             path = f"{tenant_id}/{folder_name}"
+             
+        return cls.get_storage().ensure_directory(path)
 
     @classmethod
     def clean_downstream_folders(cls, project_id: str, tenant_id: str = None) -> bool:
         """Wipes all files and subdirectories in the project folder EXCEPT 'Triage'."""
         try:
-            folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-            
+            folder_name = cls.normalize_name(project_id)
+            path = folder_name
             if tenant_id:
-                project_path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
-            else:
-                project_path = os.path.join(cls.BASE_DIR, folder_name)
+                path = f"{tenant_id}/{folder_name}"
             
-            if not os.path.exists(project_path):
+            storage = cls.get_storage()
+            if not storage.exists(path):
                 return True
 
-            for item in os.listdir(project_path):
-                item_path = os.path.join(project_path, item)
-                
-                # Protect Triage folder
-                if item.lower() == cls.STAGE_TRIAGE.lower():
+            items = storage.list_files(path, recursive=False)
+            for item in items:
+                # item['name'] is just the filename/foldername
+                if item["name"].lower() == cls.STAGE_TRIAGE.lower():
                     continue
-                    
-                # Delete everything else (including triage.log if it's in the root)
-                if os.path.isdir(item_path):
-                    cls.robust_rmtree(item_path)
+                
+                full_item_path = item["path"] # Relative to storage root or absolute key
+                if item["type"] == "folder":
+                    storage.delete_directory(full_item_path)
                 else:
-                    os.remove(item_path)
+                    storage.delete_file(full_item_path)
             return True
         except Exception as e:
             print(f"Error cleaning downstream folders for {project_id}: {e}")
@@ -80,22 +72,14 @@ class PersistenceService:
 
     @classmethod
     def delete_project_directory(cls, project_id: str, tenant_id: str = None) -> bool:
-        """Deletes the project directory from the filesystem."""
+        """Deletes the project directory from storage."""
         try:
-            # We assume project_id maps to folder name. If not, we might need a lookup, 
-            # but for this app we enforce project_id ~ folder_name (sanitized)
-            folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
-            
+            folder_name = cls.normalize_name(project_id)
+            path = folder_name
             if tenant_id:
-                path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
-            else:
-                path = os.path.join(cls.BASE_DIR, folder_name)
+               path = f"{tenant_id}/{folder_name}"
             
-            if os.path.exists(path):
-                print(f"Deleting directory: {path}")
-                cls.robust_rmtree(path)
-                return True
-            return False
+            return cls.get_storage().delete_directory(path)
         except Exception as e:
             print(f"Error deleting directory {project_id}: {e}")
             return False
@@ -106,140 +90,176 @@ class PersistenceService:
         dir_path = cls.ensure_solution_dir(solution_name, tenant_id)
         # Sanitize task name for filename
         filename = "".join([c if c.isalnum() else "_" for c in task_name]) + ".py"
-        file_path = os.path.join(dir_path, filename)
+        # We need to construct logical path. 
+        # ensure_solution_dir returns the prefix (e.g. "tenant/proj/")
+        # If dir_path ends with separator, join works.
+        import os # Just in case for path.join, but we prefer string concat for cloud safety if mixed separators
+        # Actually storage provider usually handles normalized paths.
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(code)
-            
-        return file_path
+        file_path = f"{dir_path.rstrip('/')}/{filename}"
+        
+        return cls.get_storage().save_file(file_path, code)
 
     @classmethod
     def save_documentation(cls, solution_name: str, doc_name: str, content: str, tenant_id: str = None) -> str:
         """Saves governance/technical documentation to the solution directory."""
         dir_path = cls.ensure_solution_dir(solution_name, tenant_id)
         filename = doc_name + ".md"
-        file_path = os.path.join(dir_path, filename)
+        file_path = f"{dir_path.rstrip('/')}/{filename}"
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-            
-        return file_path
+        return cls.get_storage().save_file(file_path, content)
 
     @classmethod
     def initialize_project_from_source(cls, project_id: str, source_type: str, file_path: str = None, github_url: str = None, overwrite: bool = False, tenant_id: str = None) -> bool:
-        """Initializes a project directory from a ZIP file or GitHub Repo. Handles overwrite logic."""
+        """Initializes a project directory. handles ZIP/Git via temp staging and uploads to Storage."""
         import zipfile
         import subprocess
+        import tempfile
 
         try:
-            project_dir = cls.ensure_solution_dir(project_id, tenant_id)
+            # 1. Check existence in Storage
+            folder_name = cls.normalize_name(project_id)
+            target_path = folder_name
+            if tenant_id: target_path = f"{tenant_id}/{folder_name}"
             
-            # Check if exists and handle overwrite
-            if any(os.scandir(project_dir)):
-                if not overwrite:
-                    print(f"Error: Project directory {project_dir} is not empty and overwrite=False.")
-                    return False
-                
-                print(f"Cleaning existing directory for {project_id} (overwrite=True)...")
-                cls.robust_rmtree(project_dir)
-                # Re-create the empty dir
-                project_dir = cls.ensure_solution_dir(project_id, tenant_id)
+            storage = cls.get_storage()
 
-            # Ensure Triage directory exists for source files
-            triage_dir = os.path.join(project_dir, cls.STAGE_TRIAGE)
-            os.makedirs(triage_dir, exist_ok=True)
+            if storage.exists(target_path):
+                 # Simple check: if list_files returns anything
+                 files = storage.list_files(target_path, recursive=False)
+                 if files:
+                    if not overwrite:
+                        print(f"Error: Project directory {target_path} is not empty and overwrite=False.")
+                        return False
+                    
+                    print(f"Cleaning existing directory for {project_id} (overwrite=True)...")
+                    storage.delete_directory(target_path)
 
-            if source_type == "zip" and file_path:
-                # Extract ZIP into Triage
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    zip_ref.extractall(triage_dir)
-                # Cleanup temporary ZIP
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                print(f"Project {project_id} initialized from ZIP into {cls.STAGE_TRIAGE}.")
+            # 2. Local Staging
+            with tempfile.TemporaryDirectory() as temp_dir:
+                triage_dir = os.path.join(temp_dir, cls.STAGE_TRIAGE)
+                os.makedirs(triage_dir, exist_ok=True)
                 
-            elif source_type == "github" and github_url:
-                # Git Clone into Triage
-                subprocess.run(["git", "clone", github_url, triage_dir], check=True)
-                print(f"Project {project_id} initialized from GitHub into {cls.STAGE_TRIAGE}.")
+                if source_type == "zip" and file_path:
+                    # file_path is likely local temp path from UploadFile
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        zip_ref.extractall(triage_dir)
+                    print(f"Extracted ZIP for {project_id} in temp.")
+                    
+                elif source_type == "github" and github_url:
+                    subprocess.run(["git", "clone", github_url, triage_dir], check=True)
+                    # Remove .git to save space/time
+                    git_dir = os.path.join(triage_dir, ".git")
+                    if os.path.exists(git_dir):
+                        cls._robust_local_rmtree(git_dir) 
+                    print(f"Cloned GitHub for {project_id} in temp.")
                 
+                # 3. Upload Staging to Storage
+                # We walk the temp dir and upload each file
+                print(f"Uploading staged files to {target_path}...")
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        local_f = os.path.join(root, file)
+                        # Rel path from temp_dir
+                        rel_path = os.path.relpath(local_f, temp_dir) # e.g. "Triage/folder/file.txt"
+                        
+                        # Dest path
+                        dest_key = f"{target_path.rstrip('/')}/{rel_path.replace(os.sep, '/')}"
+                        
+                        # Read and Upload
+                        with open(local_f, 'rb') as f:
+                            content = f.read()
+                            storage.save_file(dest_key, content, is_binary=True)
+                            
+            print(f"Project {project_id} initialized successfully in Storage.")
             return True
         except Exception as e:
             print(f"Error initializing project: {e}")
+            import traceback
+            traceback.print_exc()
             return False
+
+    @staticmethod
+    def _robust_local_rmtree(path: str):
+        """Helper for local temp cleanup (git)"""
+        import stat
+        def on_error(func, path, exc_info):
+            if not os.access(path, os.W_OK):
+                os.chmod(path, stat.S_IWUSR)
+                func(path)
+            else:
+                raise
+        if os.path.exists(path):
+            shutil.rmtree(path, onerror=on_error)
 
     @classmethod
     def get_project_files(cls, project_id: str, tenant_id: str = None) -> List[Dict[str, Any]]:
-        """Returns a recursive query of the project's solution directory."""
-        # Clean ID just in case
-        folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
+        """
+        Returns a recursive query of the project's solution directory.
+        [Fix] Handles case-sensitivity mismatch (DB=Uppercase, Storage=Lowercase) for R2.
+        """
+        folder_name = cls.normalize_name(project_id)
         
+        # 1. Try exact match (Original logic)
+        path = folder_name
         if tenant_id:
-            solution_path = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
-        else:
-            solution_path = os.path.join(cls.BASE_DIR, folder_name)
+            path = f"{tenant_id}/{folder_name}"
         
-        if not os.path.exists(solution_path):
-            return []
+        files = cls.get_storage().list_files(path, recursive=True)
+        
+        # 2. If empty, try lowercase path (common issue when migrating from Windows)
+        if not files and any(c.isupper() for c in path):
+             lower_path = path.lower()
+             print(f"DEBUG: No files found at '{path}', trying lowercase '{lower_path}'...")
+             files_lower = cls.get_storage().list_files(lower_path, recursive=True)
+             if files_lower:
+                 return files_lower
 
-        def _scan_dir(path: str) -> List[Dict[str, Any]]:
-            children = []
-            try:
-                with os.scandir(path) as it:
-                    for entry in it:
-                        # Skip hidden files and common junk
-                        if entry.name.startswith('.'): continue
-                        if entry.name == "__pycache__": continue
-                        
-                        node = {
-                            "name": entry.name,
-                            "path": entry.path.replace("\\", "/"), # Normalize to forward slashes
-                            "type": "folder" if entry.is_dir() else "file",
-                            "last_modified": entry.stat().st_mtime
-                        }
-                        if entry.is_dir():
-                            node["children"] = _scan_dir(entry.path)
-                            # Sort: folders first, then files
-                            node["children"].sort(key=lambda x: (x["type"] != "folder", x["name"]))
-                            
-                        children.append(node)
-            except Exception as e:
-                print(f"Error scanning {path}: {e}")
-                
-            # Sort: folders first, then files
-            children.sort(key=lambda x: (x["type"] != "folder", x["name"]))
-            return children
-
-        return _scan_dir(solution_path)
+        return files
 
     @classmethod
     def read_file_content(cls, project_id: str, file_path: str, tenant_id: str = None) -> str:
         """Reads the content of a specific file within the project's solution directory."""
-        # Security check: Ensure file is inside project dir
-        folder_name = "".join([c if c.isalnum() else "_" for c in project_id])
+        # Security logic handled by providers usually, but we reconstruct key here
         
+        folder_name = cls.normalize_name(project_id)
+        root_path = folder_name
         if tenant_id:
-            project_root = os.path.join(cls.BASE_DIR, tenant_id, folder_name)
+             root_path = f"{tenant_id}/{folder_name}"
+        
+        # file_path coming from frontend usually is partial e.g. "Triage/file.txt"
+        # or full key e.g. "tenant/proj/Triage/file.txt"
+        
+        # If the file_path already starts with root_path, use it as is
+        # otherwise prepend
+        
+        clean_file_path = file_path.replace("\\", "/")
+        clean_root = root_path.replace("\\", "/")
+        
+        if clean_file_path.startswith(clean_root):
+            full_key = clean_file_path
         else:
-            project_root = os.path.join(cls.BASE_DIR, folder_name)
-        
-        # Resolve absolute path
-        # Fix: If file_path is relative, assume it is inside project_root
-        if not os.path.isabs(file_path):
-            file_path = os.path.join(project_root, file_path)
+            full_key = f"{clean_root}/{clean_file_path.lstrip('/')}"
             
-        abs_path = os.path.abspath(file_path).replace("\\", "/")
-        abs_root = os.path.abspath(project_root).replace("\\", "/")
-        
-        # On Windows, drive letters might be C: or c:, normalize to lower for security check
-        if not abs_path.lower().startswith(abs_root.lower()):
-            raise ValueError("Access Denied: File is outside project directory")
-            
-        if not os.path.exists(abs_path):
-            return ""
+        return cls.get_storage().read_file(full_key)
 
-        with open(abs_path, 'r', encoding='utf-8') as f:
-            return f.read()
+    @classmethod
+    def generate_presigned_url(cls, project_id: str, file_path: str, tenant_id: str = None, expiration: int = 3600) -> Optional[str]:
+        """Generates a temporary signed URL for a file."""
+        folder_name = cls.normalize_name(project_id)
+        root_path = folder_name
+        if tenant_id:
+             root_path = f"{tenant_id}/{folder_name}"
+        
+        clean_file_path = file_path.replace("\\", "/")
+        clean_root = root_path.replace("\\", "/")
+        
+        if clean_file_path.startswith(clean_root):
+            full_key = clean_file_path
+        else:
+            full_key = f"{clean_root}/{clean_file_path.lstrip('/')}"
+            
+        return cls.get_storage().generate_signed_url(full_key, expiration)
 
 class SupabasePersistence:
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
@@ -274,6 +294,9 @@ class SupabasePersistence:
 
     async def get_or_create_project(self, name: str, repo_url: str = None, source_tech: str = None, target_tech: str = None) -> str:
         """Finds or creates a project by name and returns its UUID. Respects Tenant Isolation."""
+        # Force strict normalization for consistency across DB and R2
+        name = PersistenceService.normalize_name(name)
+        
         query = self.client.table("utm_projects").select("project_id", "settings").eq("name", name)
         
         # [Security] Ensure we only check current tenant's projects
@@ -427,7 +450,7 @@ class SupabasePersistence:
             if not resolved_id:
                 return None
 
-            query = self.client.table("utm_projects").select("project_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", resolved_id)
+            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", resolved_id)
             if self.tenant_id:
                 query = query.eq("tenant_id", self.tenant_id)
                 

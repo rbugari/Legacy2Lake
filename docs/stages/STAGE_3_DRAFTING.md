@@ -22,6 +22,11 @@
 - Verify that complex procedures have been broken down effectively.
 
 ## ⚙️ Technical Details
-- **Service**: `ArchitectService`
-- **Output**: `solutions/{project}/drafting/plan.json`
-- **Agents**: Agent C (Architect) - Mode: `Plan`
+- **Service**: `LibrarianService` / `ArchitectService`
+- **Output**: 
+    - Supabase: `utm_logical_steps` (Normalized IR)
+    - Cloudflare R2: `Drafting/schema_reference.json`
+- **Agents**: Agent C (Interpreter) - Mode: `IR_Normalization`
+
+### IR Normalization (v3.5)
+Legacy2Lake 3.5 separates logic from physical implementation. The Drafting stage extracts the "Universal Logic" (IR) and persists it in Supabase. This allows the same business intent to be redeployed to different target clouds (AWS, GCP, Fabric) without re-analyzing the source artifacts.

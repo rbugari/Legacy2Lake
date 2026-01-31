@@ -1,44 +1,41 @@
-# Legacy2Lake Documentation Index (v3.2)
+# Legacy2Lake Documentation Index (v3.5)
 
-Welcome to the **Legacy2Lake** Documentation Center. This directory contains detailed guides for every phase of the intelligent data modernization process.
+Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures.
 
 ## 🚀 Getting Started
-- **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend and Frontend.
-- **[Release Notes](docs/RELEASE_NOTES.md)**: What's new in the latest version.
+- **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
+- **[Release Notes](docs/RELEASE_NOTES.md)**: Details on the v3.5 cloud-native reset.
 - **[Introduction to Legacy2Lake](docs/INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
 
 ## 🔄 Project Lifecycle (The 6 Stages)
 
-Unique to Legacy2Lake is its simplified yet powerful 6-stage workflow, designed to take you from a raw dump of files to a production-ready solution.
+Legacy2Lake utilizes a 6-stage "Compiler Flow" to ensure logic is extracted correctly, refined by AI, and packaged for production.
 
 1.  **[Stage 1: Discovery (Ingest)](docs/stages/STAGE_1_DISCOVERY.md)**
-    - Technical ingestion and static analysis of source assets.
+    - Technical ingestion to Cloudflare R2 and initial inventory.
 2.  **[Stage 2: Triage (Strategy)](docs/stages/STAGE_2_TRIAGE.md)**
-    - Scoping, classification, and complex dependency mapping.
+    - Forensic analysis (PII, Volume detection) and scoping.
 3.  **[Stage 3: Drafting (Plan)](docs/stages/STAGE_3_DRAFTING.md)**
-    -  Architectural blueprinting and target stack definition.
+    - Normalization into Intermediate Representation (IR) in Supabase.
 4.  **[Stage 4: Refinement (Build)](docs/stages/STAGE_4_REFINEMENT.md)**
-    - AI-driven code generation, transpilation, and rigorous "Fixer" loops.
+    - AI-driven code generation and iterative "Fixer" loops.
 5.  **[Stage 5: Certification (Audit)](docs/stages/STAGE_5_CERTIFICATION.md)**
-    - Security scanning, compliance scoring, and quality gates.
+    - Cloud-native compliance scoring and quality gating.
 6.  **[Stage 6: Handover (Deliver)](docs/stages/STAGE_6_HANDOVER.md)**
-    - Runbook generation, variable injection, and final bundle export.
+    - Certified Output Package (COP) generation via Signed URLs.
 
 ## 🛠 Technical Reference
-- [Platform Architecture](docs/technical/architecture.md)
-- [Metadata Store (Data Model)](docs/technical/data_model.md)
+- [Cloud-Native Architecture](docs/technical/architecture.md)
+- [Multi-Tenant Data Model](docs/technical/data_model.md)
 - [API Contract](docs/technical/api_contract.md)
 - [System Prompts & Agents](docs/technical/system_prompts_and_agents.md)
-- [Cartridge Development Manual](docs/technical/cartridge_manual.md)
 - [Future Releases & Roadmap](docs/ROADMAP.md)
 
-## 📊 Feature Highlights (v3.2)
-- **Enterprise Modernization Suite**:
-    - **Forensic Intelligence**: Automatic Volume, PII, and Partition detection.
-    - **Smart Generation**: AI-optimized code based on data characteristics.
-    - **Certification**: Compliance scoring and automated runbook delivery.
-    - **Multi-Tenancy Architecture**: True file system isolation per tenant/project (`solutions/<tenant_id>`).
-    - **Enhanced UI**: VSCode-style syntax highlighting for file inspection across all stages.
+## 📊 Cloud-Native Advantage (v3.5)
+- **Zero-Trust Multi-Tenancy**: Complete asset isolation via Supabase RLS and Cloudflare R2 tenant-prefixes.
+- **Hyperscale Storage**: No more local disk bottlenecks—all artifacts are stored in R2.
+- **Parallel Synthesis**: `asyncio`-driven backend ensures concurrent AI generation and packaging.
+- **Direct-to-Cloud Delivery**: High-performance downloads using S3-compatible Signed URLs.
 
 ---
-*Legacy2Lake Documentation Framework v3.3 - Enterprise Ready*
+*Legacy2Lake Documentation Framework v3.5 - Multi-Tenant Enterprise Edition*

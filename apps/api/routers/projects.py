@@ -53,30 +53,50 @@ async def create_project(
 ):
     """Creates a new project and initializes it from source."""
     # 1. Register in Database (Supabase)
-    real_id = await db.get_or_create_project(name, github_url, source_tech=origin, target_tech=destination)
+    # Force strict normalization for project_id and name
+    normalized_id = PersistenceService.normalize_name(project_id)
+    normalized_name = PersistenceService.normalize_name(name)
+    
+    real_id = await db.get_or_create_project(normalized_name, github_url, source_tech=origin, target_tech=destination)
+    
+    # Use normalized ID for further operations
+    project_id = normalized_id
+    name = normalized_name
     
     # 2. Handle File Upload (Save temporarily)
     temp_zip_path = None
     if source_type == "zip" and file:
-        temp_zip_path = os.path.join(PersistenceService.BASE_DIR, f"{project_id}_temp.zip")
+        import tempfile
+        # Create a temp file
+        fd, temp_zip_path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        
         with open(temp_zip_path, "wb") as buffer:
             import shutil
             shutil.copyfileobj(file.file, buffer)
             
-    # 3. Initialize Directory
-    success = PersistenceService.initialize_project_from_source(
-        project_id=project_id,
-        source_type=source_type,
-        file_path=temp_zip_path,
-        github_url=github_url,
-        overwrite=overwrite,
-        tenant_id=db.tenant_id  # Pass Tenant ID for isolation
-    )
-    
-    if success:
-        return {"success": True, "project_id": project_id}
-    else:
-        return {"success": False, "error": "Failed to initialize project"}
+    try:
+        # 3. Initialize Directory
+        success = PersistenceService.initialize_project_from_source(
+            project_id=project_id,
+            source_type=source_type,
+            file_path=temp_zip_path,
+            github_url=github_url,
+            overwrite=overwrite,
+            tenant_id=db.tenant_id  # Pass Tenant ID for isolation
+        )
+        
+        if success:
+            return {"success": True, "project_id": project_id}
+        else:
+            return {"success": False, "error": "Failed to initialize project"}
+    finally:
+        # Cleanup temp zip if it exists to avoid resource leaks
+        if temp_zip_path and os.path.exists(temp_zip_path):
+            try:
+                os.remove(temp_zip_path)
+            except Exception as e:
+                print(f"DEBUG: Failed to delete temp zip {temp_zip_path}: {e}")
 
 
 @router.delete("/{project_id}")
@@ -317,56 +337,93 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
             project_folder = resolved_name
     
     # Get Triage path
+    # We use list_files mechanism
+    print(f"[DEBUG] list_triage_files called for project_id={project_id}, resolved={project_folder}, tenant={db.tenant_id}")
     project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
-    triage_path = os.path.join(project_base, PersistenceService.STAGE_TRIAGE)
+    # The ensure_solution_dir return path/key prefix. 
+    # But list_files needs the path relative to storage root?
+    # get_project_files handles the path construction.
     
-    if not os.path.exists(triage_path):
+    # We want ONLY Triage files.
+    # We can scan all files and filter, providing a consistent view.
+    try:
+        all_files = PersistenceService.get_project_files(project_folder, db.tenant_id)
+        
+        triage_files = []
+        file_types = {}
+        
+        for node in all_files:
+            # We are looking for files starting with "Triage/" or inside Triage folder?
+            # List structure is recursive.
+            # We need to find the "Triage" folder node.
+            
+            def find_triage(nodes):
+                for n in nodes:
+                    if n["name"] == PersistenceService.STAGE_TRIAGE:
+                        return n
+                    if n.get("children"):
+                        found = find_triage(n["children"])
+                        if found: return found
+                return None
+            
+            # The structure from list_files might change (it's list of dictionaries).
+            # But the root of get_project_files returns the contents of the solution dir.
+            # So "Triage" should be a top-level child.
+            
+            triage_node = next((n for n in all_files if n["name"] == PersistenceService.STAGE_TRIAGE), None)
+            
+            if not triage_node or not triage_node.get("children"):
+                 # Return empty if no triage
+                 return {
+                    "success": True,
+                    "project_id": project_id,
+                    "triage_path": "Triage",
+                    "file_count": 0,
+                    "file_types": {},
+                    "files": []
+                }
+            
+            # Now flatten the files inside Triage
+            def collect_files(nodes, parent_path=""):
+                for n in nodes:
+                    if n["type"] == "folder":
+                        collect_files(n.get("children", []), os.path.join(parent_path, n["name"]))
+                    else:
+                        ext = n["name"].split('.')[-1].lower() if '.' in n["name"] else 'no_ext'
+                        file_types[ext] = file_types.get(ext, 0) + 1
+                        
+                        # Fix system file checks (if any)
+                        if n["name"] in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+                            continue
+
+                        triage_files.append({
+                            "name": n["name"],
+                            "path": n["path"], # This is the full path/key from StorageProvider
+                            "full_path": n["path"], 
+                            "size": n["size"],
+                            "extension": ext,
+                            "type": _classify_file_type(ext)
+                        })
+
+            collect_files(triage_node.get("children", []), "")
+            
+            return {
+                "success": True,
+                "project_id": project_id,
+                "triage_path": "Triage", # Conceptual path
+                "file_count": len(triage_files),
+                "file_types": file_types,
+                "files": triage_files
+            }
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
-            "message": "Triage folder not found. Upload files first.",
+            "message": f"Error scanning Triage: {str(e)}",
             "project_id": project_id,
-            "triage_path": triage_path,
-            "file_count": 0,
-            "files": []
         }
-    
-    files = []
-    file_types = {}
-    
-    for root, dirs, filenames in os.walk(triage_path):
-        # Exclude system folders
-        if '.git' in dirs: dirs.remove('.git')
-        if '__pycache__' in dirs: dirs.remove('__pycache__')
-        
-        for filename in filenames:
-            # [Fix] Exclude system generated files
-            if filename in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
-                continue
-                
-            full_path = os.path.join(root, filename)
-            rel_path = os.path.relpath(full_path, triage_path).replace("\\", "/")
-            ext = filename.split('.')[-1].lower() if '.' in filename else 'no_ext'
-            
-            # Count file types
-            file_types[ext] = file_types.get(ext, 0) + 1
-            
-            files.append({
-                "name": filename,
-                "path": rel_path,
-                "full_path": full_path,
-                "size": os.path.getsize(full_path),
-                "extension": ext,
-                "type": _classify_file_type(ext)
-            })
-    
-    return {
-        "success": True,
-        "project_id": project_id,
-        "triage_path": triage_path,
-        "file_count": len(files),
-        "file_types": file_types,
-        "files": files
-    }
 
 
 def _classify_file_type(ext: str) -> str:
@@ -378,54 +435,3 @@ def _classify_file_type(ext: str) -> str:
     if ext == 'py': return 'PYTHON_SCRIPT'
     if ext in ['txt', 'md', 'doc', 'docx']: return 'DOCUMENTATION'
     return 'OTHER'
-
-
-# --- Export ---
-
-@router.get("/{project_id}/export")
-async def export_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Streams the project solution as a ZIP bundle."""
-    project_name = project_id
-    if "-" in project_id:
-        n = await db.get_project_name_by_id(project_id)
-        if n: 
-            project_name = n
-    
-    # 1. Use PackagingService to create COP structure
-    try:
-        from services.packaging_service import PackagingService
-        packager = PackagingService(project_id, tenant_id=db.tenant_id, client_id=db.client_id)
-        # prepares "root_dir" inside "_package_staging"
-        package_root = await packager.prepare_bundle()
-        
-        # 2. ZIP the structured package
-        zip_buffer = io.BytesIO()
-        # package_root is .../_package_staging/ProjectName
-        # We want the ZIP to contain ProjectName/...
-        
-        base_dir = os.path.dirname(package_root) # .../_package_staging
-        root_folder_name = os.path.basename(package_root) # ProjectName
-        
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(package_root):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    # Relpath from _package_staging so the zip has ProjectName/config/...
-                    arcname = os.path.relpath(file_path, base_dir)
-                    zf.write(file_path, arcname)
-                    
-        # Cleanup staging is tricky if we want async stream, but for now we rely on overwrite next time
-        # or we could schedule a cleanup task. 
-        # PersistenceService.robust_rmtree(os.path.dirname(package_root)) # Optional cleanup
-        
-        zip_buffer.seek(0)
-        
-        return StreamingResponse(
-            zip_buffer,
-            media_type="application/zip",
-            headers={"Content-Disposition": f"attachment; filename=Legacy2Lake_{project_name}.zip"}
-        )
-        
-    except Exception as e:
-        print(f"Export Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate package: {str(e)}")
