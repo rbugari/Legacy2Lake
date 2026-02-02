@@ -1,0 +1,10 @@
+{
+  "tech_id": "fabric",
+  "name": "Microsoft Fabric",
+  "version": "Latest",
+  "category": "refinement",
+  "config": {
+    "capacity": "F2",
+    "dialect_instruction": "TARGET DIALECT: MICROSOFT FABRIC (PYSPARK + T-SQL)"
+  }
+}

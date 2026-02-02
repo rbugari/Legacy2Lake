@@ -1,6 +1,8 @@
 # Welcome to Legacy2Lake 🚀
 
-**Legacy2Lake** is an AI-augmented Data Engineering platform designed to automate and optimize the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
+**Legacy2Lake** (v3.5) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
+
+> **v3.5 Cloud-Native Reset**: Complete rebuild with **Cloudflare R2 storage**, **Supabase multi-tenancy**, and **dynamic prompt management** for enterprise-grade scalability and security.
 
 ## 1. The Vision: "Shift the T" 🧬
 
@@ -34,6 +36,21 @@ To solve the complexity of $N$ source technologies and $M$ target platforms, Leg
 - **Component**: **Admin Panel** & `utm_global_config`.
 - **Output**: Dynamic runtime configuration for the entire fleet.
 
+### E. Cloud-Native Storage (v3.5)
+- **Mission**: Hyperscale object storage with zero local disk dependency.
+- **Component**: **Cloudflare R2** (S3-compatible) + **Supabase** metadata cache.
+- **Features**:
+  - **R2 Storage**: All source artifacts, generated code, and packages stored in object storage
+  - **Tenant Isolation**: Per-tenant prefixes (`tenant-{id}/`) ensure complete data isolation
+  - **File Inventory**: `utm_file_inventory` table provides fast listing without S3 API calls
+  - **Signed URLs**: Secure, time-limited download links for artifact delivery
+
+### F. Multi-Tenancy & Security (v3.5)
+- **Zero-Trust Architecture**: Row-Level Security (RLS) policies enforce tenant isolation
+- **Provider Vault**: Encrypted API keys stored in `utm_provider_vault` per tenant
+- **Agent Matrix**: Each tenant configures their own LLM model assignments
+- **Audit Trail**: Complete execution logs in `utm_execution_logs` per project
+
 ---
 
 ## 3. The Agentic Workforce 🤖
@@ -42,13 +59,23 @@ The platform operates via specialized agents that interact through the Metadata 
 
 | Agent | Role | Responsibility |
 | :--- | :--- | :--- |
+| **Scout (Agent S)** | **Technology Detection** | Analyzes repositories during triage to detect source technology (SQL Server, Oracle, SSIS, etc.). |
 | **Detective (Agent A)** | **Discovery** | Scans repositories and identifies technology footprints and complexity. |
 | **Cartographer (Agent B)** | **Mesh & Lineage** | Builds the execution graph and precedence constraints. |
 | **Interpreter (Agent C)** | **Transpiler** | The main execution engine. Writes code using target-specific patterns. |
 | **Critic (Agent F)** | **QA & Refinement** | Senior architect that optimizes code for performance and security. |
 | **Governor (Agent G)** | **Governance** | Generates modernization certificates and column-level lineage. |
 
----
+### Prompt Laboratory (v3.5)
+
+Legacy2Lake v3.5 introduces a **dynamic prompt management system** that allows optimization of agent behavior without code changes:
+
+- **Core Agents**: 7 system prompts for A, B, C, D, F, G, S
+- **Origin Knowledge**: 9 source technology prompts (SSIS, SQL Server, Oracle, DataStage, Informatica, SAP BODS, Talend, Pentaho, MySQL)
+- **Destination Knowledge**: 6 target platform prompts (Databricks/PySpark, Snowflake, Microsoft Fabric, BigQuery, Redshift, Salesforce)
+- **Configuration per Tech**: Each technology has a `config_v1.json` defining dialect-specific instructions
+- **Versioning**: Prompts support v1, v2, etc. for A/B testing and rollback
+- **Export/Import**: Complete prompt packages can be exported as ZIP for sharing or backup
 
 ## 4. The 6-Stage Lifecycle 🔄
 

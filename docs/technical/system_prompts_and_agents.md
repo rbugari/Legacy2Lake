@@ -1,6 +1,8 @@
-# Arquitectura de Agentes y System Prompts
+# Arquitectura de Agentes y System Prompts (v3.5)
 
 El "cerebro" de la plataforma UTM (Legacy2Lake) no es un modelo monolítico, sino una orquestación de múltiples agentes especializados que colaboran para escanear, interpretar, auditar y documentar la migración.
+
+> **v3.5 Update**: Introducción del **Prompt Laboratory** - sistema dinámico de gestión de prompts con 22 knowledge modules (7 core agents + 9 origins + 6 destinations).
 
 Este documento detalla el rol de cada agente y expone sus **System Prompts reales**, revelando las reglas de comportamiento que gobiernan la IA.
 
@@ -10,20 +12,122 @@ La arquitectura sigue el patrón "Chain of Thought" y "Actor-Critic", donde un a
 
 ```mermaid
 graph TD
-    User[Input Repository] -->|Discovery| A[Agent A: Detective]
-    A -->|Mesh Graph| B[Human Validation]
-    B -->|Approved Spec| C[Agent C: Architect]
-    C -->|Draft Code| F[Agent F: The Auditor]
+    User[Input Repository] -->|Upload to R2| D[Discovery Service]
+    D -->|Asset Inventory| S[Agent S: Scout/Tech Detection]
+    S -->|Source Tech Detected| A[Agent A: Architect v2.0]
+    A -->|Forensics + Metadata| B[Human Triage Validation]
+    B -->|Approved Scope| C[Agent C: Interpreter]
+    C -->|Draft Code| F[Agent F: The Critic]
     F -->|Critique & Fix| F_Loop{Quality OK?}
-    F_Loop -->|Yes| P[Persistence (Git/DB)]
+    F_Loop -->|Yes| P[Persistence R2 + Supabase]
     F_Loop -->|No| C
     P -->|Final Assets| G[Agent G: Governance]
-    G -->|Docs & Lineage| Output[Documentation]
+    G -->|Certification + Docs| Output[COP Bundle]
+```
+
+---
+
+## 1.5 Prompt Laboratory (v3.5)
+
+**Nuevo en v3.5**: Sistema de gestión dinámica de prompts que permite optimización sin cambios de código.
+
+### Estructura
+```
+prompt_lab_export/
+├── core_agents/          # 7 agentes del sistema
+│   ├── agent_a_discovery/
+│   ├── agent_b_cartographer/
+│   ├── agent_c_interpreter/
+│   ├── agent_f_critic/
+│   ├── agent_g_governance/
+│   ├── agent_s_scout/
+│   └── coding_standards/
+├── origins/              # 9 tecnologías origen
+│   ├── ssis/
+│   ├── sqlserver/
+│   ├── oracle/
+│   ├── datastage/
+│   ├── informatica/
+│   ├── sapbods/
+│   ├── talend/
+│   ├── pentaho/
+│   └── mysql/
+└── destinations/         # 6 plataformas destino
+    ├── databricks/
+    ├── snowflake/
+    ├── fabric/
+    ├── bigquery/
+    ├── redshift/
+    └── salesforce/
+```
+
+### Knowledge Injection Pattern
+Cuando se detecta una tecnología (ej: "SQLSERVER"), el sistema:
+1. Carga `origins/sqlserver/config_v1.json`
+2. Extrae `dialect_instruction`: "TARGET SOURCE: T-SQL (SQL SERVER 2019)"
+3. Inyecta esta instrucción en el contexto de todos los agentes
+4. Configura el cartridge correspondiente para generación
+
+### Versionamiento
+- Cada prompt tiene `prompt_v1.md` como baseline
+- Optimizaciones futuras se guardan como `prompt_v2.md`, `prompt_v3.md`
+- El sistema puede hacer A/B testing entre versiones
+- Rollback instant
+
+áneo en caso de regresión
+
+### Contract Enforcement
+Cada agente tiene un `contract.json` que define la estructura JSON de salida:
+```json
+{
+  "contract_id": "agent_c_output_v1",
+  "version": 1,
+  "immutable_schema": {
+    "pyspark_code": "string",
+    "explanation": "string",
+    "assumptions": "array"
+  }
+}
 ```
 
 ---
 
 ## 2. Detalle de Agentes y Prompts
+
+### Agent S: El Scout (Technology Detection) → **NEW IN v3.5**
+**Misión:** Detectar automáticamente la tecnología origen durante el Triage analizando extensiones de archivo, sintaxis SQL, y patrones de código.
+
+**System Prompt Actual (`agent_s_scout.md`):**
+> "You are a Technology Scout specialized in identifying source platforms... Analyze file patterns, SQL dialects, and ETL tool signatures."
+
+**Capacidades:**
+1. **File Extension Analysis**: `.dtsx` → SSIS, `.dsx` → DataStage, `.sql` → SQL dialect detection
+2. **SQL Dialect Detection**: Distingue T-SQL vs PL/SQL vs MySQL basándose en sintaxis específica
+3. **ETL Tool Fingerprinting**: Identifica patrones de Informatica, Talend, Pentaho en archivos XML/JSON
+4. **Version Detection**: Extrae información de versión de metadatos de herramientas
+5. **Confidence Scoring**: Retorna un score de confianza (0-100) sobre la detección
+
+**Output JSON**:
+```json
+{
+  "detected_source": "SQLSERVER",
+  "confidence": 95,
+  "version_hint": "2019",
+  "dialect": "T-SQL",
+  "evidence": [
+    "Found .sql files with T-SQL specific syntax (TRY/CATCH, EXEC sp_)",
+    "Detected SSIS .dtsx packages"
+  ],
+  "suggested_target": "DATABRICKS"
+}
+```
+
+**Reglas Clave:**
+1. **Multi-Signal Analysis**: Combina múltiples señales (extensiones, sintaxis, metadata) para alta precisión
+2. **Fallback Strategy**: Si no puede detectar con certeza, solicita confirmación manual al usuario
+3. **Knowledge Injection**: Una vez detectado, activa la carga del prompt correspondiente de `origins/{tech}/`
+
+---
 
 ### Agent A: El Detective (Discovery Service) → **UPGRADED TO ARCHITECT v2.0**
 **Misión:** Ya no solo descubre archivos, ahora **infiere metadatos operacionales** automáticamente (Volume, PII, Latency).

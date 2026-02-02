@@ -1,0 +1,7 @@
+{
+  "tech_id": "sapbods",
+  "name": "SAP BODS",
+  "version": "v4.x",
+  "category": "extraction",
+  "config": {}
+}

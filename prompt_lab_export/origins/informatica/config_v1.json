@@ -1,0 +1,9 @@
+{
+  "tech_id": "informatica",
+  "name": "Informatica PowerCenter",
+  "version": "v10.x",
+  "category": "extraction",
+  "config": {
+    "xml_export": true
+  }
+}

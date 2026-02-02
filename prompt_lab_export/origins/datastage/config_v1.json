@@ -1,0 +1,7 @@
+{
+  "tech_id": "datastage",
+  "name": "IBM DataStage",
+  "version": "PX/v11.x",
+  "category": "extraction",
+  "config": {}
+}

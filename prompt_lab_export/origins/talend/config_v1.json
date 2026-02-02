@@ -1,0 +1,7 @@
+{
+  "tech_id": "talend",
+  "name": "Talend",
+  "version": "v8.x",
+  "category": "extraction",
+  "config": {}
+}

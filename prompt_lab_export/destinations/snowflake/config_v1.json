@@ -1,0 +1,10 @@
+{
+  "tech_id": "snowflake",
+  "name": "Snowflake",
+  "version": "Latest",
+  "category": "refinement",
+  "config": {
+    "warehouse": "COMPUTE_WH",
+    "dialect_instruction": "TARGET DIALECT: SNOWFLAKE (SNOWPARK PYTHON + ANSI SQL)"
+  }
+}

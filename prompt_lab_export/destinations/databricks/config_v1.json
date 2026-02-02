@@ -1,0 +1,10 @@
+{
+  "tech_id": "databricks",
+  "name": "Databricks (PySpark)",
+  "version": "13.3 LTS",
+  "category": "refinement",
+  "config": {
+    "catalog": "hive_metastore",
+    "dialect_instruction": "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
+  }
+}

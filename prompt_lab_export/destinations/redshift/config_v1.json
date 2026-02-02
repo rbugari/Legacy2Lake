@@ -1,0 +1,9 @@
+{
+  "tech_id": "redshift",
+  "name": "AWS Redshift",
+  "version": "Latest",
+  "category": "refinement",
+  "config": {
+    "dialect_instruction": "TARGET DIALECT: AWS REDSHIFT (ANSI SQL)"
+  }
+}

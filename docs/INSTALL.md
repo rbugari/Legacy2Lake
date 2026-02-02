@@ -27,10 +27,37 @@ The backend handles logic, AI orchestration, and cloud-native storage operations
     ```
 
 3.  **Environment Configuration**:
-    - Ensure your `.env` includes the following mandatory keys:
-        - **Supabase**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-        - **Cloudflare R2**: `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`.
-        - **AI**: Azure OpenAI credentials (`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`).
+    Create a `.env` file in the project root with the following mandatory keys:
+    
+    **Supabase (Metadata Store)**:
+    ```env
+    SUPABASE_URL=https://your-project.supabase.co
+    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+    ```
+    
+    **Cloudflare R2 (Object Storage)** - v3.5 Cloud-Native:
+    ```env
+    R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+    R2_ACCESS_KEY_ID=your-r2-access-key
+    R2_SECRET_ACCESS_KEY=your-r2-secret-key
+    R2_BUCKET_NAME=legacy2lake-artifacts
+    ```
+    > The R2 bucket stores all source artifacts, generated code, and certified output packages. Ensure it's created before starting.
+    
+    **AI Provider (Azure OpenAI or others)**:
+    ```env
+    AZURE_OPENAI_API_KEY=your-azure-key
+    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+    AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o  # or your deployment
+    AZURE_OPENAI_API_VERSION=2024-05-01-preview
+    ```
+    
+    **Optional Providers** (can be configured in Admin UI):
+    ```env
+    OPENAI_API_KEY=sk-...          # Direct OpenAI
+    ANTHROPIC_API_KEY=sk-ant-...   # Claude
+    GROQ_API_KEY=gsk_...            # Groq (Llama)
+    ```
 
 4.  **Start the Server**:
     ```bash
@@ -75,4 +102,43 @@ The frontend provides the main dashboard, system administration, and artifact ex
 1.  Open your browser to `http://localhost:3005`.
 2.  Login with your configured credentials (or demo/demo if in dev mode).
 3.  Navigate to **System Administration** and check that the **Origins** and **Destinations** lists are populated.
-4.  Navigate to **Configuración de Inteligencia** and try the **Validation Playground** to ensure AI connectivity.
+4.  Navigate to **Configuración de Inteligencia** and verify AI connectivity.
+
+---
+
+## 4. Post-Installation Configuration
+
+### A. Provider Setup (Admin UI)
+
+After installation, configure LLM providers in the Admin Panel (`/admin`):
+
+1. **Add API Keys**: Navigate to **Provider Vault** and add keys for OpenAI, Groq, or other providers
+2. **Create Models**: In **Model Catalog**, register available models (e.g., `gpt-4o`, `llama-3.1-70b`)
+3. **Agent Assignments**: In **Agent Matrix**, assign specific models to each agent (A, B, C, F, G, S)
+
+### B. Technology Configuration
+
+Configure supported source and destination technologies:
+
+1. **Origins**: Ensure `utm_supported_techs` table has entries for your source systems (SQL Server, Oracle, SSIS, etc.)
+2. **Destinations**: Verify target platforms are configured (Databricks, Snowflake, Fabric, etc.)
+3. **Cartridges**: Check that cartridge files exist in `apps/utm/cartridges/` for your technologies
+
+### C. R2 Bucket Structure
+
+The system will automatically create the following structure in your R2 bucket:
+
+```
+<bucket-name>/
+├── tenant-<uuid>/              # Per-tenant isolation
+│   ├── projects/
+│   │   ├── <project-id>/
+│   │   │   ├── source/         # Uploaded artifacts
+│   │   │   ├── generated/      # Output code
+│   │   │   └── packages/       # COP bundles
+```
+
+---
+
+> [!TIP]
+> **Multi-Tenant Setup**: Each user gets isolated storage. The `tenant_id` from login determines the R2 prefix and RLS policies.
