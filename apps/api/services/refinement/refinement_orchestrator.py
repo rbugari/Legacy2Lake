@@ -76,10 +76,10 @@ class RefinementOrchestrator:
             "OpsAuditor": o_info
         }
         
-        timestamp_start = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp_start = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         async def _log(msg: str, step: str = None):
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             model_label = models.get(step, "System")
             formatted_msg = f"[{timestamp}] [{step or 'SYSTEM'}] [{model_label}] {msg}"
             
