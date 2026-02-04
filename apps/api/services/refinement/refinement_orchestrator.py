@@ -99,8 +99,10 @@ class RefinementOrchestrator:
             
             return formatted_msg
         
-        # Store persistence for use in _check_cancellation
+        # Store persistence, storage, and base_path for use in run_refinement
         self.persistence = persistence
+        self.storage = storage
+        self.base_path = base_path
         
         # Execute the refinement pipeline - use project_name not project_uuid for R2 paths
         return await self.run_refinement(self.project_name, models)
@@ -122,7 +124,21 @@ class RefinementOrchestrator:
 
         async def _log(msg: str, agent: str = "SYSTEM"):
             formatted_msg = f"[{datetime.now().strftime('%H:%M:%S')}] [{agent}] {msg}"
+            
+            # Log to database
             await self.persistence.log_execution(project_id, "REFINEMENT", msg, step=agent)
+            
+            # Also append to R2 log file for persistence
+            try:
+                log_key = f"{self.base_path.rstrip('/')}/refinement.log"
+                existing = ""
+                try:
+                    existing = self.storage.read_file(log_key) or ""
+                except: pass
+                self.storage.save_file(log_key, existing + formatted_msg + "\n")
+            except Exception as e:
+                print(f"WARNING: Could not write log to R2: {e}")
+            
             return formatted_msg
         
         local_log = [] 
