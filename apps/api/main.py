@@ -53,16 +53,18 @@ from routers.lab import router as lab_router
 app = FastAPI(title="Legacy2Lake API", version="2.0.0")
 
 # Configure CORS to allow requests from Vercel frontend
+# Using permissive configuration for production deployment
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_origins=[
-        "https://legacy2-lake.vercel.app",
-        "http://localhost:3000",  # For local development
+        "http://localhost:3000",
         "http://localhost:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 from fastapi import Request, Header, Depends
