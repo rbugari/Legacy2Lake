@@ -396,10 +396,13 @@ class SupabasePersistence:
             project_settings = item.get("settings", {}) or {}
             item["lines_generated"] = project_settings.get("lines_generated", 0)
             
-            # Extract source_tech and target_tech from config for dashboard display
+            # Extract source_tech and target_tech from settings or config for dashboard display
             project_config = item.get("config", {}) or {}
-            item["source_tech"] = project_config.get("source_tech") or project_config.get("origin_tech")
-            item["target_tech"] = project_config.get("target_tech") or project_config.get("dest_tech")
+            project_settings = item.get("settings", {}) or {}
+            
+            # Priority: settings (where get_or_create_project saves it) then config
+            item["source_tech"] = project_settings.get("source_tech") or project_config.get("source_tech") or project_config.get("origin_tech")
+            item["target_tech"] = project_settings.get("target_tech") or project_config.get("target_tech") or project_config.get("dest_tech")
             
         return projects
 
