@@ -7,7 +7,7 @@
     "rewrites": [
         {
             "source": "/api/:path*",
-            "destination": "/api/:path*"
+            "destination": "https://legacy2lake-api.railway.app/api/:path*"
         }
     ],
     "headers": [
