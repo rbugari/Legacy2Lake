@@ -393,7 +393,8 @@ class SupabasePersistence:
             item["progress"] = stage_map.get(str(item.get("stage", "1")), 0)
 
             # Release 3.7: Expose Lines Generated for Dashboard
-            item["lines_generated"] = settings.get("lines_generated", 0)
+            project_settings = item.get("settings", {}) or {}
+            item["lines_generated"] = project_settings.get("lines_generated", 0)
             
         return projects
 
