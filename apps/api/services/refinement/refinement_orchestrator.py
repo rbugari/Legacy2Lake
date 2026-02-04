@@ -99,6 +99,12 @@ class RefinementOrchestrator:
             
             return formatted_msg
         
+        # Store persistence for use in _check_cancellation
+        self.persistence = persistence
+        
+        # Execute the refinement pipeline
+        return await self.run_refinement(self.project_uuid, models)
+        
     async def _check_cancellation(self, project_id: str):
         """Check if cancellation has been requested for this project."""
         try:
