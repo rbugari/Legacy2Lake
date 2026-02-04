@@ -443,6 +443,10 @@ class MigrationOrchestrator:
         # Fix for missing variables (Migration from SSIS to Generic)
         target_tech = settings.get("target_tech", "pyspark")
         
+        # Initialize mesh if not already defined (topology information)
+        # TODO: mesh should be constructed during Agent G phase
+        mesh = {"nodes": [], "edges": [], "phases": []}
+        
         # Construction of mesh was moved up to Agent G section
         manifest = self._generate_manifest(results, mesh, target_tech)
         self._save_artifact("MANIFEST.json", json.dumps(manifest, indent=2))
