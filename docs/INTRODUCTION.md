@@ -1,8 +1,8 @@
 # Welcome to Legacy2Lake 🚀
 
-**Legacy2Lake** (v3.5) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
+**Legacy2Lake** (v3.6) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
 
-> **v3.5 Cloud-Native Reset**: Complete rebuild with **Cloudflare R2 storage**, **Supabase multi-tenancy**, and **dynamic prompt management** for enterprise-grade scalability and security.
+> **v3.6 Latest**: Adds UI refinements (resizable drafting explorer), pipeline stability (cartridge sync fix), and compliance improvements (dynamic rules from database).
 
 ## 1. The Vision: "Shift the T" 🧬
 
@@ -36,7 +36,7 @@ To solve the complexity of $N$ source technologies and $M$ target platforms, Leg
 - **Component**: **Admin Panel** & `utm_global_config`.
 - **Output**: Dynamic runtime configuration for the entire fleet.
 
-### E. Cloud-Native Storage (v3.5)
+### E. Cloud-Native Storage (v3.6)
 - **Mission**: Hyperscale object storage with zero local disk dependency.
 - **Component**: **Cloudflare R2** (S3-compatible) + **Supabase** metadata cache.
 - **Features**:
@@ -45,7 +45,7 @@ To solve the complexity of $N$ source technologies and $M$ target platforms, Leg
   - **File Inventory**: `utm_file_inventory` table provides fast listing without S3 API calls
   - **Signed URLs**: Secure, time-limited download links for artifact delivery
 
-### F. Multi-Tenancy & Security (v3.5)
+### F. Multi-Tenancy & Security (v3.6)
 - **Zero-Trust Architecture**: Row-Level Security (RLS) policies enforce tenant isolation
 - **Provider Vault**: Encrypted API keys stored in `utm_provider_vault` per tenant
 - **Agent Matrix**: Each tenant configures their own LLM model assignments
@@ -66,9 +66,9 @@ The platform operates via specialized agents that interact through the Metadata 
 | **Critic (Agent F)** | **QA & Refinement** | Senior architect that optimizes code for performance and security. |
 | **Governor (Agent G)** | **Governance** | Generates modernization certificates and column-level lineage. |
 
-### Prompt Laboratory (v3.5)
+### Prompt Laboratory (v3.6)
 
-Legacy2Lake v3.5 introduces a **dynamic prompt management system** that allows optimization of agent behavior without code changes:
+Legacy2Lake v3.6 continues the **dynamic prompt management system** introduced in v3.5, with enhanced compliance rule management:
 
 - **Core Agents**: 7 system prompts for A, B, C, D, F, G, S
 - **Origin Knowledge**: 9 source technology prompts (SSIS, SQL Server, Oracle, DataStage, Informatica, SAP BODS, Talend, Pentaho, MySQL)

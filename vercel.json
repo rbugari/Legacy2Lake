@@ -1,0 +1,35 @@
+{
+    "buildCommand": "cd apps/web && npm install && npm run build",
+    "outputDirectory": "apps/web/.next",
+    "framework": "nextjs",
+    "installCommand": "cd apps/web && npm install",
+    "devCommand": "cd apps/web && npm run dev",
+    "rewrites": [
+        {
+            "source": "/api/:path*",
+            "destination": "https://your-backend.railway.app/api/:path*"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "X-Frame-Options",
+                    "value": "DENY"
+                },
+                {
+                    "key": "X-Content-Type-Options",
+                    "value": "nosniff"
+                },
+                {
+                    "key": "X-XSS-Protection",
+                    "value": "1; mode=block"
+                }
+            ]
+        }
+    ],
+    "env": {
+        "NEXT_PUBLIC_API_URL": "@backend_url"
+    }
+}

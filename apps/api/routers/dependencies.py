@@ -55,7 +55,15 @@ async def get_identity(
 
     # 2. Standard Identity
     # In a simple SaaS, we assume the frontend sends the correct headers.
-    # For extra security, we could verify the tenant_id exists here.
+    # [Fix] Sanitize non-UUID tenant_id which causes database syntax errors (Release 3.6)
+    if x_tenant_id:
+        import re
+        # Basic UUID regex: 8-4-4-4-12 hex chars
+        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+        if not uuid_pattern.match(x_tenant_id):
+            print(f"[AUTH] Sanitizing non-UUID tenant_id: {x_tenant_id}")
+            x_tenant_id = None
+        
     return {
         "tenant_id": x_tenant_id, 
         "client_id": x_client_id,

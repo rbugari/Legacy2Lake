@@ -50,7 +50,7 @@ export default function LoginPage() {
         <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
             <div className="w-full max-w-md space-y-8 rounded-xl bg-slate-900 p-8 shadow-2xl border border-slate-800">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-white">Shift-T</h1>
+                    <h1 className="text-3xl font-bold text-white">Legacy2Lake</h1>
                     <p className="mt-2 text-slate-400">Sign in to your account</p>
                 </div>
 
@@ -64,7 +64,7 @@ export default function LoginPage() {
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                                placeholder="DEMO"
+                                placeholder="Username"
                             />
                         </div>
                         <div>
@@ -104,9 +104,6 @@ export default function LoginPage() {
                     </button>
                 </form>
 
-                <div className="mt-4 text-center text-xs text-slate-500">
-                    <p>Demo Credentials: <b>DEMO</b> / <b>DEMO123!</b></p>
-                </div>
             </div>
         </div>
     );

@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+try:
+    from services.persistence_service import SupabasePersistence
+except ImportError:
+    from apps.api.services.persistence_service import SupabasePersistence
 
 class Cartridge(ABC):
     """
@@ -52,3 +56,44 @@ class Cartridge(ABC):
         Defaults to returning an empty string.
         """
         return ""
+
+    def get_rules(self, node_data: Dict[str, Any]) -> str:
+        """
+        Returns specific architectural rules for the LLM based on the node context.
+        Prioritizes rules injected from utm_system_catalog via factory.
+        """
+        # 1. Check for DB-injected rules (from Factory)
+        tech_config = self.registry.get('tech_config', {}).get('compliance_rules', {})
+        base_rules = tech_config.get('base', "")
+        
+        if base_rules:
+            source_tech = str(node_data.get("source_tech", "mssql")).lower()
+            overrides = tech_config.get('source_overrides', {})
+            
+            # Find matching source tech overrides
+            override_rules = ""
+            for key, rules in overrides.items():
+                if key in source_tech:
+                    override_rules += f"\n{rules}"
+            
+            return f"{base_rules}\n{override_rules}"
+            
+        return ""
+
+    def _validate_and_normalize_pk(self, pk_columns) -> List[str]:
+        """
+        Ensures pk_columns is always a valid non-empty list.
+        
+        Args:
+            pk_columns: Primary key columns (list, str, or None)
+            
+        Returns:
+            List of PK column names (default ["id"] if invalid)
+        """
+        if not pk_columns:
+            return ["id"]  # Safe default
+        if isinstance(pk_columns, str):
+            return [pk_columns]
+        if isinstance(pk_columns, list) and len(pk_columns) > 0:
+            return pk_columns
+        return ["id"]  # Fallback for any other invalid type

@@ -29,38 +29,25 @@ class ConfigPayload(BaseModel):
 # --- Helper to get unified cartridge list (DB Driven) ---
 async def get_all_cartridges():
     db = SupabasePersistence()
-    # Fetch from Static Catalog (table: utm_supported_techs) in DB
+    # Fetch from Unified Catalog
     techs = await db.list_supported_techs()
-    
-    # Fetch from Instance Config (table: utm_global_config) for overrides (enabled/disabled)
-    global_config = await db.get_global_config("cartridges") or {}
     
     formatted = []
     for t in techs:
-        # DB Columns: tech_id, role, label, description, version, is_active
-        tid = t["tech_id"].lower()
-        role = t["role"].upper() # SOURCE / TARGET
-        
-        # Determine defaults
-        is_origin = (role == "SOURCE")
-        
+        # DB Columns in utm_system_catalog: id, tech_id, name, type, category, version, config, config_schema, is_active, description
         item = {
-            "id": tid,
-            "name": t["label"],
+            "id": str(t["id"]),
+            "tech_id": t["tech_id"],
+            "name": t["name"],
             "version": t.get("version", "Latest"),
             "desc": t.get("description", ""),
             "enabled": t.get("is_active", True),
-            "category": "extraction" if is_origin else "refinement",
-            "type": "origin" if is_origin else "destination",
-            "subtype": tid
+            "category": t.get("category", "extraction"),
+            "type": t.get("type", "origin"),
+            "config": t.get("config", {}),
+            "config_schema": t.get("config_schema", {}),
+            "subtype": t["tech_id"] # Backward compatibility
         }
-        
-        # Apply Overrides from Global Config (if any)
-        if tid in global_config:
-            saved = global_config[tid]
-            if "enabled" in saved: item["enabled"] = saved["enabled"]
-            if "config" in saved: item["config"] = saved["config"]
-            
         formatted.append(item)
         
     return formatted
@@ -126,62 +113,37 @@ async def list_prompts():
 @router.post("/cartridges")
 async def add_cartridge(payload: CartridgeConfig):
     db = SupabasePersistence()
-    config = await db.get_global_config("cartridges") or {}
-    
-    # Generate ID
-    new_id = f"custom-{payload.subtype}-{len(config)}"
     
     entry = {
-        "id": new_id,
         "name": payload.name,
         "type": payload.type,
-        "subtype": payload.subtype,
+        "tech_id": payload.subtype.lower(),
         "version": payload.version,
-        "desc": "Custom Cartridge",
-        "enabled": True,
+        "is_active": True,
         "config": payload.config,
         "category": "extraction" if payload.type == "origin" else "refinement"
     }
     
-    config[new_id] = entry
-    await db.set_global_config("cartridges", config)
-    return {"success": True, "id": new_id}
+    res = db.client.table("utm_system_catalog").insert(entry).execute()
+    return {"success": True, "id": res.data[0]["id"]}
 
 @router.post("/cartridges/{cartridge_id}/toggle")
 async def toggle_cartridge(cartridge_id: str, payload: TogglePayload):
     db = SupabasePersistence()
-    config = await db.get_global_config("cartridges") or {}
-    
-    if cartridge_id not in config:
-        # If it's a default one not yet in config, we need to add it to config first
-        # But for simpler logic, we assume we just set the override
-        config[cartridge_id] = {}
-        
-    config[cartridge_id]["enabled"] = (payload.status == "active")
-    await db.set_global_config("cartridges", config)
+    is_active = (payload.status == "active")
+    db.client.table("utm_system_catalog").update({"is_active": is_active}).eq("id", cartridge_id).execute()
     return {"success": True}
 
 @router.post("/cartridges/{cartridge_id}/config")
 async def update_cartridge_config(cartridge_id: str, payload: ConfigPayload):
     db = SupabasePersistence()
-    config = await db.get_global_config("cartridges") or {}
-    
-    if cartridge_id not in config:
-        config[cartridge_id] = {}
-        
-    config[cartridge_id]["config"] = payload.config
-    await db.set_global_config("cartridges", config)
+    db.client.table("utm_system_catalog").update({"config": payload.config}).eq("id", cartridge_id).execute()
     return {"success": True}
 
 @router.delete("/cartridges/{cartridge_id}")
 async def delete_cartridge(cartridge_id: str):
     db = SupabasePersistence()
-    config = await db.get_global_config("cartridges") or {}
-    
-    if cartridge_id in config:
-        del config[cartridge_id]
-        await db.set_global_config("cartridges", config)
-        
+    db.client.table("utm_system_catalog").delete().eq("id", cartridge_id).execute()
     return {"success": True}
 
 # --- Validation / Test Endpoint ---
@@ -257,11 +219,12 @@ async def validate_agent(payload: ValidationRequest, db: SupabasePersistence = D
 
 # --- Stage 0.5 Scout ---
 class ScoutRequest(BaseModel):
+    project_id: str
     file_list: List[str]
 
 @router.post("/scout/assess")
 async def assess_repository(payload: ScoutRequest, db: SupabasePersistence = Depends(get_db)):
-    """Triggers Agent S to assess repository completeness."""
+    """Triggers Agent S to assess repository completeness and saves result."""
     
     if not payload.file_list or len(payload.file_list) == 0:
         return {
@@ -276,6 +239,13 @@ async def assess_repository(payload: ScoutRequest, db: SupabasePersistence = Dep
     
     try:
         result = await agent_s.assess_repository(payload.file_list)
+        
+        # Release 3.7: Persist Forensic Assessment to Project Settings for Reporting
+        if "error" not in result:
+             await db.update_project_settings(payload.project_id, {
+                 "scout_assessment": result
+             })
+             
         return result
     except Exception as e:
         return {

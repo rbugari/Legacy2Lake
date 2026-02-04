@@ -27,10 +27,13 @@ class PackagingService:
         if not project_name:
             raise ValueError(f"Project not found: {self.project_id}")
 
+        # source_dir is now a key prefix in R2 or local path
         source_dir = PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
         
-        # Create temp staging area
-        staging_dir = os.path.join(source_dir, "_package_staging")
+        # Create temp staging area (Local)
+        # We need a real local temp dir for the zip building process
+        import tempfile
+        staging_dir = os.path.join(tempfile.gettempdir(), f"utm_package_{self.project_id}_{datetime.datetime.now().timestamp()}")
         if os.path.exists(staging_dir):
             PersistenceService.robust_rmtree(staging_dir)
         os.makedirs(staging_dir)
@@ -42,7 +45,7 @@ class PackagingService:
         # 1. Create Directory Structure
         dirs = [
             "config",
-            "src/bronze", "src/silver", "src/gold",
+            "src/bronze", "src/silver", "src/gold", "src/orchestration",
             "sql/ddl", "sql/dml",
             "docs/lineage", "docs/data_dictionary",
             "tests"
@@ -54,6 +57,7 @@ class PackagingService:
         await self._generate_config(root_dir)
         
         # 3. Organize Source Code (Refinement -> src)
+        # We need to DOWNLOAD files from R2/Local Storage to this temp dir
         await self._organize_src(source_dir, root_dir)
         
         # 4. Generate Tests
@@ -70,12 +74,13 @@ class PackagingService:
         
         # Convert DB rows to Dict
         config_dict = {}
-        for row in registry:
-            cat = row.get("category", "general")
-            key = row.get("key")
-            val = row.get("value")
-            if cat not in config_dict: config_dict[cat] = {}
-            config_dict[cat][key] = val
+        if registry:
+            for row in registry:
+                cat = row.get("category", "general")
+                key = row.get("key")
+                val = row.get("value")
+                if cat not in config_dict: config_dict[cat] = {}
+                config_dict[cat][key] = val
             
         # env_config.yaml
         env_config = {
@@ -97,29 +102,62 @@ class PackagingService:
         with open(os.path.join(root_dir, "config", "schema_mappings.json"), "w") as f:
             json.dump(mappings, f, indent=2)
 
-    async def _organize_src(self, source_dir: str, root_dir: str):
-        """Moves files from Refinement folders to src/{layer}."""
-        # Mapping internal folders to new structure
-        # Assuming internal: Refinement/Bronze, Refinement/Silver ...
+    async def _organize_src(self, source_prefix: str, root_dir: str):
+        """Moves files from Refinement folders to src/{layer} using StorageProvider."""
+        storage = PersistenceService.get_storage()
         
+        # Refinement prefix
+        refinement_prefix = f"{PersistenceService.STAGE_REFINEMENT.capitalize()}" # Support both casing
+
         layer_map = {
-            "Bronze": "src/bronze",
-            "Silver": "src/silver",
-            "Gold": "src/gold"
+            f"{refinement_prefix}/Bronze": "src/bronze",
+            "src/bronze": "src/bronze", # Handle variations
+            f"{refinement_prefix}/Silver": "src/silver",
+            "src/silver": "src/silver",
+            f"{refinement_prefix}/Gold": "src/gold",
+            f"{refinement_prefix}/Orchestration": "src/orchestration"
         }
         
-        refinement_dir = os.path.join(source_dir, "Refinement")
-        if not os.path.exists(refinement_dir):
-            return
+        # List all files recursively from source (R2/Local)
+        # source_prefix is e.g. "tenant/proj/"
+        all_files = storage.list_files(source_prefix, recursive=True)
+        
+        # We need to flatten the list if list_files returns tree
+        # Current implementation of list_files returns tree structure.
+        
+        def traverse(nodes, parent_path=""):
+             for node in nodes:
+                if node["type"] == "folder":
+                    traverse(node.get("children", []), os.path.join(parent_path, node["name"]))
+                else:
+                    # Check if file is in one of the layers
+                    # node["path"] is full key/path from storage
+                    # we need to check if the Relative Path matches our layers
+                    
+                    # We can use the path logic from node["path"]
+                    # If R2, node["path"] is "tenant/proj/Refinement/Bronze/file.py"
+                    # We need to match "Refinement/Bronze" subpart
+                    
+                    # Simpler: check if node["path"] contains mapped folders
+                    # Be careful with partial matches
+                    
+                    for src_layer, target_sub in layer_map.items():
+                         # Normalize separators
+                         norm_path = node["path"].replace("\\", "/")
+                         # Check if path contains the src layer signature
+                         # e.g. "/Refinement/Bronze/" or "Refinement/Bronze/"
+                         if f"/{src_layer}/" in norm_path or norm_path.startswith(f"{src_layer}/") or norm_path.endswith(f"/{src_layer}") or f"/{src_layer.lower()}/" in norm_path.lower():
+                             # Found a match
+                             # Read content
+                             content = storage.read_file(node["path"], is_binary=True)
+                             if content:
+                                 target_path = os.path.join(root_dir, target_sub, node["name"])
+                                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                                 with open(target_path, "wb") as f:
+                                     f.write(content)
+                             break # Handled
 
-        for internal_layer, target_subpath in layer_map.items():
-            src_layer_path = os.path.join(refinement_dir, internal_layer)
-            if os.path.exists(src_layer_path):
-                target_path = os.path.join(root_dir, target_subpath)
-                # Copy files
-                for f in os.listdir(src_layer_path):
-                    if f.endswith(".py") or f.endswith(".sql"):
-                        shutil.copy2(os.path.join(src_layer_path, f), target_path)
+        traverse(all_files, "")
 
     async def _generate_tests(self, root_dir: str):
         """Generates unit_tests.py boilerplate and data_quality.sql."""
@@ -157,8 +195,8 @@ if __name__ == '__main__':
         with open(os.path.join(root_dir, "tests", "data_quality.sql"), "w") as f:
             f.write(dq_sql_content.strip())
 
-    async def _generate_docs(self, source_dir: str, root_dir: str, project_name: str):
-        """Generates README and copies existing documentation."""
+    async def _generate_docs(self, source_prefix: str, root_dir: str, project_name: str):
+        """Generates README and copies existing documentation using StorageProvider."""
         
         # 1. README.md
         readme_content = f"""# {project_name} - Modernization Project
@@ -186,7 +224,25 @@ This package contains the modernized data engineering logic transpiled from lega
         with open(os.path.join(root_dir, "README.md"), "w") as f:
             f.write(readme_content)
             
-        # 2. Copy existing Markdown docs to docs/
-        for f in os.listdir(source_dir):
-            if f.endswith(".md"):
-                shutil.copy2(os.path.join(source_dir, f), os.path.join(root_dir, "docs"))
+        # 2. Copy existing Markdown docs
+        # List files from storage
+        storage = PersistenceService.get_storage()
+        try:
+            # We list recursive from root, filtered by .md
+            # Or just list top level if that's where docs are?
+            # Assuming docs are at project root or in a 'Docs' folder?
+            # Existing code looked at source_dir (root).
+            
+            all_files = storage.list_files(source_prefix, recursive=False) 
+            # list_files returns a tree or flat list? 
+            # implementation returns recursive tree structure.
+            # recursive=False means just top level children. OK.
+            
+            for node in all_files:
+                if node["type"] == "file" and node["name"].endswith(".md"):
+                    content = storage.read_file(node["path"], is_binary=True)
+                    if content:
+                         with open(os.path.join(root_dir, "docs", node["name"]), "wb") as f:
+                             f.write(content)
+        except Exception as e:
+            print(f"Error copying docs: {e}")

@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { Save, RefreshCw, Settings, Type, Folder, Lock, AlertTriangle } from 'lucide-react';
-import { API_BASE_URL } from '../../lib/config';
+import { fetchWithAuth } from '../../lib/auth-client';
 
 interface DesignRegistryPanelProps {
     projectId: string;
@@ -16,7 +16,7 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
     const fetchRegistry = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`);
+            const res = await fetchWithAuth(`/projects/${projectId}/registry`);
             const data = await res.json();
             if (data.registry) {
                 setRegistry(data.registry);
@@ -38,7 +38,7 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
 
         setSaving(true);
         try {
-            await fetch(`${API_BASE_URL}/projects/${projectId}/registry`, {
+            await fetchWithAuth(`/projects/${projectId}/registry`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ category, key, value: newValue })

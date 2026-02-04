@@ -95,8 +95,9 @@ print(f"Ingested to Bronze: {{target_table}}")
     def generate_silver(self, table_metadata: Dict[str, Any]) -> str:
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
         output_table_name = table_metadata.get("output_table_name", source_path.stem)
-        pk_columns = table_metadata.get("pk_columns", ["id"])
-        if isinstance(pk_columns, str): pk_columns = [pk_columns]
+        
+        # Validate and normalize PK columns
+        pk_columns = self._validate_and_normalize_pk(table_metadata.get("pk_columns", []))
         
         merge_condition = " AND ".join([f"target.{pk} = source.{pk}" for pk in pk_columns])
 

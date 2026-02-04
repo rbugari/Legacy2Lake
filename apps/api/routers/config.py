@@ -1,15 +1,10 @@
-from fastapi import APIRouter, HTTPException
-from supabase import create_client, Client
-import os
+from fastapi import APIRouter, HTTPException, Depends
+from services.persistence_service import SupabasePersistence
+from routers.dependencies import get_db
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
-
-# Supabase Setup (Duplicate from main for now, ideal refactor: shared dependency)
-url: str = os.getenv("SUPABASE_URL", "").strip()
-key: str = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
-supabase: Client = create_client(url, key)
 
 class SupportedTech(BaseModel):
     tech_id: str
@@ -21,12 +16,20 @@ class SupportedTech(BaseModel):
     config_schema: Optional[Dict[str, Any]] = None
 
 @router.get("/technologies", response_model=List[SupportedTech])
-async def get_supported_technologies():
+async def get_supported_technologies(db: SupabasePersistence = Depends(get_db)):
     """
-    Returns valid source/target technologies from metadata store.
+    Returns valid source/target technologies from unified catalog.
     """
     try:
-        response = supabase.table("utm_supported_techs").select("*").eq("is_active", True).execute()
-        return response.data
+        # Use centralized list_system_catalog (v3.6 Consistency)
+        data = await db.list_system_catalog()
+        
+        # Map for backward compatibility if needed
+        for item in data:
+            if "role" not in item:
+                item["role"] = "SOURCE" if item["type"] == "origin" else "TARGET"
+            if "label" not in item:
+                item["label"] = item["name"]
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

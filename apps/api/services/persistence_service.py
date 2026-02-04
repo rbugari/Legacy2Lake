@@ -273,6 +273,16 @@ class SupabasePersistence:
              print(f"DEBUG: Initializing Supabase with Service Role Key (starts with {key[:5]}...)")
 
         self.client: Client = create_client(url, key)
+        
+        # [Release 3.6] Sanitize tenant_id: Ensure it's a valid UUID or None
+        # This prevents DB syntax errors when non-UUID strings (like usernames) leak into identity headers.
+        if tenant_id:
+             import re
+             uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+             if not uuid_pattern.match(tenant_id):
+                 print(f"DEBUG: SupabasePersistence sanitizing non-UUID tenant_id: {tenant_id}")
+                 tenant_id = None
+                 
         self.tenant_id = tenant_id
         self.client_id = client_id
 
@@ -382,12 +392,43 @@ class SupabasePersistence:
             }
             item["progress"] = stage_map.get(str(item.get("stage", "1")), 0)
 
-            # Release 3.6: Expose Tech Stack for Dashboard
-            settings = item.get("settings") or {}
-            item["source_tech"] = settings.get("source_tech")
-            item["target_tech"] = settings.get("target_tech")
+            # Release 3.7: Expose Lines Generated for Dashboard
+            item["lines_generated"] = settings.get("lines_generated", 0)
             
         return projects
+
+    async def list_supported_techs(self, role: str = None) -> List[Dict[str, Any]]:
+        """Lists supported source or target technologies from the system catalog."""
+        try:
+            query = self.client.table("utm_supported_techs").select("tech_id, label, description, version, logo_url").eq("is_active", True)
+            if role:
+                query = query.eq("role", role)
+            res = query.execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing supported techs: {e}")
+            return []
+
+    async def list_agents(self) -> List[Dict[str, Any]]:
+        """Lists agents from the utm_agent_catalog."""
+        try:
+            res = self.client.table("utm_agent_catalog").select("*").eq("is_active", True).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing agents: {e}")
+            return []
+
+    async def list_system_catalog(self, tech_type: str = None) -> List[Dict[str, Any]]:
+        """Lists technologies from the utm_system_catalog (Metadata)."""
+        try:
+            query = self.client.table("utm_system_catalog").select("*").eq("is_active", True)
+            if tech_type:
+                query = query.eq("type", tech_type)
+            res = query.execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing system catalog: {e}")
+            return []
 
     async def delete_project(self, project_id: str) -> bool:
         """Deletes the project and its assets from the database."""
@@ -458,6 +499,12 @@ class SupabasePersistence:
             if res.data:
                 item = res.data[0]
                 item["id"] = item["project_id"]
+                
+                # Enrich with Tech Stack for easy access
+                settings = item.get("settings") or {}
+                item["source_tech"] = settings.get("source_tech")
+                item["target_tech"] = settings.get("target_tech")
+                
                 return item
         except Exception:
             pass
@@ -749,6 +796,29 @@ class SupabasePersistence:
             print(f"Error updating settings for {project_id}: {e}")
             return False
 
+    async def update_project_metadata(self, project_id: str, metadata: Dict[str, Any]) -> bool:
+        """Updates arbitrary metadata on the project record."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id: return False
+        try:
+            self.client.table("utm_projects").update(metadata).eq("project_id", resolved_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error updating metadata for {project_id}: {e}")
+            return False
+
+    async def check_cancellation(self, project_id: str) -> bool:
+        """Checks if cancellation has been requested for a project."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id: return False
+        try:
+            res = self.client.table("utm_projects").select("cancellation_requested").eq("project_id", resolved_id).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0].get("cancellation_requested", False)
+            return False
+        except Exception:
+            return False
+
     async def save_asset_context(self, project_id: str, source_path: str, notes: str, rules: Dict[str, Any] = None) -> bool:
         """Saves or updates human context for a specific asset."""
         data = {
@@ -826,31 +896,76 @@ class SupabasePersistence:
     # Release 3.5 Phase 3: Universal Persistence (Prompts & Catalogs)
     # ----------------------------------------------------------------
 
-    async def get_prompt(self, prompt_id: str) -> str:
-        """Fetching prompt content from DB with local file fallback."""
+    async def get_prompt(self, prompt_id: str, version: Optional[int] = None) -> str:
+        """
+        Fetching prompt content from DB with local file fallback and versioning support.
+        Supports Tenant-Priority: Fetches tenant-specific prompt if exists, otherwise global (tenant_id is NULL).
+        """
         try:
-            print(f"DEBUG: Fetching prompt '{prompt_id}' from DB...")
-            res = self.client.table("utm_prompts").select("content").eq("prompt_id", prompt_id).execute()
+            print(f"DEBUG: Fetching prompt '{prompt_id}' (Tenant: {self.tenant_id or 'GLOBAL'}) from DB...")
+            
+            query = self.client.table("utm_prompts").select("content, version_number, tenant_id")
+            query = query.eq("prompt_id", prompt_id)
+            
+            if self.tenant_id:
+                # [Release 3.6] Support Global Fallback: Query matches my tenant OR is null
+                # We sort by tenant_id DESC to ensure specific UUID comes before NULL
+                query = query.or_(f"tenant_id.eq.{self.tenant_id},tenant_id.is.null")
+                query = query.order("tenant_id", desc=True)
+            else:
+                # Strictly global
+                query = query.is_("tenant_id", "null")
+            
+            if version:
+                query = query.eq("version_number", version)
+            else:
+                query = query.eq("is_active", True)
+                
+            res = query.execute()
+            
             if res.data and res.data[0].get("content"):
+                print(f"DEBUG: Loaded prompt {prompt_id} v{res.data[0].get('version_number')} from DB " + 
+                      f"({'Tenant' if res.data[0].get('tenant_id') else 'Global'})")
                 return res.data[0]["content"]
             
-            # Fallback to local file
-            print(f"DEBUG: Prompt '{prompt_id}' not found in DB. Falling back to local file...")
-            prompt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prompts"))
-            file_path = os.path.join(prompt_dir, f"{prompt_id}.md")
-            
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    # Optional: Auto-seed DB if missing? 
-                    # For now just return to satisfy UI
-                    return content
-            else:
-                print(f"DEBUG: Local prompt file not found at {file_path}")
+            # Fallback to local file with auto-seed
+            print(f"DEBUG: Prompt '{prompt_id}' not found in DB. Attempting auto-seed from local file...")
+            return await self._auto_seed_prompt(prompt_id)
                 
         except Exception as e:
             print(f"Error fetching prompt {prompt_id}: {e}")
         return ""
+
+    async def _auto_seed_prompt(self, prompt_id: str) -> str:
+        """Seed a prompt from local markdown file to DB as v1 Active."""
+        try:
+            prompt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prompts"))
+            file_path = os.path.join(prompt_dir, f"{prompt_id}.md")
+            
+            if not os.path.exists(file_path):
+                print(f"DEBUG: Local prompt file not found at {file_path}")
+                return ""
+                
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            # Seed to DB
+            data = {
+                "tenant_id": self.tenant_id,
+                "prompt_id": prompt_id,
+                "version_number": 1,
+                "content": content,
+                "is_active": True,
+                "changelog": "Initial auto-seed from local .md file"
+            }
+            
+            self.client.table("utm_prompts").insert(data).execute()
+            print(f"DEBUG: Successfully auto-seeded {prompt_id} v1 to DB")
+            return content
+            
+        except Exception as e:
+            print(f"DEBUG: Error auto-seeding prompt {prompt_id}: {e}")
+            return ""
 
     async def list_prompts(self) -> List[Dict[str, Any]]:
         """List all prompts with content."""
@@ -862,25 +977,48 @@ class SupabasePersistence:
             return []
 
     async def list_supported_techs(self) -> List[Dict[str, Any]]:
-        """Returns valid source/target technologies from metadata store."""
+        """Returns valid source/target technologies from the unified catalog."""
         try:
-            res = self.client.table("utm_supported_techs").select("*").eq("is_active", True).execute()
+            res = self.client.table("utm_system_catalog").select("*").eq("is_active", True).execute()
+            # Map for backward compatibility if any frontend still expects 'role'
+            for item in res.data:
+                if "role" not in item:
+                    item["role"] = "SOURCE" if item["type"] == "origin" else "TARGET"
+                if "label" not in item:
+                    item["label"] = item["name"]
             return res.data if res.data else []
         except Exception as e:
             print(f"Error listing techs: {e}")
             return []
 
     async def save_prompt(self, prompt_id: str, content: str) -> bool:
-        """Updates a prompt in the DB."""
+        """
+        Updates the ACTIVE prompt version in the DB.
+        DEPRECATED: Use PromptLabService for versioned imports.
+        """
         try:
-            print(f"DEBUG: Saving prompt '{prompt_id}' length={len(content)}")
-            res = self.client.table("utm_prompts").upsert({
-                "prompt_id": prompt_id,
-                "content": content,
-                "version": "latest",
-                "updated_at": "now()"
-            }).execute()
-            print(f"DEBUG: Save result: {res}")
+            print(f"DEBUG: Saving (updating active) prompt '{prompt_id}' length={len(content)}")
+            
+            # Find current active version
+            query = self.client.table("utm_prompts").select("version_number").eq("prompt_id", prompt_id).eq("is_active", True)
+            if self.tenant_id:
+                query = query.eq("tenant_id", self.tenant_id)
+            
+            res = query.execute()
+            
+            if res.data:
+                v = res.data[0]["version_number"]
+                self.client.table("utm_prompts").update({
+                    "content": content
+                }).eq("prompt_id", prompt_id).eq("version_number", v).execute()
+            else:
+                # If no active version exists, create v1 active
+                await self._auto_seed_prompt(prompt_id)
+                # Then update it just in case content differs from file
+                self.client.table("utm_prompts").update({
+                    "content": content
+                }).eq("prompt_id", prompt_id).eq("version_number", 1).execute()
+            
             return True
         except Exception as e:
             print(f"Error saving prompt {prompt_id}: {e}")
@@ -972,7 +1110,7 @@ class SupabasePersistence:
             vault_res = self.client.table("utm_provider_vault")\
                 .select("api_key, base_url")\
                 .eq("tenant_id", self.tenant_id)\
-                .eq("provider_name", provider)\
+                .ilike("provider_name", provider)\
                 .execute()
             
             if not vault_res.data or not vault_res.data[0].get("api_key"):
@@ -1054,6 +1192,25 @@ class SupabasePersistence:
             self.client.table("utm_execution_logs").insert(data).execute()
         except Exception as e:
             print(f"Error logging to DB: {e}")
+
+    async def get_execution_logs(self, project_id: str, phase: str = None) -> List[Dict[str, Any]]:
+        """Retrieves execution logs for a project, optionally filtered by phase."""
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                print(f"DEBUG: Could not resolve project_id {project_id} for get_execution_logs")
+                return []
+
+            query = self.client.table("utm_execution_logs").select("*").eq("project_id", resolved_id)
+            if phase:
+                query = query.eq("phase", phase)
+            
+            # Sort by creation time to ensure chronological order
+            res = query.order("created_at", desc=False).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error fetching execution logs: {e}")
+            return []
 
     async def clear_execution_logs(self, project_id: str, phase: str = None) -> bool:
         """Clears execution logs for a project, optionally filtered by phase."""
@@ -1318,8 +1475,17 @@ class SupabasePersistence:
                 query = query.eq("tenant_id", self.tenant_id)
             
             matrix_res = query.execute()
+
+            # Release 3.7: Fallback to Global Helper if no specific assignment
+            if not matrix_res.data and agent_id != "agent-helper":
+                print(f"[AUTH] Agent {agent_id} has no explicit assignment for tenant {self.tenant_id}. Falling back to helper.")
+                query_h = self.client.table("utm_agent_matrix").select("model_id").eq("agent_id", "agent-helper")
+                if self.tenant_id:
+                    query_h = query_h.eq("tenant_id", self.tenant_id)
+                matrix_res = query_h.execute()
+            
             if not matrix_res.data:
-                return {"error": f"No model assigned to {agent_id} in matrix"}
+                return {"error": f"No model assigned to {agent_id} in matrix and no helper found."}
             
             model_id = matrix_res.data[0]["model_id"]
 

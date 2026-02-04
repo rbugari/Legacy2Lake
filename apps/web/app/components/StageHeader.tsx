@@ -76,7 +76,7 @@ const StageHeader: React.FC<StageHeaderProps> = ({
                     {onToggleFullscreen && (
                         <button
                             onClick={onToggleFullscreen}
-                            className="p-1.5 text-gray-400 hover:text-cyan-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
+                            className="p-1.5 text-gray-400 hover:text-cyan-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all active:scale-90"
                             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
                         >
                             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -85,7 +85,7 @@ const StageHeader: React.FC<StageHeaderProps> = ({
                     {onReset && (
                         <button
                             onClick={onReset}
-                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
+                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all active:scale-90"
                             title="Reset Step"
                         >
                             <RotateCcw size={16} />
@@ -117,14 +117,16 @@ const StageHeader: React.FC<StageHeaderProps> = ({
                                 onClick={onApprove}
                                 disabled={isApproveDisabled || isExecuting}
                                 className={`
-                                flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm
+                                flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95
                                 ${isApproveDisabled || isExecuting
-                                        ? "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed shadow-none"
+                                        ? "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed shadow-none active:scale-100"
                                         : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 dark:shadow-none"
                                     }
                             `}
                             >
-                                <CheckCircle size={14} /> {approveLabel} <ArrowRight size={14} />
+                                {isExecuting ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                {isExecuting ? "Processing..." : approveLabel}
+                                {!isExecuting && <ArrowRight size={14} />}
                             </button>
                         )
                     )}

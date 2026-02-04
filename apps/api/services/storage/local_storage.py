@@ -1,7 +1,7 @@
 import os
 import shutil
 import stat
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .storage_provider import StorageProvider
 
 class LocalStorageProvider(StorageProvider):

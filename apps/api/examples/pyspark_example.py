@@ -12,7 +12,7 @@ PATHS = {
 
 def execute_load_dim_customer(spark: SparkSession, context: dict):
     """
-    Transpiled by Shift-T Agent C
+    Transpiled by Legacy2Lake Agent C
     Target: Spark 3.5 (Databricks 15.4 LTS)
     Preference: Spark SQL for transformations
     """

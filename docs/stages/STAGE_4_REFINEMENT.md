@@ -26,6 +26,12 @@
     - **Right**: Generated Modern Code.
     - Use this to verify logic translation accuracy.
 
+### 3. Strategic Intelligence Hub (v3.6)
+The Refinement stage now features an enhanced **Intelligence Hub** for deep logic inspection:
+- **Source Mode**: View the raw, extracted code from the legacy system with full syntax highlighting.
+- **Vision Mode**: View the AI's "mental model" of the transformation, rendered in Markdown with specific implementation details and dependency notes.
+- **Maximize View**: Expand the hub to full-screen for collaborative code reviews.
+
 ## ⚙️ Technical Details
 
 ### Services
@@ -82,10 +88,10 @@ for iteration in range(max_iterations):
 5. **RedshiftCartridge**: SQL with Redshift distribution strategies
 6. **SalesforceCartridge**: Apex classes and SOQL queries
 
-**Cartridge Execution**:
+**Cartridge Execution** (v3.6 Update):
 ```python
-# 1. Load cartridge
-cartridge = CartridgeLoader.load(target_tech)  # "DATABRICKS"
+# 1. Load cartridge (now synchronous)
+cartridge = CartridgeFactory.get_cartridge(project_id, registry, tenant_id)
 
 # 2. For each IR step
 for step in utm_logical_steps:
@@ -100,6 +106,8 @@ for step in utm_logical_steps:
     r2_path = f"tenant-{tid}/projects/{pid}/generated/{step.name}.py"
     persistence.write_file(r2_path, code)
 ```
+
+> **v3.6 Note**: `CartridgeFactory.get_cartridge` is now a synchronous method. The previous async implementation caused crashes in the Architect service during Medallion structure generation.
 
 ### Database Tables
 

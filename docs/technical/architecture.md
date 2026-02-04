@@ -46,8 +46,9 @@ The system operates via specialized AI agents interacting through the metadata s
 5. **Parallel Synthesis**: `Agent C` and `Agent F` generate code in parallel, reading/writing to the R2 `Refinement` stages.
 6. **Certified Packaging**: `Agent G` gathers code and logs from R2, generates an AI certification, and streams a ZIP bundle directly to the user.
 
-## 4. Multi-Tenant Guardrails
+## 4. Multi-Tenant Guardrails (v3.6)
 
-- **Storage Isolation**: R2 keys follow the pattern `{tenant_id}/{project_name}/...`
-- **Database Isolation**: All tables utilize Supabase RLS. The Backend uses a `PersistenceService` wrapper to enforce tenant context on every query.
-- **Resource Protection**: Automated cleanup of temporary staging files to avoid server-side bloat.
+- **Zero-Trust Access**: The backend now strictly enforces tenant-scoped access via the `SupabasePersistence` service. Ad-hoc connections are prohibited to prevent data leakage.
+- **Header Enforcement**: Every request must include `X-Tenant-ID`, which is sanitized and validated by the `get_identity` middleware.
+- **Process Robustness**: Long-running orchestrators (Triage, Drafting, Refinement) check the `cancellation_requested` flag at granular steps, ensuring projects can be stopped immediately and safely.
+- **Storage Isolation**: R2 keys follow the pattern `{tenant_id}/{project_name}/...` with signed URLs used for secure, performant delivery.

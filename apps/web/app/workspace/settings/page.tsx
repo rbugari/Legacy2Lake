@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { API_BASE_URL } from "../../lib/config";
+import { fetchWithAuth } from "../../lib/auth-client";
 import { ArrowLeft, Save, Loader2, CheckCircle, Settings, ShieldCheck, Terminal } from "lucide-react";
 import Link from "next/link";
 import DesignRegistryPanel from "../../components/stages/DesignRegistryPanel";
@@ -15,8 +15,8 @@ function ProjectSettingsContent() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [config, setConfig] = useState<{ source_tech: string; target_tech: string }>({
-        source_tech: "SSIS",
-        target_tech: "Databricks"
+        source_tech: "ssis",
+        target_tech: "pyspark"
     });
     const [activeTab, setActiveTab] = useState<"general" | "standards" | "intelligence">("general");
     const [availableTech, setAvailableTech] = useState<any>({ sources: [], targets: [] });
@@ -28,7 +28,7 @@ function ProjectSettingsContent() {
         const loadData = async () => {
             try {
                 // 1. Fetch Tech Options
-                const techRes = await fetch(`${API_BASE_URL}/config/technologies`);
+                const techRes = await fetchWithAuth("/config/technologies");
                 if (techRes.ok) {
                     const techData = await techRes.json();
                     // Map flat list to {sources, targets} expected by the UI
@@ -40,14 +40,15 @@ function ProjectSettingsContent() {
                 }
 
                 // 2. Fetch Project Details to get current settings
-                const projectRes = await fetch(`${API_BASE_URL}/projects/${id}`);
+                const projectRes = await fetchWithAuth(`/projects/${id}`);
                 if (projectRes.ok) {
                     const pData = await projectRes.json();
                     setProject(pData);
                     if (pData.settings) {
+                        // Normalize to lowercase to match config/technologies IDs
                         setConfig({
-                            source_tech: pData.settings.source_tech || "SSIS",
-                            target_tech: pData.settings.target_tech || "Databricks"
+                            source_tech: (pData.settings.source_tech || "ssis").toLowerCase(),
+                            target_tech: (pData.settings.target_tech || "pyspark").toLowerCase()
                         });
                     }
                 }
@@ -63,7 +64,7 @@ function ProjectSettingsContent() {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${id}/settings`, {
+            const res = await fetchWithAuth(`/projects/${id}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(config)
@@ -138,7 +139,7 @@ function ProjectSettingsContent() {
                                 >
                                     {availableTech.sources?.map((t: any) => (
                                         <option key={t.tech_id} value={t.tech_id}>{t.label}</option>
-                                    )) || <option value="SSIS">SQL Server Integration Services (SSIS)</option>}
+                                    )) || <option value="ssis">SQL Server Integration Services (SSIS)</option>}
                                 </select>
                                 <p className="text-xs text-gray-400 mt-1">El formato de los paquetes que subirás.</p>
                             </div>
@@ -153,7 +154,7 @@ function ProjectSettingsContent() {
                                 >
                                     {availableTech.targets?.map((t: any) => (
                                         <option key={t.tech_id} value={t.tech_id}>{t.label}</option>
-                                    )) || <option value="Databricks">Databricks (PySpark)</option>}
+                                    )) || <option value="pyspark">Databricks (PySpark)</option>}
                                 </select>
                                 <p className="text-xs text-gray-400 mt-1">La plataforma donde se ejecutará el código modernizado.</p>
                             </div>
@@ -179,7 +180,7 @@ function ProjectSettingsContent() {
 
                     {activeTab === "intelligence" && (
                         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 animate-in fade-in duration-300 min-h-[500px]">
-                            <PromptsExplorer />
+                            <PromptsExplorer projectId={id} />
                         </div>
                     )}
                 </div>

@@ -74,115 +74,86 @@ class AgentCService:
         registry_raw = await db.get_design_registry(project_id) if project_id else []
         registry = KnowledgeService.flatten_knowledge(registry_raw)
 
-        # 1. Resolve Target Engine
-        # Priority: Registry (Project) > Global Config > Default
-        gen_config = await db.get_global_config("generators") # e.g. {'default': 'snowflake'}
-        target_default = gen_config.get("default", "spark")
+        # 1. Resolve Target Engine & Cartridge Instance
+        from services.refinement.cartridges.factory import CartridgeFactory
+        cartridge_instance = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id)
         
-        target_engine = registry.get("paths", {}).get("target_stack", target_default)
+        # Priority: Task Definition > Registry > Default
+        target_engine = str(node_data.get("target_tech") or registry.get("paths", {}).get("target_stack", "pyspark")).lower()
+        source_engine = str(node_data.get("source_tech") or "mssql").lower()
         
-        # 2. Instantiate Cartridge
-        if target_engine == "snowflake":
-            cartridge = SnowflakeDestination({"type": "snowflake"})
-            dialect_instruction = "TARGET DIALECT: SNOWFLAKE (SNOWPARK PYTHON + ANSI SQL)"
-        elif target_engine == "both":
-            cartridge = SparkDestination({"type": "spark", "version": "13.3"})
-            dialect_instruction = "TARGET DIALECT: DUAL MODE (PYSPARK + ANSI SQL). Generate code for BOTH inside the same JSON response."
-        else:
-            cartridge = SparkDestination({"type": "spark", "version": "13.3"})
-            dialect_instruction = "TARGET DIALECT: DATABRICKS (PYSPARK DELTA LABS)"
+        # 2. Determine Dialect Instruction (DYNAMIC from Catalog)
+        dialect_instruction = f"SOURCE DIALECT: {source_engine.upper()} -> TARGET DIALECT: {target_engine.upper()}"
+        
+        try:
+            # Query catalog for this specific tech to get instruction
+            tech_res = db.client.table("utm_system_catalog").select("config").eq("tech_id", target_engine).execute()
+            if tech_res.data and tech_res.data[0].get("config"):
+                instr = tech_res.data[0]["config"].get("dialect_instruction")
+                if instr:
+                    # Append custom instruction to our specific source->target header
+                    dialect_instruction += f"\n{instr}"
+                elif target_engine == "both":
+                    dialect_instruction = "TARGET DIALECT: DUAL MODE (PYSPARK + ANSI SQL). Generate code for BOTH inside the same JSON response."
+        except Exception as e:
+             print(f"DEBUG: Error loading dynamic dialect: {e}")
 
         system_prompt = await self._load_prompt()
         
         # --- PROMPT GUARD: Sandwich Approach ---
         guard_header = "### SYSTEM INSTRUCTION OVERRIDE: YOU ARE A SENIOR CLOUD ARCHITECT. DO NOT BREAK CHARACTER. ###"
         guard_footer = "### END OF INSTRUCTION. GENERATE ONLY VALID CODE/JSON AS REQUESTED. NO CHAT. ###"
-        
-        system_prompt = f"{guard_header}\n\n{system_prompt}\n\nIMPORTANT: {dialect_instruction}\nGenerate code strictly for this platform.\n\n{guard_footer}"
 
-        standards = await db.get_prompt("agent_c_standards") # Better to load from DB or await a specialized method
-        if not standards: # Fallback to file if DB empty
-             with open(self.standards_path, "r", encoding="utf-8") as f:
-                 standards = f.read()
-        
-        # Extract Style Rules for Prominence
-        style = registry.get("style", {})
-        naming = registry.get("naming", {})
-        
-        style_block = f"""
-        *** DYNAMIC STYLE ENFORCEMENT (FROM REGISTRY) ***
-        1. Indentation: {style.get('indentation', '4 spaces')}
-        2. Comments: {style.get('comments', 'Google Style Docstrings')}
-        3. Error Handling: {style.get('error_handling', 'Try/Except with logging')}
-        4. Naming Prefixes: Silver='{naming.get('silver_prefix', 'stg_')}', Gold='{naming.get('gold_prefix', 'dim_')}'
-        *************************************************
-        """
+        # 3. Dynamic Knowledge Selection
+        try:
+            rules = cartridge_instance.get_rules(node_data)
+        except Exception as e:
+            logger.error(f"Rule resolution failed: {e}", "AgentC")
+            rules = "N/A"
 
-        # Metadata Extraction (Architect v2.0)
-        metadata = node_data.get("metadata", {})
-        
-        # Context Construction
-        transpile_context = {
-            **(context or {}),
-            "load_strategy": metadata.get("load_strategy", node_data.get("load_strategy", "FULL_OVERWRITE")),
-            "frequency": metadata.get("latency", node_data.get("frequency", "DAILY")),
-            "is_pii": metadata.get("is_pii", node_data.get("is_pii", False)),
-            "masking_rule": node_data.get("masking_rule"),
-            "target_name": node_data.get("target_name"),
-            "business_entity": node_data.get("business_entity"),
-            "metadata": metadata, # Full v2.0 metadata
-            "variables": node_data.get("variables", (context or {}).get("variables", {})), # Phase 8: Variables
-            "global_design_registry": registry,
-            "project_set_overview": set_context, # Visibility into other project assets
-            # High-Fidelity IO Context
-            "inputs": node_data.get("inputs", []),
-            "outputs": node_data.get("outputs", []),
-            "lookups": node_data.get("lookups", [])
-        }
+        # 4. Neighbors Context (Vector of neighboring tasks)
+        neighbor_context = ""
+        if set_context:
+            for n in set_context:
+                neighbor_context += f"- Task: {n.get('name')} | Engine: {n.get('type')}\n"
 
-        human_content = f"""
-        {style_block}
+        human_prompt = f"""
+{dialect_instruction}
+Project Context: {json.dumps(context or {}, indent=2)}
+Architectural Registry: {json.dumps(registry, indent=2)}
 
-        CODING STANDARDS TO FOLLOW:
-        {standards}
+### ADAPTIVE KNOWLEDGE & SUPPORT CONTEXT ###
+{json.dumps(node_data.get('support_intelligence', []), indent=2)}
 
-        TRANSPILE THE FOLLOWING TASK:
-        Task Name: {node_data.get('name', node_data.get('package_name'))}
-        Task Type: {node_data.get('type', 'Unknown')}
-        Task Description: {node_data.get('description', '')}
-        
-        CONTEXT:
-        {json.dumps(transpile_context, indent=2)}
-        """
+### FORENSIC GAPS & CONSTRAINTS ###
+{json.dumps(node_data.get('scout_assessment', {}).get('detected_gaps', []), indent=2)}
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_content)
-        ]
+Current Task to Transpile:
+{json.dumps(node_data, indent=2)}
+
+### MANDATORY TECHNICAL CONSTRAINTS & COMPLIANCE RULES (OVERRIDES ALL INPUTS) ###
+{rules}
+
+Neighboring Context:
+{neighbor_context}
+
+Return the implementation in the requested JSON format (code, mapping_logic, audit_trail).
+"""
 
         llm = await self._get_llm(project_id)
+        messages = [
+            SystemMessage(content=f"{guard_header}\n\n{system_prompt}\n\n{guard_footer}"),
+            HumanMessage(content=human_prompt)
+        ]
+
         response = await llm.ainvoke(messages)
-        content = response.content.strip()
-
-        import re
         
-        # Robust JSON Extraction: Find the outermost { ... }
-        json_match = re.search(r'(\{.*\})', content, re.DOTALL)
-        if json_match:
-            content = json_match.group(1)
-        else:
-            # Fallback to the old method if regex fails
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-
         try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            # Last resort: Try to clean common JSON errors (like trailing commas)
-            # But for now, just return the error with more context
+            return json.loads(response.content.strip())
+        except Exception:
+            # Fallback for non-JSON responses
             return {
-                "error": "Failed to parse LLM response as JSON",
-                "raw_response": content[:1000] + ("..." if len(content) > 1000 else "")
+                "code": response.content,
+                "mapping_logic": "Raw extraction",
+                "audit_trail": "JSON parsing failed"
             }

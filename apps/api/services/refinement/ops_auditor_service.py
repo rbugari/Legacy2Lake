@@ -14,34 +14,35 @@ except ImportError:
         from ..persistence_service import PersistenceService
 
 class OpsAuditorService:
-    def __init__(self, tenant_id: str = None):
+    def __init__(self, tenant_id: str = None, client_id: str = None):
         self.tenant_id = tenant_id
+        self.client_id = client_id
 
     def _log(self, log: list, msg: str, level: str = "OpsAuditor", model: str = "Compliance Auditor"):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    def audit_project(self, project_id: str, architect_output: dict, log: list = None) -> dict:
+    async def audit_project(self, project_id: str, architect_output: dict, log: list = None) -> dict:
         """
-        Validates the refined project and generates operational artifacts.
+        Validates the refined project and generates operational artifacts via R2.
         """
         if log is None: log = []
         self._log(log, "Starting Operational Audit...")
 
+        storage = PersistenceService.get_storage()
         refined_files = architect_output.get("refined_files", {})
-        # [Fix] Multi-tenant path resolution
-        project_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
-        refined_dir = os.path.join(project_path, PersistenceService.STAGE_REFINEMENT)
+        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        refined_prefix = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}"
 
         # 1. Validation Engine
-        validation_results = self._perform_validation(refined_files, log)
+        validation_results = await self._perform_validation(refined_files, log, base_path)
 
         # 2. Artifact Generation
         self._log(log, "Generating Infrastructure-as-Code (IaC) manifests...")
-        iac_path = self._generate_iac_manifest(project_id, refined_files, refined_dir)
+        iac_path = await self._generate_iac_manifest(project_id, refined_files, refined_prefix)
         
         self._log(log, "Generating Operational Handbook (README_DEVOPS.md)...")
-        handbook_path = self._generate_handbook(project_id, refined_files, refined_dir)
+        handbook_path = await self._generate_handbook(project_id, refined_files, refined_prefix)
 
         self._log(log, "Audit Complete.")
         
@@ -54,8 +55,9 @@ class OpsAuditorService:
             }
         }
 
-    def _perform_validation(self, refined_files: dict, log: list) -> dict:
+    async def _perform_validation(self, refined_files: dict, log: list, base_path: str) -> dict:
         results = {"passed": True, "issues": []}
+        storage = PersistenceService.get_storage()
 
         # Check Medallion Layers
         for layer in ["bronze", "silver", "gold"]:
@@ -70,66 +72,65 @@ class OpsAuditorService:
 
         # Check for config/utils
         if not refined_files.get("config"):
-            msg = "MISSING ARTIFACT: config.py not found."
+            msg = "MISSING ARTIFACT: config shared scaffolding not found."
             self._log(log, f"ERROR: {msg}", model="System")
             results["issues"].append(msg)
             results["passed"] = False
         
-        # Semantic Check (SCD2/Stable Keys / Dynamic PK) - Heuristic
+        # Semantic Check
         silver_files = refined_files.get("silver", [])
-        for sf in silver_files:
-            try:
-                filename = os.path.basename(sf).replace("_silver.py", ".py")
-                # Look for PK in profile metadata
-                project_dir = os.path.dirname(os.path.dirname(os.path.dirname(sf)))
-                profile_path = os.path.join(project_dir, PersistenceService.STAGE_REFINEMENT, "profile_metadata.json")
-                
-                pk_expected = "id"
-                if os.path.exists(profile_path):
-                    with open(profile_path, "r") as pf:
-                        meta = json.load(pf)
-                        pk_expected = meta.get("primary_keys", {}).get(filename, ["id"])
-                        if isinstance(pk_expected, str): pk_expected = [pk_expected]
+        profile_path = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}/profile_metadata.json"
+        
+        try:
+            profile_bytes = storage.read_file(profile_path)
+            meta = json.loads(profile_bytes) if profile_bytes else {}
+        except:
+            meta = {}
 
-                with open(sf, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    
-                    # Build expected merge condition: "target.k1 = source.k1 AND target.k2 = source.k2"
-                    merge_cond = " AND ".join([f"target.{k} = source.{k}" for k in pk_expected])
-                    
-                    if ".merge(" in content and merge_cond in content:
-                        self._log(log, f"OK: {os.path.basename(sf)} uses PK '{pk_expected}' for MERGE.")
-                    elif ".merge(" in content:
-                        msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} has MERGE logic but might use wrong keys. Expected: {merge_cond}"
-                        self._log(log, f"WARNING: {msg}")
-                        results["issues"].append(msg)
-                    else:
-                        msg = f"COMPLIANCE WARNING: {os.path.basename(sf)} missing explicit MERGE logic."
-                        self._log(log, f"WARNING: {msg}")
-                        # We don't fail for warnings, but we log them
+        for sf_key in silver_files:
+            try:
+                filename_only = sf_key.split("/")[-1]
+                # Guess original name
+                source_guess = filename_only.replace("_silver.py", ".py").replace("_silver.dtsx", ".dtsx")
+                
+                pk_expected = meta.get("primary_keys", {}).get(source_guess, ["id"])
+                if isinstance(pk_expected, str): pk_expected = [pk_expected]
+
+                content = storage.read_file(sf_key)
+                if not content: continue
+                if isinstance(content, bytes): content = content.decode("utf-8")
+                
+                # Build expected merge condition
+                merge_cond = " AND ".join([f"target.{k} = source.{k}" for k in pk_expected])
+                
+                if ".merge(" in content and merge_cond in content:
+                    self._log(log, f"OK: {filename_only} uses PK '{pk_expected}' for MERGE.")
+                elif ".merge(" in content:
+                    msg = f"COMPLIANCE WARNING: {filename_only} has MERGE logic but might use wrong keys. Expected: {merge_cond}"
+                    self._log(log, f"WARNING: {msg}")
+                    results["issues"].append(msg)
+                else:
+                    msg = f"COMPLIANCE WARNING: {filename_only} missing explicit MERGE logic."
+                    self._log(log, f"WARNING: {msg}")
             except Exception as e: 
-                self._log(log, f"Error validating {sf}: {e}", model="System")
+                self._log(log, f"Error validating {sf_key}: {e}", model="System")
 
         return results
 
-    def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_dir: str) -> str:
-        # Generate a Databricks Job Manifest (Simplified)
+    async def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+        storage = PersistenceService.get_storage()
         bundle = {
-            "bundle": {
-                "name": f"shift_t_{project_id}"
-            },
+            "bundle": {"name": f"legacy2lake_{project_id}"},
             "resources": {
                 "jobs": {
                     "medallion_pipeline": {
-                        "name": f"Shift-T: {project_id} Pipeline",
+                        "name": f"Legacy2Lake: {project_id} Pipeline",
                         "tasks": []
                     }
                 }
             }
         }
 
-        # Add tasks for each layer
-        # For simplicity, we create groups. In production, we'd add individual notebooks.
         for layer in ["bronze", "silver", "gold"]:
             files = refined_files.get(layer, [])
             if not files: continue
@@ -139,7 +140,7 @@ class OpsAuditorService:
                 "description": f"Executes all {layer.upper()} layer transformations.",
                 "existing_cluster_id": "0000-000000-cluster1",
                 "notebook_task": {
-                    "notebook_path": f"/Repos/Shift-T/{project_id}/Refined/{layer.capitalize()}/Master_{layer.capitalize()}"
+                    "notebook_path": f"/Repos/Legacy2Lake/{project_id}/Refined/{layer.capitalize()}/Master_{layer.capitalize()}"
                 }
             }
             if layer == "silver": task["depends_on"] = [{"task_key": "process_bronze"}]
@@ -147,17 +148,16 @@ class OpsAuditorService:
             
             bundle["resources"]["jobs"]["medallion_pipeline"]["tasks"].append(task)
 
-        manifest_path = os.path.join(target_dir, "workflows.yaml")
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            yaml.dump(bundle, f, default_flow_style=False)
-            
-        return manifest_path
+        manifest_key = f"{target_prefix.rstrip('/')}/workflows.yaml"
+        storage.save_file(manifest_key, yaml.dump(bundle, default_flow_style=False))
+        return manifest_key
 
-    def _generate_handbook(self, project_id: str, refined_files: dict, target_dir: str) -> str:
+    async def _generate_handbook(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+        storage = PersistenceService.get_storage()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         content = f"""# Operational Handbook: {project_id}
-Generated by Shift-T Ops Auditor - {timestamp}
+Generated by Legacy2Lake Ops Auditor - {timestamp}
 
 ## Architecture Overview
 This project follows a **Medallion Architecture** (Bronze, Silver, Gold).
@@ -181,8 +181,6 @@ This project follows a **Medallion Architecture** (Bronze, Silver, Gold).
 - **Merge Failures**: Check that the Primary Keys (PK) used in Silver merges match the source system business keys.
 - **Schema Evolution**: Delta Lake is configured with `mergeSchema=True` in the Bronze layer.
 """
-        handbook_path = os.path.join(target_dir, "README_DEVOPS.md")
-        with open(handbook_path, "w", encoding="utf-8") as f:
-            f.write(content)
-            
-        return handbook_path
+        handbook_key = f"{target_prefix.rstrip('/')}/README_DEVOPS.md"
+        storage.save_file(handbook_key, content)
+        return handbook_key

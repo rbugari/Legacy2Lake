@@ -97,6 +97,9 @@ class AgentAService:
         GLOBAL DESIGN REGISTRY:
         {json.dumps(registry, indent=2)}
 
+        SUPPORT INTELLIGENCE (Context & Docs from Storage):
+        {json.dumps(manifest.get('support_intelligence', []), indent=2)}
+
         INSTRUCTIONS:
         1. Process the FILE INVENTORY and identify the Lineage Mesh.
         2. Assign metadata (Volume, Latency, Criticality, PII, Partition Key) based on patterns in filenames and signatures.
@@ -118,30 +121,78 @@ class AgentAService:
         ]
         
         # Using a larger context model might be needed if inventory is huge. 
-        # Assuming gpt-4 or 4-turbo window is sufficient for this demo.
-        # Assuming gpt-4 or 4-turbo window is sufficient for this demo.
-        llm = await self._get_llm()
-        response = await llm.ainvoke(messages)
-        content = response.content
+        # Assuming gpt-4 or 4-turbo window is sufficient
+        llm_config = await db.resolve_agent_model("agent-a")
+        deployment_name = llm_config.get("deployment", "unknown")
         
-        logger.debug(f"=== [Agent A] RAW RESPONSE ===\n{content}\n==============================", "Agent A")
-        
-        # Clean potential markdown formatting
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].strip()
+        try: # This try block was missing in the original code, causing the indentation issue.
+            llm = await self._get_llm()
+            response = await llm.ainvoke(messages)
+            content = response.content
             
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse Agent A response", "Agent A")
-            # Fallback for partial JSON or comments
+            # Clean potential markdown formatting more robustly
+            import re
+            
+            # 1. Try JSON extraction
+            json_match = re.search(r'({.*})', content, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            
+            # 2. Try YAML extraction (Markdown block)
+            yaml_match = re.search(r'```(?:yaml|yml)(.*?)```', content, re.DOTALL)
+            if not yaml_match:
+                # Try generic markdown block
+                yaml_match = re.search(r'```(.*?)```', content, re.DOTALL)
+                
+            if yaml_match:
+                try:
+                    import yaml
+                    parsed = yaml.safe_load(yaml_match.group(1))
+                    
+                    # Schema Mapping: If LLM used 'lineage_mesh' instead of 'mesh_graph'
+                    if "lineage_mesh" in parsed and "mesh_graph" not in parsed:
+                        parsed["mesh_graph"] = parsed.pop("lineage_mesh")
+                    
+                    # Ensure basic fields exist
+                    if "mesh_graph" not in parsed:
+                        parsed["mesh_graph"] = {"nodes": [], "edges": []}
+                        
+                    return parsed
+                except Exception as ex:
+                    logger.error(f"YAML Parsing fallback failed: {ex}", "Agent A")
+            
+            # 3. Last resort fallback
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+                return json.loads(content)
+                
+            return json.loads(content) # Final attempt (might raise exception)
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Agent A response: {e}. Raw content length: {len(content)}", "Agent A")
+            
+            # Diagnostic info
+            file_count = len(manifest.get("file_inventory", []))
+            
             return {
-                "error": "Failed to parse LLM response", 
-                "raw_response": content,
+                "error": f"Failed to parse LLM response: {str(e)}", 
+                "diagnostic": {
+                    "content_length": len(content),
+                    "file_count": file_count,
+                    "model_used": deployment_name
+                },
+                "raw_response": content[:1000], 
                 "mesh_graph": {"nodes": [], "edges": []}
             }
+        except Exception as e:
+             logger.error(f"Agent A Analysis error: {e}", "Agent A")
+             return {
+                 "error": str(e),
+                 "mesh_graph": {"nodes": [], "edges": []}
+             }
     async def analyze_package(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """Analyzes a single SSIS package summary (legacy/individual ingest)."""
         system_prompt = await self._load_prompt()

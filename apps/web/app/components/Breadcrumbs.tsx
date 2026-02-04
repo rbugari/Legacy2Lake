@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, Home } from "lucide-react";
 import { useEffect, useState } from "react";
-import { API_BASE_URL } from "../lib/config";
+import { fetchWithAuth } from "../lib/auth-client";
 
 const ROUTE_LABELS: Record<string, string> = {
     "dashboard": "Consola",
@@ -23,7 +23,7 @@ export default function Breadcrumbs() {
 
     useEffect(() => {
         if (projectId && projectId !== 'undefined') {
-            fetch(`${API_BASE_URL}/projects/${projectId}`)
+            fetchWithAuth(`/projects/${projectId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.name) setProjectName(data.name);

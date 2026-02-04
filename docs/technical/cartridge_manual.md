@@ -1,10 +1,10 @@
-# Cartridge Developer Manual (Synthesis Layer) - v3.5
+# Cartridge Developer Manual (Synthesis Layer) - v3.6
 
 A **Cartridge** is an independent module that translates the Universal Intermediate Representation (IR) into executable source code for a specific platform. It uses **Jinja2 templates** to ensure code is clean, readable, and follows technology-specific best practices.
 
-> **v3.5 Update**: 6 production cartridges available, with dynamic knowledge injection from Prompt Laboratory.
+> **v3.6 Update**: CartridgeFactory.get_cartridge is now synchronous for stability. Compliance rules are fetched dynamically from `utm_system_catalog`.
 
-## 1. Available Cartridges (v3.5)
+## 1. Available Cartridges (v3.6)
 
 ### Production-Ready Cartridges
 
@@ -17,20 +17,20 @@ A **Cartridge** is an independent module that translates the Universal Intermedi
 | **RedshiftCartridge** | AWS Redshift | SQL Scripts | Distribution keys, Sort keys |
 | **SalesforceCartridge** | Salesforce | Apex Classes | SOQL queries, Bulk API |
 
-### Cartridge Selection Logic
+### Cartridge Selection Logic (v3.6)
 
 ```python
-def select_cartridge(target_tech: str):
-    cartridge_map = {
-        "DATABRICKS": "apps/utm/cartridges/databricks_pyspark",
-        "SNOWFLAKE": "apps/utm/cartridges/snowflake_sql",
-        "FABRIC": "apps/utm/cartridges/fabric_notebook",
-        "BIGQUERY": "apps/utm/cartridges/bigquery_sql",
-        "REDSHIFT": "apps/utm/cartridges/redshift_sql",
-        "SALESFORCE": "apps/utm/cartridges/salesforce_apex"
-    }
-    return cartridge_map.get(target_tech)
+from services.refinement.cartridges.factory import CartridgeFactory
+
+# Synchronous method (v3.6 fix)
+cartridge = CartridgeFactory.get_cartridge(
+    project_id=project_id,
+    registry=design_registry,
+    tenant_id=tenant_id
+)
 ```
+
+> **Breaking Change (v3.6)**: `get_cartridge` was converted from async to sync. Remove any `await` keywords when calling this method.
 
 ## 2. Cartridge Structure
 

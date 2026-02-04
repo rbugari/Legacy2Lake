@@ -2,12 +2,62 @@
 
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
-import { User, Shield, Briefcase, Clock, ShieldCheck, Tag } from "lucide-react";
+import { User, Shield, Briefcase, Clock, ShieldCheck, Tag, Key, Save, Loader2, X } from "lucide-react";
+import { useState } from "react";
+import { fetchWithAuth } from "../lib/auth-client";
 
 export default function ProfilePage() {
     const { user } = useAuth();
 
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [passData, setPassData] = useState({
+        current_password: "",
+        new_password: "",
+        confirm_password: ""
+    });
+
     if (!user) return null;
+
+    const handlePasswordUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError("");
+
+        if (passData.new_password !== passData.confirm_password) {
+            setError("New passwords do not match");
+            return;
+        }
+
+        if (passData.new_password.length < 8) {
+            setError("Password must be at least 8 characters");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await fetchWithAuth("auth/change-password", {
+                method: "POST",
+                body: JSON.stringify({
+                    current_password: passData.current_password,
+                    new_password: passData.new_password
+                })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert("Password updated successfully!");
+                setIsChangingPassword(false);
+                setPassData({ current_password: "", new_password: "", confirm_password: "" });
+            } else {
+                setError(data.detail || "Failed to update password");
+            }
+        } catch (err) {
+            setError("Network error");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)]">
@@ -62,12 +112,59 @@ export default function ProfilePage() {
                             </div>
 
                             <div className="pt-4 border-t border-[var(--border)]">
-                                <button
-                                    className="w-full py-3 bg-[var(--text-primary)] text-[var(--background)] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all active:scale-95"
-                                    onClick={() => alert("Password reset requires administrator assistance in v3.2")}
-                                >
-                                    Request Security Update
-                                </button>
+                                {!isChangingPassword ? (
+                                    <button
+                                        className="w-full py-3 bg-[var(--text-primary)] text-[var(--background)] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                        onClick={() => setIsChangingPassword(true)}
+                                    >
+                                        <Key size={14} /> Update Password
+                                    </button>
+                                ) : (
+                                    <form onSubmit={handlePasswordUpdate} className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-cyan-500">Change Password</p>
+                                            <button type="button" onClick={() => setIsChangingPassword(false)} className="text-[var(--text-tertiary)] hover:text-white">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+
+                                        <input
+                                            type="password"
+                                            required
+                                            placeholder="Current Password"
+                                            className="w-full px-4 py-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-xl outline-none focus:ring-1 focus:ring-cyan-500/50"
+                                            value={passData.current_password}
+                                            onChange={e => setPassData({ ...passData, current_password: e.target.value })}
+                                        />
+                                        <input
+                                            type="password"
+                                            required
+                                            placeholder="New Password"
+                                            className="w-full px-4 py-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-xl outline-none focus:ring-1 focus:ring-cyan-500/50"
+                                            value={passData.new_password}
+                                            onChange={e => setPassData({ ...passData, new_password: e.target.value })}
+                                        />
+                                        <input
+                                            type="password"
+                                            required
+                                            placeholder="Confirm New Password"
+                                            className="w-full px-4 py-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-xl outline-none focus:ring-1 focus:ring-cyan-500/50"
+                                            value={passData.confirm_password}
+                                            onChange={e => setPassData({ ...passData, confirm_password: e.target.value })}
+                                        />
+
+                                        {error && <p className="text-[10px] text-red-500 font-bold uppercase tracking-tight">{error}</p>}
+
+                                        <button
+                                            type="submit"
+                                            disabled={loading}
+                                            className="w-full py-3 bg-cyan-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                        >
+                                            {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                            {loading ? "Saving..." : "Save Password"}
+                                        </button>
+                                    </form>
+                                )}
                             </div>
                         </div>
                     </section>

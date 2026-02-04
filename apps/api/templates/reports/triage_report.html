@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Discovery Analysis Report - {{ project.name }}</title>
+</head>
+
+<body>
+    <!-- Cover Page -->
+    <div class="page cover">
+        <div style="font-size: 48px; font-weight: 900; color: #0ea5e9; margin-bottom: 20px; letter-spacing: -0.02em;">
+            Legacy2Lake <span style="color: #64748b;">Engine</span>
+        </div>
+        <h1>Discovery Analysis Report</h1>
+        <p style="font-size: 18px; color: #666; margin-bottom: 40px; font-weight: 600;">
+            Technical Triage Results
+        </p>
+        <div class="metadata">
+            <p><strong>Project:</strong> {{ project.name }}</p>
+            <p><strong>Source:</strong> {{ project.source_tech or 'Unknown' }}</p>
+            <p><strong>Target:</strong> {{ project.target_tech or 'Unknown' }}</p>
+            <p><strong>Generated:</strong> {{ generated_date }}</p>
+        </div>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="page">
+        <h1>Executive Summary</h1>
+
+        <p style="margin: 20px 0; font-size: 14px; line-height: 1.8;">
+            This report documents the automated discovery and classification of
+            <strong>{{ stats.total }} assets</strong> from the legacy
+            <strong>{{ project.source_tech or 'source' }}</strong> repository.
+            The Legacy2Lake platform analyzed each object to determine migration complexity,
+            data sensitivity, and transformation requirements for the target
+            <strong>{{ project.target_tech or 'destination' }}</strong> platform.
+        </p>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.total }}</span>
+                <span class="stat-label">Total Assets</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.core }}</span>
+                <span class="stat-label">Core Objects</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.pii_count }}</span>
+                <span class="stat-label">PII Flagged</span>
+            </div>
+        </div>
+
+        <h2>Category Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Count</th>
+                    <th>Percentage</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge badge-core">CORE</span></td>
+                    <td>{{ stats.core }}</td>
+                    <td>{{ "%.1f"|format((stats.core / stats.total * 100) if stats.total > 0 else 0) }}%</td>
+                    <td>Critical business logic requiring migration</td>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-support">SUPPORT</span></td>
+                    <td>{{ stats.support }}</td>
+                    <td>{{ "%.1f"|format((stats.support / stats.total * 100) if stats.total > 0 else 0) }}%</td>
+                    <td>Supporting objects (lookups, utilities)</td>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-ignored">IGNORED</span></td>
+                    <td>{{ stats.ignored }}</td>
+                    <td>{{ "%.1f"|format((stats.ignored / stats.total * 100) if stats.total > 0 else 0) }}%</td>
+                    <td>Deprecated or out-of-scope objects</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Complexity Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Level</th>
+                    <th>Count</th>
+                    <th>Percentage</th>
+                    <th>Effort Estimate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>{{ stats.complexity_high }}</td>
+                    <td>{{ "%.1f"|format((stats.complexity_high / stats.total * 100) if stats.total > 0 else 0) }}%</td>
+                    <td>Requires manual review and testing</td>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-medium">MEDIUM</span></td>
+                    <td>{{ stats.complexity_medium }}</td>
+                    <td>{{ "%.1f"|format((stats.complexity_medium / stats.total * 100) if stats.total > 0 else 0) }}%
+                    </td>
+                    <td>Automated with validation checkpoints</td>
+                </tr>
+                <tr>
+                    <td><span class="badge badge-low">LOW</span></td>
+                    <td>{{ stats.complexity_low }}</td>
+                    <td>{{ "%.1f"|format((stats.complexity_low / stats.total * 100) if stats.total > 0 else 0) }}%</td>
+                    <td>Fully automated transformation</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Forensic Assessment Section (Agent S) -->
+    <div class="page">
+        <h1>Forensic Assessment</h1>
+        <p style="margin-bottom: 20px; font-size: 13px; color: #666;">
+            Forensic audit results from <strong>Agent S (The Scout)</strong> regarding repository completeness and
+            tribal knowledge gaps.
+        </p>
+
+        {% if scout %}
+        <div
+            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <div>
+                <span
+                    style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Completeness
+                    Score</span>
+                <div style="font-size: 28px; font-weight: 900; color: #0ea5e9;">{{ scout.completeness_score or 0 }}%
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span
+                    style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Detected
+                    Tech</span>
+                <div style="font-size: 14px; font-weight: 700; color: #0f172a;">{{ scout.detected_technology or
+                    project.source_tech or 'UNKNOWN' }}</div>
+            </div>
+        </div>
+
+        <h2 style="font-size: 18px; margin-top: 0;">Summary</h2>
+        <p style="font-size: 12px; line-height: 1.6; color: #475569; margin-bottom: 25px;">
+            {{ scout.assessment_summary or 'No summary available.' }}
+        </p>
+
+        {% if scout.detected_gaps %}
+        <h2>Detected Gaps & Recommendations</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Impact</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for gap in scout.detected_gaps %}
+                <tr>
+                    <td style="font-weight: 700; color: #0369a1;">{{ gap.category }}</td>
+                    <td>{{ gap.gap_description }}</td>
+                    <td>
+                        <span class="badge badge-{{ 'high' if gap.impact == 'HIGH' else 'medium' }}">
+                            {{ gap.impact }}
+                        </span>
+                    </td>
+                    <td style="font-style: italic; color: #0ea5e9;">
+                        {% if gap.suggested_file %}
+                        Add file: {{ gap.suggested_file }}
+                        {% else %}
+                        Check documentation
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #059669; font-weight: 600; font-size: 13px;">
+            ✅ No critical gaps detected by Agent S.
+        </p>
+        {% endif %}
+
+        {% else %}
+        <div
+            style="padding: 20px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; color: #9a3412; font-size: 13px;">
+            ⚠️ <strong>Missing Forensic Data:</strong> Agent S has not yet performed a forensic audit for this project.
+            Run the "Forensic Scan" in the Discovery stage to populate this section.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Support Intelligence & Tribal Knowledge -->
+    {% if support_intel %}
+    <div class="page">
+        <h1>Support Intelligence</h1>
+        <p style="margin-bottom: 20px; font-size: 13px; color: #666;">
+            Extracted metadata and context from support files provided during the discovery phase (schemas, volumetrics,
+            business rules).
+        </p>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: 15px;">
+            {% for intel in support_intel %}
+            <div
+                style="padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #0ea5e9; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: 900; color: #0369a1; text-transform: uppercase;">File: {{
+                        intel.file }}</span>
+                    <span class="badge badge-support">{{ intel.type }}</span>
+                </div>
+                <div style="font-family: monospace; font-size: 10px; color: #334155; white-space: pre-wrap;">{{
+                    intel.intel }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Asset Inventory - Enhanced with Grouping -->
+    <div class="page">
+        <h1>Asset Inventory</h1>
+
+        <!-- CORE Assets -->
+        <h2>🎯 CORE Assets ({{ stats.core }})</h2>
+        <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+            Critical business logic requiring migration
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset Name</th>
+                    <th>Type</th>
+                    <th>Complexity</th>
+                    <th>PII</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asset in assets %}
+                {% if asset.category == 'CORE' %}
+                <tr>
+                    <td style="font-weight: 600;">{{ asset.name }}</td>
+                    <td>{{ asset.type or 'Unknown' }}</td>
+                    <td>
+                        <span class="badge badge-{{ (asset.complexity or 'medium')|lower }}">
+                            {{ asset.complexity or 'MEDIUM' }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if asset.has_pii %}
+                        🔒 Yes
+                        {% else %}
+                        No
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- SUPPORT Assets -->
+        <h2 style="margin-top: 30px;">🔧 SUPPORT Assets ({{ stats.support }})</h2>
+        <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+            Supporting objects (lookups, utilities)
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset Name</th>
+                    <th>Type</th>
+                    <th>Complexity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asset in assets %}
+                {% if asset.category == 'SUPPORT' %}
+                <tr>
+                    <td style="font-weight: 600;">{{ asset.name }}</td>
+                    <td>{{ asset.type or 'Unknown' }}</td>
+                    <td>
+                        <span class="badge badge-{{ (asset.complexity or 'medium')|lower }}">
+                            {{ asset.complexity or 'MEDIUM' }}
+                        </span>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- IGNORED Assets (collapsed summary) -->
+        {% if stats.ignored > 0 %}
+        <h2 style="margin-top: 30px;">🚫 IGNORED Assets ({{ stats.ignored }})</h2>
+        <p style="font-size: 11px; color: #999; font-style: italic;">
+            Deprecated or out-of-scope objects (not shown in detail to save space)
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Deep Discovery: Package Analysis -->
+    <div class="page">
+        <h1>Deep Discovery: Package Analysis</h1>
+        <p style="margin-bottom: 20px; font-size: 13px; color: #666;">
+            Detailed technical analysis of CORE packages including data flow components and connectivity.
+        </p>
+
+        {% set core_packages_found = false %}
+        {% for asset in assets %}
+        {% if asset.category == 'CORE' and asset.metadata and asset.metadata.get('logical_medulla') %}
+        {% set core_packages_found = true %}
+        <h2 style="color: #0284c7; font-size: 20px; margin-top: 25px;">📦 {{ asset.name }}</h2>
+
+        <!-- Data Flow Components -->
+        {% set medulla = asset.metadata.get('logical_medulla', {}) %}
+        {% set components = medulla.get('data_flow_logic', []) %}
+
+        {% if components %}
+        <h3 style="font-size: 16px; color: #0369a1; margin-top: 15px;">Data Flow Components</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Type</th>
+                    <th>Intent</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for comp in components %}
+                <tr>
+                    <td style="font-weight: 600;">{{ comp.name }}</td>
+                    <td style="font-size: 10px;">{{ comp.type }}</td>
+                    <td>
+                        <span
+                            class="badge badge-{{ 'low' if comp.intent == 'SOURCE' else ('high' if comp.intent == 'DESTINATION' else 'medium') }}">
+                            {{ comp.intent or 'TRANSFORM' }}
+                        </span>
+                    </td>
+                    <td style="font-size: 10px;">{{ comp.description or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <!-- Connection Managers -->
+        {% set connections = asset.metadata.get('connections', []) %}
+        {% if connections %}
+        <h3 style="font-size: 16px; color: #0369a1; margin-top: 15px;">Connection Managers</h3>
+        <ul style="font-size: 12px; line-height: 1.8;">
+            {% for conn in connections %}
+            <li><strong>{{ conn.name }}</strong> - {{ conn.type }}
+                {% if conn.server %}(Server: {{ conn.server }}){% elif conn.path %}(Path: {{ conn.path }}){% endif
+                %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
+        {% endif %}
+        {% endfor %}
+
+        {% if not core_packages_found %}
+        <p style="color: #666; font-style: italic; font-size: 13px;">
+            No CORE packages with detailed metadata found. This section will be populated after running Triage
+            analysis.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Risk Assessment -->
+    <div class="page">
+        <h1>Risk Assessment</h1>
+
+        <h2>PII-Sensitive Objects</h2>
+        {% if stats.pii_count > 0 %}
+        <p style="margin-bottom: 15px; font-size: 13px;">
+            The following assets contain or may contain Personally Identifiable Information (PII).
+            These require special handling during migration to ensure compliance with data protection regulations.
+        </p>
+        <ul style="font-size: 13px;">
+            {% for asset in stats.pii_assets %}
+            <li>
+                <strong>{{ asset.name }}</strong>
+                {% if asset.pii_reason %}
+                - {{ asset.pii_reason }}
+                {% else %}
+                - Contains sensitive data fields
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p style="color: #059669; font-weight: 600;">
+            ✅ No PII-flagged objects detected in this repository.
+        </p>
+        {% endif %}
+
+        <h2>High-Complexity Transformations</h2>
+        {% if stats.complexity_high > 0 %}
+        <p style="margin-bottom: 15px; font-size: 13px;">
+            These assets require manual review due to advanced logic, custom functions, or platform-specific
+            features
+            that may not have direct equivalents in {{ project.target_tech or 'the target platform' }}.
+        </p>
+        <ul style="font-size: 13px;">
+            {% for asset in assets %}
+            {% if asset.complexity == 'HIGH' %}
+            <li>
+                <strong>{{ asset.name }}</strong> ({{ asset.type or 'Unknown Type' }})
+                - Requires expert validation
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p style="color: #059669; font-weight: 600;">
+            ✅ No high-complexity objects identified. Migration should proceed smoothly.
+        </p>
+        {% endif %}
+
+        <h2>Recommendations</h2>
+        <ol style="font-size: 13px; line-height: 1.8;">
+            <li>Review and validate all <strong>CORE</strong> category assets before proceeding to code generation.
+            </li>
+            <li>Ensure PII-flagged objects comply with GDPR, CCPA, or relevant data protection regulations.</li>
+            <li>Allocate additional testing resources for <strong>HIGH</strong> complexity transformations.</li>
+            <li>Consider phased deployment: migrate <strong>LOW</strong> complexity assets first to validate the
+                pipeline.</li>
+            <li>Establish rollback procedures for critical business processes.</li>
+        </ol>
+    </div>
+
+    <!-- Next Steps -->
+    <div class="page">
+        <h1>Next Steps</h1>
+
+        <h2>Immediate Actions</h2>
+        <ol style="font-size: 14px; line-height: 2;">
+            <li>
+                <strong>Review Triage Classifications</strong><br>
+                <span style="font-size: 12px; color: #666;">
+                    Validate that CORE/SUPPORT/IGNORED categories align with business priorities.
+                </span>
+            </li>
+            <li>
+                <strong>Configure Load Strategies</strong><br>
+                <span style="font-size: 12px; color: #666;">
+                    Define FULL vs INCREMENTAL load patterns for each asset.
+                </span>
+            </li>
+            <li>
+                <strong>Proceed to Drafting Stage</strong><br>
+                <span style="font-size: 12px; color: #666;">
+                    Initiate AI-powered code generation for {{ project.target_tech or 'target platform' }}.
+                </span>
+            </li>
+        </ol>
+
+        <h2>Migration Pipeline Overview</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Stage</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1. Discovery</td>
+                    <td>✅ Complete</td>
+                    <td>Repository scanned and cataloged</td>
+                </tr>
+                <tr>
+                    <td>2. Triage</td>
+                    <td>✅ Complete</td>
+                    <td>Assets classified and prioritized</td>
+                </tr>
+                <tr>
+                    <td>3. Drafting</td>
+                    <td>⏳ Next</td>
+                    <td>Generate cloud-native code</td>
+                </tr>
+                <tr>
+                    <td>4. Refinement</td>
+                    <td>⏳ Pending</td>
+                    <td>Apply optimization cartridges</td>
+                </tr>
+                <tr>
+                    <td>5. Certification</td>
+                    <td>⏳ Pending</td>
+                    <td>Quality gates and COP scoring</td>
+                </tr>
+                <tr>
+                    <td>6. Handover</td>
+                    <td>⏳ Pending</td>
+                    <td>Deliver production-ready artifacts</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div
+            style="margin-top: 40px; padding: 20px; background: #f0f9ff; border-left: 4px solid #0ea5e9; border-radius: 4px;">
+            <p style="margin: 0; font-size: 13px; line-height: 1.8;">
+                <strong style="color: #0369a1;">📊 Report Generated By:</strong><br>
+                Legacy2Lake Platform v3.5 | AI-Powered Migration Engine<br>
+                For questions or support, contact your migration team lead.
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>

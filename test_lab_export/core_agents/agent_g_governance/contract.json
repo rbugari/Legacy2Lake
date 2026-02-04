@@ -1,0 +1,9 @@
+{
+  "contract_id": "agent_g_output_v1",
+  "version": 1,
+  "description": "Output contract for Agent G - Governance",
+  "immutable_schema": {
+    "type": "object",
+    "notes": "Define the expected JSON output schema here."
+  }
+}

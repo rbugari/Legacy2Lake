@@ -1,7 +1,7 @@
-# Documentation Index - Legacy2Lake v3.5
+# Documentation Index - Legacy2Lake v3.6
 
 > Last Updated: 2026-02-01  
-> Architecture Version: 3.5 (Cloud-Native, Multi-Tenant)
+> Architecture Version: 3.6 (Cloud-Native, Multi-Tenant)
 
 ## Quick Start
 
@@ -50,7 +50,7 @@
 - **[Comprehensive Review](COMPREHENSIVE_REVIEW.md)** - Detailed system analysis
 - **[Specification](SPECIFICATION.md)** - Functional and technical requirements
 
-## v3.5 Key Features
+## v3.6 Key Features
 
 ### Cloud-Native Storage
 - **Cloudflare R2**: S3-compatible object storage
@@ -89,7 +89,7 @@
 - **Variable Injection**: CI/CD-ready placeholders
 - **Deployment Options**: Manual, CI/CD, or Direct cloud
 
-## Obsolete Documentation (Pre-v3.5)
+## Obsolete Documentation (Pre-v3.6)
 
 The following files may contain outdated information and should be reviewed:
 - Files referencing local file storage (pre-R2 migration)
@@ -99,7 +99,7 @@ The following files may contain outdated information and should be reviewed:
 ## Contributing
 
 When updating documentation:
-1. Mark version changes clearly (`v3.5 Update:`)
+1. Mark version changes clearly (`v3.6 Update:`)
 2. Use GitHub alerts for important notes (NOTE, TIP, WARNING, IMPORTANT)
 3. Include code examples and diagrams (Mermaid)
 4. Link files using `[text](file:///absolute/path)` format

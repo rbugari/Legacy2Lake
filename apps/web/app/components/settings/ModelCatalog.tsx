@@ -155,7 +155,7 @@ export default function ModelCatalog() {
                         onClick={() => setFilter("all")}
                         className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${filter === "all" ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/50"}`}
                     >
-                        TODOS
+                        ALL
                     </button>
                     {availableProviders.map(p => (
                         <button

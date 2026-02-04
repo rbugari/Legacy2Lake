@@ -13,60 +13,103 @@ class DiscoveryService:
         Generates a comprehensive 'Triage Manifest' for Agent A.
         Includes structure, snippets of logic, and detected invocations.
         Scans the Triage subfolder where uploaded objects are stored.
+        Uses StorageProvider for abstraction (R2/Local).
         """
-        # Get base project directory
+        # Get base project directory (key prefix)
         project_base = PersistenceService.ensure_solution_dir(project_id, tenant_id)
+        storage = PersistenceService.get_storage()
         
-        # Scan the Triage subfolder specifically (where uploaded objects are)
-        triage_path = os.path.join(project_base, PersistenceService.STAGE_TRIAGE)
-        
-        # If Triage folder doesn't exist, fall back to project base (backward compatibility)
-        if not os.path.exists(triage_path):
-            triage_path = project_base
+        # [Refinement] Find Triage folder case-insensitively (Triage, triage, triaje, etc.)
+        triage_path = None
+        try:
+            root_items = storage.list_files(project_base, recursive=False)
+            triage_names = [PersistenceService.STAGE_TRIAGE.lower(), "triage", "triaje"]
             
-        project_path = triage_path
+            for item in root_items:
+                if item["type"] == "folder" and item["name"].lower() in triage_names:
+                    triage_path = item["path"]
+                    break
+        except Exception as e:
+            print(f"[Discovery] Error listing project root: {e}")
+
+        # Fallback if not found: use default
+        if not triage_path:
+            triage_path = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
         
         inventory = []
         tech_counts = {}
         
-        # 1. Deep Scan
-        for root, dirs, files in os.walk(project_path):
-            if '.git' in dirs: dirs.remove('.git')
-            if '__pycache__' in dirs: dirs.remove('__pycache__')
+        # 1. Deep Scan using StorageProvider
+        try:
+            files_tree = storage.list_files(triage_path, recursive=True)
+        except Exception as e:
+            print(f"Discovery Scan Error: {e}")
+            files_tree = []
+
+        # Helper to flatten tree
+        def flatten_items(nodes):
+            items = []
+            for node in nodes:
+                if node["type"] == "folder":
+                    if node.get("children"):
+                        items.extend(flatten_items(node["children"]))
+                else:
+                    items.append(node)
+            return items
+
+        flat_files = flatten_items(files_tree)
+        
+        for file_node in flat_files:
+            file_name = file_node["name"]
+            full_path = file_node["path"] # This is the storage Key
             
-            for file in files:
-                # [Fix] Exclude system generated files to prevent Agent hallucinations
-                if file in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
-                    continue
+            # [Fix] Exclude system generated files
+            if file_name in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+                continue
 
+            rel_path = full_path # Key is mostly the relative path in R2 context, or we can strip project prefix if needed for UI?
+            # For Manifest, full path/key is fine as unique ID.
+            
+            # Basic Classification
+            ext = file_name.split('.')[-1].lower() if '.' in file_name else 'no_ext'
+            tech_counts[ext] = tech_counts.get(ext, 0) + 1
+            
+            # Deep Content Analysis
+            # We pass 'storage' so it can read the file content
+            analysis = DiscoveryService._analyze_file_content(storage, full_path, ext)
+            
+            inventory.append({
+                "path": rel_path,
+                "name": file_name,
+                "type": DiscoveryService._map_extension_to_type(ext),
+                "size": file_node["size"],
+                "lines": analysis["line_count"],
+                "signatures": analysis["signatures"],
+                "invocations": analysis["invocations"],
+                "snippet": analysis["snippet"], 
+                "metadata": analysis.get("metadata", {})
+            })
 
-                full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, project_path).replace("\\", "/")
-                
-                # Basic Classification
-                ext = file.split('.')[-1].lower() if '.' in file else 'no_ext'
-                tech_counts[ext] = tech_counts.get(ext, 0) + 1
-                
-                # Deep Content Analysis
-                analysis = DiscoveryService._analyze_file_content(full_path, ext)
-                
-                inventory.append({
-                    "path": rel_path,
-                    "name": file,
-                    "type": DiscoveryService._map_extension_to_type(ext),
-                    "size": os.path.getsize(full_path),
-                    "signatures": analysis["signatures"],
-                    "invocations": analysis["invocations"],
-                    "snippet": analysis["snippet"], # First N chars or relevant lines
-                    "metadata": analysis.get("metadata", {})
-                })
+        # 2. Extract Support Intelligence (schemas, volumes, rules)
+        # We consolidate snippets/metadata from files in the Triage folder that look like support docs
+        support_intel = []
+        for item in inventory:
+            if item["type"] in ["CONFIG", "XML_DATA", "OTHER"] or item["name"].lower() in ["readme.md", "volumes.txt", "schema.sql"]:
+                # If it has specific signatures or interesting snippets
+                if "Schema Definition" in item["signatures"] or "Volumetric Data" in item["signatures"]:
+                    support_intel.append({
+                        "file": item["name"],
+                        "type": item["type"],
+                        "intel": item["snippet"][:200] + "..." # Keep it concise for the report
+                    })
 
-        # 2. Construct Manifest
+        # 3. Construct Manifest
         return {
             "project_id": project_id,
-            "root_path": project_path,
+            "root_path": triage_path,
             "tech_stats": tech_counts,
             "file_inventory": inventory,
+            "support_intelligence": support_intel,
             "user_context": user_context or []
         }
 
@@ -82,12 +125,15 @@ class DiscoveryService:
         if ext == 'py': return 'PYTHON_SCRIPT'
         if ext == 'ipynb': return 'NOTEBOOK'
         if ext in ['json', 'config', 'yaml', 'yml']: return 'CONFIG'
-        if ext == 'xml': return 'XML_DATA' # Base, will be refined in analysis
+        if ext == 'xml': return 'XML_DATA' 
         return 'OTHER'
 
     @staticmethod
-    def _analyze_file_content(file_path: str, ext: str) -> Dict[str, Any]:
-        """Reads file, extracts snippets, and uses parsers if available."""
+    def _analyze_file_content(storage, file_path_key: str, ext: str) -> Dict[str, Any]:
+        """Reads file from Storage, extracts snippets, and uses parsers if available."""
+        import tempfile
+        from pathlib import Path
+        
         signatures = []
         invocations = []
         snippet_lines = []
@@ -97,21 +143,48 @@ class DiscoveryService:
         if ext in ['exe', 'dll', 'png', 'jpg', 'zip']:
             return {"signatures": [], "invocations": [], "snippet": "[BINARY FILE]", "metadata": {}}
 
+        temp_path = None
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content_str = f.read()
+            # READ CONTENT FROM STORAGE
+            content_bytes = storage.read_file(file_path_key, is_binary=True)
+            if content_bytes is None:
+                 return {"signatures": ["Read Error"], "invocations": [], "snippet": "", "metadata": {}}
+
+            try:
+                content_str = content_bytes.decode('utf-8', errors='ignore')
+            except:
+                content_str = "[Binary Content]"
                 
-                # Snippet (first 20 lines)
-                lines = content_str.splitlines()
-                snippet_lines = lines[:20] 
-                
-                # --- SPECIALIZED PARSERS ---
-                
+            # Line Count & Snippet (first 20 lines)
+            lines = content_str.splitlines()
+            line_count = len(lines)
+            snippet_lines = lines[:20] 
+            
+            # --- SUPPORT INTELLIGENCE HEURISTICS ---
+            # Search for volume patterns (e.g., "1.5 TB", "100M rows", "Volume:")
+            if re.search(r'(\d+(\.\d+)?\s*(TB|GB|MB|Rows|Registros))|Volume:', content_str, re.IGNORECASE):
+                signatures.append("Volumetric Data")
+            
+            # Search for schema patterns (e.g., "CREATE TABLE", "Schema:", "Column")
+            if re.search(r'CREATE\s+TABLE|Schema:|Columna|Column\s+\w+', content_str, re.IGNORECASE):
+                signatures.append("Schema Definition")
+            
+            # --- SPECIALIZED PARSERS (Require File Path usually) ---
+            # We create a temp file for parsers
+            
+            # Only create temp file if we have a parser for this extension
+            if ext in ['dtsx', 'dsx', 'xml', 'atl', 'item', 'ktr', 'kjb']:
+                fd, temp_path = tempfile.mkstemp(suffix=f".{ext}")
+                os.close(fd)
+                with open(temp_path, 'wb') as f:
+                    f.write(content_bytes)
+
+
                 # SSIS (DTSX)
                 if ext == 'dtsx':
                     try:
                         parser = SSISCartridge()
-                        meta_obj = parser.parse(file_path)
+                        meta_obj = parser.parse(temp_path)
                         
                         summary = meta_obj.metadata.get("summary", {})
                         medulla = {
@@ -142,14 +215,14 @@ class DiscoveryService:
                 elif ext == 'dsx':
                     try:
                         from .extraction.cartridges.datastage_cartridge import DataStageCartridge
-                        parser = DataStageCartridge({"path": file_path})
-                        jobs = parser._get_jobs_from_dsx(Path(file_path))
+                        parser = DataStageCartridge({"path": temp_path})
+                        jobs = parser._get_jobs_from_dsx(Path(temp_path))
                         
                         signatures.append("DataStage Export (PX)")
                         if jobs:
                             signatures.append(f"Found {len(jobs)} Jobs")
                             # Extract logic for the first job as a sample for Agent A
-                            metadata["ds_logic"] = parser._parse_dsx_job_logic(Path(file_path), jobs[0])
+                            metadata["ds_logic"] = parser._parse_dsx_job_logic(Path(temp_path), jobs[0])
                             
                     except Exception as dsx_err:
                         signatures.append(f"DataStage Parse Error: {str(dsx_err)}")
@@ -159,13 +232,13 @@ class DiscoveryService:
                     if '<POWERMART' in content_str:
                         try:
                             from .extraction.cartridges.informatica_cartridge import InformaticaCartridge
-                            parser = InformaticaCartridge({"path": file_path})
-                            mappings = parser._get_mappings_from_xml(Path(file_path))
+                            parser = InformaticaCartridge({"path": temp_path})
+                            mappings = parser._get_mappings_from_xml(Path(temp_path))
                             
                             signatures.append("Informatica PowerCenter XML")
                             if mappings:
                                 signatures.append(f"Found {len(mappings)} Mappings")
-                                metadata["infa_logic"] = parser._parse_mapping_logic(Path(file_path), mappings[0])
+                                metadata["infa_logic"] = parser._parse_mapping_logic(Path(temp_path), mappings[0])
                         except Exception as infa_err:
                             signatures.append(f"Informatica Parse Error: {str(infa_err)}")
                     else:
@@ -175,14 +248,14 @@ class DiscoveryService:
                 elif ext == 'atl':
                     try:
                         from .extraction.cartridges.sap_bods_cartridge import SapBodsCartridge
-                        parser = SapBodsCartridge({"path": file_path})
-                        assets = parser._get_jobs_from_atl(Path(file_path))
+                        parser = SapBodsCartridge({"path": temp_path})
+                        assets = parser._get_jobs_from_atl(Path(temp_path))
                         
                         signatures.append("SAP BODS / Data Integrator ATL")
                         if assets:
                             signatures.append(f"Found {len(assets)} Jobs/DFs")
                             # Extract logic for the first asset
-                            metadata["bods_logic"] = parser._parse_atl_logic(Path(file_path), assets[0])
+                            metadata["bods_logic"] = parser._parse_atl_logic(Path(temp_path), assets[0])
                     except Exception as bods_err:
                         signatures.append(f"SAP BODS Parse Error: {str(bods_err)}")
 
@@ -191,11 +264,11 @@ class DiscoveryService:
                     if 'talendfile:ProcessType' in content_str:
                         try:
                             from .extraction.cartridges.talend_cartridge import TalendCartridge
-                            parser = TalendCartridge({"path": file_path})
+                            parser = TalendCartridge({"path": temp_path})
                             # Scan returns basic list, we extract logic for the specific item
-                            job_name = os.path.splitext(os.path.basename(file_path))[0]
+                            job_name = os.path.splitext(os.path.basename(file_path_key))[0]
                             signatures.append("Talend Open Studio Job")
-                            metadata["talend_logic"] = parser._parse_talend_logic(Path(file_path), job_name)
+                            metadata["talend_logic"] = parser._parse_talend_logic(Path(temp_path), job_name)
                         except Exception as tal_err:
                             signatures.append(f"Talend Parse Error: {str(tal_err)}")
 
@@ -204,36 +277,42 @@ class DiscoveryService:
                     if '<transformation>' in content_str or '<job>' in content_str:
                         try:
                             from .extraction.cartridges.pentaho_cartridge import PentahoCartridge
-                            parser = PentahoCartridge({"path": file_path})
+                            parser = PentahoCartridge({"path": temp_path})
                             # Extract logic for the specific file
-                            trans_name = os.path.splitext(os.path.basename(file_path))[0]
+                            trans_name = os.path.splitext(os.path.basename(file_path_key))[0]
                             signatures.append("Pentaho Data Integration (Kettle)")
-                            metadata["kettle_logic"] = parser._parse_kettle_logic(Path(file_path), trans_name)
+                            metadata["kettle_logic"] = parser._parse_kettle_logic(Path(temp_path), trans_name)
                         except Exception as pdi_err:
                             signatures.append(f"Pentaho Parse Error: {str(pdi_err)}")
 
-                    
-                # SQL
-                elif ext == 'sql':
-                    content_upper = content_str.upper()
-                    if 'CREATE PROCEDURE' in content_upper: signatures.append("Stored Procedure")
-                    if 'MERGE INTO' in content_upper: signatures.append("Merge Logic")
-                    # Grep for EXEC
-                    exec_matches = re.findall(r'EXEC\s+\[?([\w\.]+)\]?', content_str, re.IGNORECASE)
-                    invocations.extend([f"Calls SP: {m}" for m in exec_matches])
+            # SQL (No temp file needed, parse string)
+            elif ext == 'sql':
+                content_upper = content_str.upper()
+                if 'CREATE PROCEDURE' in content_upper: signatures.append("Stored Procedure")
+                if 'MERGE INTO' in content_upper: signatures.append("Merge Logic")
+                # Grep for EXEC
+                exec_matches = re.findall(r'EXEC\s+\[?([\w\.]+)\]?', content_str, re.IGNORECASE)
+                invocations.extend([f"Calls SP: {m}" for m in exec_matches])
 
-                # Python
-                elif ext == 'py':
-                    if 'pyspark' in content_str: signatures.append("PySpark")
-                    if 'pandas' in content_str: signatures.append("Pandas")
-                    if 'os.system' in content_str: invocations.append("System Call (os.system)")
+            # Python (No temp file needed)
+            elif ext == 'py':
+                if 'pyspark' in content_str: signatures.append("PySpark")
+                if 'pandas' in content_str: signatures.append("Pandas")
+                if 'os.system' in content_str: invocations.append("System Call (os.system)")
                     
         except Exception as e:
-            snippet_lines = [f"Error reading file: {str(e)}"]
+            snippet_lines = [f"Error reading/analyzing file: {str(e)}"]
+        finally:
+            # Cleanup temp file if created
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except: pass
 
         return {
             "signatures": signatures,
             "invocations": list(set(invocations)), # unique
+            "line_count": line_count,
             "snippet": "\n".join(snippet_lines),
             "metadata": metadata
         }
@@ -260,6 +339,7 @@ class DiscoveryService:
                  "status": status,
                  "tags": item["signatures"],
                  "path": item["path"],
+                 "lines": item["lines"],
                  "dependencies": [], # populated by Agent A now
                  "frequency": item.get("frequency", "DAILY"),
                  "load_strategy": item.get("load_strategy", "FULL_OVERWRITE"),

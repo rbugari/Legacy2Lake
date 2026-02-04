@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Copy, Download, Code, Server, Database, FileCode, Terminal, CheckCircle2 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { API_BASE_URL } from "../../lib/config";
+import { fetchWithAuth } from "../../lib/auth-client";
 
 interface OrchestrationPanelProps {
     projectId: string;
@@ -18,11 +18,19 @@ export default function OrchestrationPanel({ projectId }: OrchestrationPanelProp
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
     const [filename, setFilename] = useState("");
+    const [project, setProject] = useState<any>(null);
+
+    useEffect(() => {
+        fetchWithAuth(`/projects/${projectId}`)
+            .then(res => res.json())
+            .then(data => setProject(data))
+            .catch(err => console.error("Failed to fetch project details:", err));
+    }, [projectId]);
 
     const fetchOrchestration = async (orchestrator: Orchestrator) => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/orchestration/${orchestrator}`);
+            const res = await fetchWithAuth(`/projects/${projectId}/orchestration/${orchestrator}`);
             const data = await res.json();
 
             if (orchestrator === "databricks") {
@@ -71,14 +79,14 @@ export default function OrchestrationPanel({ projectId }: OrchestrationPanelProp
                     onClick={() => setSelectedOrchestrator("airflow")}
                     icon={<Server className="text-blue-500" />}
                     title="Apache Airflow"
-                    description="Python-based DAG for orchestrating tasks in Airflow environments."
+                    description={`Python-based DAG for orchestrating tasks in Airflow environments.`}
                 />
                 <OrchestratorCard
                     active={selectedOrchestrator === "databricks"}
                     onClick={() => setSelectedOrchestrator("databricks")}
                     icon={<Database className="text-orange-500" />}
-                    title="Databricks Workflow"
-                    description="JSON definition for Databricks Jobs & Multi-Task Workflows."
+                    title={`${project?.destination || 'Databricks'} Workflow`}
+                    description={`JSON definition for ${project?.destination || 'Databricks'} Jobs & Workflows.`}
                 />
                 <OrchestratorCard
                     active={selectedOrchestrator === "yaml"}
@@ -134,7 +142,7 @@ export default function OrchestrationPanel({ projectId }: OrchestrationPanelProp
                     <div className="px-6 py-3 bg-orange-500/5 border-t border-orange-500/10 flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
                         <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest">
-                            Ready for Deployment to Databricks Jobs API
+                            Ready for Deployment to {project?.destination || 'Databricks'} API
                         </span>
                     </div>
                 )}
@@ -148,8 +156,8 @@ function OrchestratorCard({ active, onClick, icon, title, description }: any) {
         <button
             onClick={onClick}
             className={`p-6 rounded-3xl border text-left transition-all duration-300 relative overflow-hidden group ${active
-                ? "bg-white dark:bg-gray-900 border-primary shadow-xl shadow-primary/10 ring-1 ring-primary"
-                : "card-glass hover:border-primary/50"
+                ? "bg-white dark:bg-gray-900 border-primary shadow-xl shadow-primary/10 ring-1 ring-primary active:scale-[0.98]"
+                : "card-glass hover:border-primary/50 active:scale-95"
                 }`}
         >
             <div className={`p-3 rounded-2xl mb-4 inline-flex ${active ? "bg-primary/10" : "bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800"}`}>

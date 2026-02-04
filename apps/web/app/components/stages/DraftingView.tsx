@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -47,11 +47,13 @@ export default function DraftingView({
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
+    const [isApproving, setIsApproving] = useState(false);
 
     // Helper: Fetch Logs
     const fetchLogs = async () => {
         try {
-            const res = await fetchWithAuth(`projects/${projectId}/logs`, {
+            // Release 3.5: Switch to robust DB-backed execution logs
+            const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=migration`, {
                 headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
             });
             const data = await res.json();
@@ -133,6 +135,7 @@ export default function DraftingView({
     };
 
     const handleApprove = async () => {
+        setIsApproving(true);
         try {
             const res = await fetchWithAuth(`projects/${projectId}/stage`, {
                 method: "POST",
@@ -144,9 +147,36 @@ export default function DraftingView({
             const data = await res.json();
             if (data.success) {
                 onStageChange(4);
+            } else {
+                setIsApproving(false);
             }
         } catch (e) {
             console.error("Failed to update stage", e);
+            setIsApproving(false);
+        }
+    };
+
+    const handleCancelMigration = async () => {
+        if (!window.confirm("¿Estás seguro de que deseas cancelar el proceso de migración?")) return;
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/cancel`, {
+                method: "POST",
+                headers: {
+                    ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
+                }
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setIsRunning(false);
+                setLogs(prev => [...prev, "[SYSTEM] Process cancelled by user."]);
+            } else {
+                setLogs(prev => [...prev, `[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`]);
+            }
+        } catch (e) {
+            console.error("Failed to cancel process", e);
+            setLogs(prev => [...prev, `[ERROR] Network error during cancellation: ${e}`]);
         }
     };
 
@@ -161,6 +191,7 @@ export default function DraftingView({
                 onApprove={handleApprove}
                 approveLabel="Finalize & Refine"
                 isApproveDisabled={isRunning || progress < 100}
+                isExecuting={isApproving}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
                 onReset={onReset}
@@ -170,14 +201,24 @@ export default function DraftingView({
                     <button
                         onClick={handleRunMigration}
                         disabled={isRunning || isReadOnly}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
-                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all active:scale-95 ${isRunning || isReadOnly
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed active:scale-100"
                             : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 dark:shadow-none"
                             }`}
                     >
                         <Play size={12} className={isRunning ? "animate-spin" : ""} />
                         {isRunning ? "Running..." : "Run Pipeline"}
                     </button>
+
+                    {isRunning && (
+                        <button
+                            onClick={handleCancelMigration}
+                            className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
+                        >
+                            <X size={12} />
+                            Cancel
+                        </button>
+                    )}
                 </div>
             </StageHeader>
 
@@ -278,6 +319,56 @@ function FileManagerTab({ projectId, activeTenantId }: { projectId: string; acti
     const [fileContent, setFileContent] = useState<string>("");
     const [loadingContent, setLoadingContent] = useState(false);
 
+    // UI Logic for Resizing and Toggling
+    const [isTreeVisible, setIsTreeVisible] = useState(true);
+    const [treeWidth, setTreeWidth] = useState(300); // px
+    const isResizing = useRef(false);
+
+    // Persist tree width & visibility
+    useEffect(() => {
+        const saved = localStorage.getItem(`tree-width-${projectId}`);
+        if (saved) setTreeWidth(parseInt(saved));
+        const visible = localStorage.getItem(`tree-visible-${projectId}`);
+        if (visible !== null) setIsTreeVisible(visible === 'true');
+    }, [projectId]);
+
+    const handleToggleTree = () => {
+        const next = !isTreeVisible;
+        setIsTreeVisible(next);
+        localStorage.setItem(`tree-visible-${projectId}`, String(next));
+    };
+
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        isResizing.current = true;
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', stopResizing);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.body.classList.add('resizing');
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        isResizing.current = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', stopResizing);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.body.classList.remove('resizing');
+        localStorage.setItem(`tree-width-${projectId}`, String(treeWidth));
+    }, [projectId, treeWidth]);
+
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!isResizing.current) return;
+        const container = document.getElementById('file-explorer-container');
+        if (container) {
+            const rect = container.getBoundingClientRect();
+            const newWidth = e.clientX - rect.left;
+            if (newWidth > 150 && newWidth < 800) {
+                setTreeWidth(newWidth);
+            }
+        }
+    }, [projectId]);
+
     const loadFiles = async () => {
         try {
             const res = await fetchWithAuth(`projects/${projectId}/files`, {
@@ -320,39 +411,66 @@ function FileManagerTab({ projectId, activeTenantId }: { projectId: string; acti
     }, [projectId]);
 
     return (
-        <div className="h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div id="file-explorer-container" className="h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
             {/* Toolbar */}
             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900 shrink-0">
-                <span className="font-bold text-sm flex items-center gap-2"><Folder size={16} /> Solution Output</span>
-                <button onClick={loadFiles} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><RefreshCw size={14} /></button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleToggleTree}
+                        className={`p-1.5 rounded-lg transition-all ${isTreeVisible ? "bg-blue-500/10 text-blue-500 border border-blue-500/20 shadow-sm" : "text-gray-400 hover:text-white border border-transparent hover:bg-gray-800"}`}
+                        title={isTreeVisible ? "Hide Library" : "Show Library"}
+                    >
+                        {isTreeVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+                    </button>
+                    <span className="font-bold text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200"><Folder size={16} className="text-blue-500" /> Solution Output</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={loadFiles} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-all" title="Refresh Files"><RefreshCw size={14} /></button>
+                </div>
             </div>
 
             {/* Split Pane Content */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Left Pane: File Tree (30%) */}
-                <div className="w-[30%] border-r border-gray-200 dark:border-gray-700 overflow-y-auto p-2 bg-gray-50/50 dark:bg-gray-900/50">
-                    {tree ? (
-                        <div className="space-y-1">
-                            <FileTree
-                                node={tree}
-                                level={0}
-                                onSelect={handleFileSelect}
-                                selectedPath={selectedFile?.path}
-                            />
-                        </div>
-                    ) : (
-                        <div className="text-center p-4 text-gray-400">Loading files...</div>
-                    )}
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* Left Pane: File Tree */}
+                {isTreeVisible && (
+                    <div
+                        className="border-r border-gray-200 dark:border-gray-700 overflow-y-auto p-2 bg-gray-50/50 dark:bg-gray-900/50 shrink-0"
+                        style={{ width: `${treeWidth}px` }}
+                    >
+                        {tree ? (
+                            <div className="space-y-1">
+                                <FileTree
+                                    node={tree}
+                                    level={0}
+                                    onSelect={handleFileSelect}
+                                    selectedPath={selectedFile?.path}
+                                />
+                            </div>
+                        ) : (
+                            <div className="text-center p-4 text-gray-400">Loading files...</div>
+                        )}
 
-                    {tree && tree.children?.length === 0 && (
-                        <div className="text-center p-10 text-gray-400">
-                            <Folder className="mx-auto mb-2 opacity-50" size={32} />
-                            <p className="text-sm">Empty Output</p>
-                        </div>
-                    )}
-                </div>
+                        {tree && tree.children?.length === 0 && (
+                            <div className="text-center p-10 text-gray-400">
+                                <Folder className="mx-auto mb-2 opacity-50" size={32} />
+                                <p className="text-sm">Empty Output</p>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-                {/* Right Pane: Code Preview (70%) */}
+                {/* Resize Handle */}
+                {isTreeVisible && (
+                    <div
+                        onMouseDown={startResizing}
+                        className="w-1.5 bg-transparent hover:bg-blue-500/30 cursor-col-resize transition-all z-20 absolute top-0 bottom-0 select-none group"
+                        style={{ left: `${treeWidth}px`, marginLeft: '-3px' }}
+                    >
+                        <div className="absolute inset-y-0 left-1/2 w-0.5 bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-500 transition-colors opacity-0 group-hover:opacity-100" />
+                    </div>
+                )}
+
+                {/* Right Pane: Code Preview (flex-1 covers remaining) */}
                 <div className="flex-1 bg-white dark:bg-gray-950 overflow-hidden flex flex-col">
                     {selectedFile ? (
                         <>

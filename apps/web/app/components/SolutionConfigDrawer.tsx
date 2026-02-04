@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     X,
     Settings2,
@@ -10,16 +10,30 @@ import {
     ShieldCheck,
     Save,
     Layers,
-    MessageSquareCode
+    MessageSquareCode,
+    Maximize2,
+    Minimize2,
+    Monitor
 } from 'lucide-react';
+import IntelligenceConsoleModal from './IntelligenceConsoleModal';
+import PromptsExplorer from './PromptsExplorer'; // Keep for now if we want a mini-preview or just remove it?
+// Actually logic says: remove embedded if we have full screen. But maybe keep a "Show Preview" button?
+// User said: "I prefer to have a button that calls the whole prompts viewer... maximized"
+// So I will remove the embedded one to save space and just put the button.
 
 interface ConfigDrawerProps {
     isOpen: boolean;
     onClose: () => void;
+    projectId?: string;
+    sourceTech?: string;
+    targetTech?: string;
 }
 
-export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerProps) {
+export default function SolutionConfigDrawer({ isOpen, onClose, projectId, sourceTech, targetTech }: ConfigDrawerProps) {
     const [showAdvanced, setShowAdvanced] = React.useState(false);
+    const [isExpanded, setIsExpanded] = React.useState(false);
+    const [showConsole, setShowConsole] = useState(false);
+
     if (!isOpen) return null;
 
     return (
@@ -31,7 +45,10 @@ export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerPr
             />
 
             {/* Drawer */}
-            <div className="fixed top-0 right-0 h-full w-[600px] bg-[#0a0a0a] border-l border-white/5 z-[101] shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 ease-out">
+            <div
+                className={`fixed top-0 right-0 h-full bg-[#0a0a0a] border-l border-white/5 z-[101] shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 ease-out transition-all ${isExpanded ? 'w-[85vw]' : 'w-[600px]'
+                    }`}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between px-8 py-6 border-b border-white/5 bg-black/40 backdrop-blur-xl">
                     <div className="flex items-center gap-4">
@@ -43,12 +60,21 @@ export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerPr
                             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Cross-Stage Orchestration & AI Strategy</p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-3 hover:bg-white/5 rounded-2xl transition-all text-gray-500 hover:text-white"
-                    >
-                        <X size={24} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className="p-3 hover:bg-white/5 rounded-2xl transition-all text-gray-500 hover:text-white"
+                            title={isExpanded ? "Restore width" : "Maximize view"}
+                        >
+                            {isExpanded ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-3 hover:bg-white/5 rounded-2xl transition-all text-gray-500 hover:text-white"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -59,13 +85,15 @@ export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerPr
                         <div className="grid grid-cols-2 gap-4">
                             <ConfigCard
                                 label="Execution Engine"
-                                value="Databricks / Spark"
+                                value={targetTech ? targetTech.toUpperCase() : "NOT CONFIGURED"}
                                 icon={<Zap size={16} className="text-cyan-500" />}
+                                onClick={() => {/* Future: Select Engine */ }}
                             />
                             <ConfigCard
                                 label="Output Language"
-                                value="Python (PySpark)"
+                                value={`${targetTech === 'spark' || targetTech === 'databricks' ? 'Python (PySpark)' : 'SQL'}`}
                                 icon={<CodeIcon size={16} className="text-emerald-500" />}
+                                onClick={() => {/* Future: Select Target */ }}
                             />
                         </div>
                     </div>
@@ -107,14 +135,26 @@ export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerPr
                             {/* Prompts Section */}
                             <div className="space-y-6">
                                 <Header title="System Foundation Instructions" icon={<MessageSquareCode size={14} />} />
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Universal Triage Directive</label>
-                                        <textarea
-                                            className="w-full h-32 bg-white/5 border border-white/5 rounded-2xl p-4 text-xs text-gray-300 font-mono outline-none focus:ring-2 focus:ring-cyan-500/30 transition-all font-bold"
-                                            defaultValue="ACT as a Data Engineering Architect. ANALYZE complexity. CLASSIFY based on Medallion standards."
-                                        />
+
+                                <div className="bg-[var(--surface-elevated)] border border-[var(--border)] rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-4">
+                                    <div className="p-4 bg-purple-500/10 rounded-full text-purple-400 mb-2">
+                                        <Monitor size={32} />
                                     </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-white uppercase tracking-widest">Intelligence Console</h4>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                                            {sourceTech?.toUpperCase() || 'UNKNOWN'} <span className="mx-1">→</span> {targetTech?.toUpperCase() || 'UNKNOWN'}
+                                        </p>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 max-w-xs leading-relaxed">
+                                        Launch the full-screen environment to audit prompts, inject business rules, and visualize technology specific knowledge.
+                                    </p>
+                                    <button
+                                        onClick={() => setShowConsole(true)}
+                                        className="mt-2 px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-all shadow-lg shadow-purple-900/20 active:scale-95 flex items-center gap-2"
+                                    >
+                                        <Maximize2 size={12} /> Launch Console
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -136,6 +176,16 @@ export default function SolutionConfigDrawer({ isOpen, onClose }: ConfigDrawerPr
                     </button>
                 </div>
             </div>
+
+            {/* Full Screen Console Modal */}
+            <IntelligenceConsoleModal
+                isOpen={showConsole}
+                onClose={() => setShowConsole(false)}
+                projectId={projectId}
+                stage="all"
+                originTech={sourceTech}
+                destTech={targetTech}
+            />
         </>
     );
 }

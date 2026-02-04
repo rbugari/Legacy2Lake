@@ -2,46 +2,73 @@ from typing import Dict, Any, Type
 from .base_cartridge import Cartridge
 from .pyspark_cartridge import PySparkCartridge
 
+try:
+    from services.persistence_service import SupabasePersistence
+except ImportError:
+    from apps.api.services.persistence_service import SupabasePersistence
+
 class CartridgeFactory:
     """
     Factory to create the appropriate refined cartridge.
     """
     
     @staticmethod
-    def get_cartridge(project_id: str, registry: Dict[str, Any]) -> Cartridge:
+    def get_cartridge(project_id: str, registry: Dict[str, Any], tenant_id: str = None) -> Cartridge:
         """
         Determines the correct cartridge based on Design Registry settings.
-        Defaults to PySparkCartridge if not specified.
+        Fetches compliance rules from DB and injects them.
         """
         # Feature Flag: Check registry for 'target_stack'
-        target = registry.get("paths", {}).get("target_stack", "pyspark")
+        target = str(registry.get("paths", {}).get("target_stack", "pyspark")).lower()
         
-        if target == "dbt":
+        # Resolve Tech Config from DB
+        try:
+            # Map target string to tech_id (e.g. 'ms_fabric' -> 'fabric')
+            tech_map = {
+                "ms_fabric": "fabric", "microsoft_fabric": "fabric",
+                "aws": "redshift", "amazon": "redshift",
+                "gcp": "bigquery", "google": "bigquery",
+                "salesforce": "salesforce", "sf": "salesforce", "sfdc": "salesforce"
+            }
+            tech_id = tech_map.get(target, target)
+            
+            db = SupabasePersistence(tenant_id=tenant_id)
+            # Use direct sync execution as our Persistence client is sync
+            response = db.client.table("utm_system_catalog").select("config").eq("tech_id", tech_id).execute()
+            
+            if response.data and len(response.data) > 0:
+                tech_config = response.data[0].get("config", {})
+                registry['tech_config'] = tech_config
+            
+        except Exception as e:
+            print(f"Warning: Failed to fetch tech config for {target}: {e}")
+
+        if target in ["dbt"]:
             # Lazy import to avoid circular dependencies or import errors if not ready
             from .dbt_cartridge import DbtCartridge
             return DbtCartridge(project_id, registry)
             
-        elif target == "snowflake":
+        elif target in ["snowflake"]:
             from .snowflake_cartridge import SnowflakeCartridge
             return SnowflakeCartridge(project_id, registry)
 
-        elif target == "fabric" or target == "ms_fabric":
+        elif target in ["fabric", "ms_fabric", "microsoft_fabric"]:
             from .ms_fabric_cartridge import MSFabricCartridge
             return MSFabricCartridge(project_id, registry)
 
-        elif target == "gcp" or target == "google":
+        elif target in ["gcp", "google", "bigquery"]:
             from .gcp_cartridge import GCPCartridge
             return GCPCartridge(project_id, registry)
 
-        elif target == "aws" or target == "amazon":
+        elif target in ["aws", "amazon", "redshift"]:
             from .aws_cartridge import AWSCartridge
             return AWSCartridge(project_id, registry)
 
-        elif target == "salesforce" or target == "sf":
+        elif target in ["salesforce", "sf", "sfdc"]:
             from .sf_cartridge import SFCartridge
             return SFCartridge(project_id, registry)
 
-        elif target == "sql":
+        elif target in ["sql", "ansi_sql"]:
             # Placeholder for Pure SQL
             return PySparkCartridge(project_id, registry)
             

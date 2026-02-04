@@ -142,7 +142,7 @@ export default function GovernanceView({
                     <button
                         onClick={handlePush}
                         disabled={isPushing}
-                        className="px-6 py-2.5 bg-blue-500/20 border border-blue-500/30 text-blue-500 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-500/30 transition-all disabled:opacity-50"
+                        className="px-6 py-2.5 bg-blue-500/20 border border-blue-500/30 text-blue-500 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-500/30 active:scale-95 transition-all disabled:opacity-50"
                     >
                         {isPushing ? (
                             <>
@@ -158,7 +158,7 @@ export default function GovernanceView({
                     <button
                         onClick={runAudit}
                         disabled={isAuditing}
-                        className="px-6 py-2.5 bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-[var(--accent)] rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-[var(--accent)]/30 transition-all disabled:opacity-50"
+                        className="px-6 py-2.5 bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-[var(--accent)] rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-[var(--accent)]/30 active:scale-95 transition-all disabled:opacity-50"
                     >
                         {isAuditing ? (
                             <>
@@ -292,14 +292,14 @@ export default function GovernanceView({
                                     <div className="flex items-center gap-4 pt-4">
                                         <button
                                             onClick={() => onStageChange(6)}
-                                            className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 hover:bg-emerald-400 transition-all flex items-center gap-2"
+                                            className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 hover:bg-emerald-400 transition-all flex items-center gap-2"
                                         >
                                             <ArrowRight size={18} /> Proceed to Handover
                                         </button>
                                         <button
                                             onClick={handlePush}
                                             disabled={isPushing}
-                                            className="px-6 py-3 bg-blue-500/30 border border-white/20 backdrop-blur-md rounded-xl font-bold hover:bg-white/10 transition-all flex items-center gap-2 disabled:opacity-50"
+                                            className="px-6 py-3 bg-blue-500/30 border border-white/20 backdrop-blur-md rounded-xl font-bold hover:bg-white/10 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
                                         >
                                             {isPushing ? (
                                                 <>
@@ -315,7 +315,7 @@ export default function GovernanceView({
                                         <button
                                             onClick={runAudit}
                                             disabled={isAuditing}
-                                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-xl font-bold shadow-lg shadow-[var(--accent)]/20 hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50"
+                                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-xl font-bold shadow-lg shadow-[var(--accent)]/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
                                         >
                                             {isAuditing ? (
                                                 <>
@@ -488,12 +488,14 @@ export default function GovernanceView({
                             <div className="w-16 h-1 w-16 bg-gray-200 dark:bg-gray-800 rounded-full mb-4" />
                             <h3 className="text-xl font-bold">Ready to take the next step?</h3>
                             <p className="text-gray-500 max-w-md text-sm">
-                                You can deploy these artifacts directly to your Databricks Workspace or export them for external CI/CD pipelines.
+                                You can deploy these artifacts directly to your {project?.destination || 'Databricks'} Workspace or export them for external CI/CD pipelines.
                             </p>
                             <div className="flex gap-4 pt-2">
-                                <button className="text-sm font-bold text-primary hover:underline">Support Hub</button>
+                                <button className="text-sm font-bold text-primary hover:underline active:scale-95 transition-all">Support Hub</button>
                                 <span className="text-gray-300">|</span>
-                                <button className="text-sm font-bold text-primary hover:underline">Open in Databricks</button>
+                                <button className="text-sm font-bold text-primary hover:underline active:scale-95 transition-all">
+                                    Open in {project?.destination || 'Databricks'}
+                                </button>
                             </div>
                         </div>
                     </>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import { User, Shield, Briefcase, Settings, Sparkles, LogOut } from "lucide-react";
+import { User, Shield, Briefcase, Settings, Sparkles, LogOut, HelpCircle } from "lucide-react";
 
 function IdentityBadge() {
   const { user, logout } = useAuth();
@@ -28,21 +28,26 @@ function IdentityBadge() {
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   // Hide Navbar on the landing page ("/")
   if (pathname === "/") {
     return null;
   }
 
+  const isAdmin = user?.role === "ADMIN";
+
   return (
     <nav className="border-b border-[var(--border)] p-4 bg-[var(--surface)]/80 backdrop-blur-md sticky top-0 z-50 transition-colors duration-300">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <div className="flex items-center gap-2">
-          {/* Logo updated to use image */}
-          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            {/* <img src="/logo.png" alt="Shift-T Logo" className="h-8 w-auto object-contain" /> */}
-            <span className="text-xl font-bold tracking-tighter text-cyan-500 hover:text-cyan-400 transition-colors hidden sm:block">Legacy2Lake</span>
+          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity group">
+            <div className="p-2 bg-cyan-500/10 rounded-xl text-cyan-500 group-hover:bg-cyan-500/20 transition-all">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <span className="text-xl font-black tracking-tighter text-white hidden sm:block ml-1">
+              LEGACY<span className="text-cyan-500">2</span>LAKE
+            </span>
           </Link>
         </div>
         <div className="flex items-center gap-3">
@@ -60,16 +65,35 @@ export default function Navbar() {
           <div className="h-6 w-px bg-white/5 mx-1" />
 
           {/* Identity Badge */}
-          <IdentityBadge />
-
-          {/* Platform Admin Console (Transparency Mode) - Visible to All */}
-          <Link href="/admin" className="p-2 text-[var(--text-secondary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-full transition-colors" title="Platform Administration">
-            <Shield className="w-5 h-5" />
+          <Link href="/profile" className="hover:opacity-80 transition-opacity">
+            <IdentityBadge />
           </Link>
 
-          {/* Tenant Settings */}
-          <Link href="/settings" className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors" title="Settings">
+          {/* Platform Admin Console - Only visible to ADMIN users */}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="p-2 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-full transition-all relative group"
+              title="Platform Administration (Admin Only)"
+            >
+              <Shield className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+            </Link>
+          )}
+
+          {/* User Profile & Security */}
+          <Link href="/profile" className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors" title="My Profile & Security">
+            <User className="w-5 h-5" />
+          </Link>
+
+          {/* AI Providers & Settings */}
+          <Link href="/settings" className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors" title="Provider Settings">
             <Settings className="w-5 h-5" />
+          </Link>
+
+          {/* Help & Documentation */}
+          <Link href="/help" className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-full transition-colors" title="Help & Documentation">
+            <HelpCircle className="w-5 h-5" />
           </Link>
 
           <ThemeToggle />

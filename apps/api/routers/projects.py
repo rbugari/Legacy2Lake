@@ -5,7 +5,7 @@ Migrated from main.py for better modularity.
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import io
 import zipfile
@@ -424,6 +424,50 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
             "message": f"Error scanning Triage: {str(e)}",
             "project_id": project_id,
         }
+
+
+@router.post("/{project_id}/triage/upload")
+async def upload_triage_files(
+    project_id: str,
+    files: List[UploadFile] = File(...),
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Uploads one or many files to the project's Triage directory."""
+    # 1. Resolve project folder name (handles UUID or Name)
+    project_folder = project_id
+    if "-" in project_id:
+        resolved_name = await db.get_project_name_by_id(project_id)
+        if resolved_name:
+            project_folder = resolved_name
+    
+    # 2. Get storage provider and ensure directory
+    storage = PersistenceService.get_storage()
+    project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
+    triage_prefix = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+    
+    uploaded_files = []
+    
+    try:
+        for file in files:
+            content = await file.read()
+            # Standardize filename and construct key
+            # We don't want to nested paths here, just flat in Triage/
+            filename = os.path.basename(file.filename)
+            dest_key = f"{triage_prefix}/{filename}"
+            
+            storage.save_file(dest_key, content, is_binary=True)
+            uploaded_files.append(filename)
+            
+        return {
+            "success": True,
+            "project_id": project_id,
+            "uploaded_count": len(uploaded_files),
+            "files": uploaded_files
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to upload files: {str(e)}")
 
 
 def _classify_file_type(ext: str) -> str:

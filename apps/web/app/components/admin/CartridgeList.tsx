@@ -5,6 +5,7 @@ import { useState } from "react";
 
 interface Cartridge {
     id: string;
+    tech_id?: string;
     name: string;
     version?: string;
     type?: string;
@@ -58,9 +59,14 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                                 </div>
                                 <div className="space-y-0.5">
                                     <h3 className="text-sm font-black uppercase tracking-widest text-gray-900 dark:text-white">{cart.name}</h3>
-                                    <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
-                                        {cart.version ? `Version ${cart.version}` : cart.type}
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
+                                            {cart.version ? `Version ${cart.version}` : cart.type}
+                                        </p>
+                                        <span className="text-[9px] font-mono bg-[var(--background)] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--accent)]">
+                                            {cart.tech_id || cart.id.split('-').slice(0, 2).join('-')}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex gap-2">

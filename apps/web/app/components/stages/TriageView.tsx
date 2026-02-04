@@ -12,18 +12,18 @@ import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { fetchWithAuth } from '../../lib/auth-client';
-import PromptsExplorer from '../PromptsExplorer'; // Added Phase 0
+
 import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
+import DownloadReportButton from '../DownloadReportButton';
 
 // Tab Definitions
 const TABS = [
     { id: 'graph', label: 'Graph', icon: <Layout size={14} />, group: 'Views' },
     { id: 'grid', label: 'Grid', icon: <List size={14} />, group: 'Views' },
     { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Views' },
-    { id: 'prompt', label: 'AI Prompts', icon: <Terminal size={14} />, group: 'Config' },
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
     { id: 'logs', label: 'Execution', icon: <FileText size={14} />, group: 'Config' },
     { id: 'files', label: 'File Explorer', icon: <FolderOpen size={14} />, group: 'Config' }, // Added per request
@@ -67,6 +67,7 @@ export default function TriageView({
     const [loadingFiles, setLoadingFiles] = useState(false);
     const [viewingFile, setViewingFile] = useState<any | null>(null);
     const [fileContent, setFileContent] = useState("");
+    const [isUploading, setIsUploading] = useState(false);
 
     // Prompt & Context State
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -76,6 +77,10 @@ export default function TriageView({
     // Heatmap State
     const [activeHeatmap, setActiveHeatmap] = useState<'none' | 'pii' | 'criticality' | 'volume'>('none');
     const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
+
+    // Technology State
+    const [sourceTech, setSourceTech] = useState<string | undefined>();
+    const [destTech, setDestTech] = useState<string | undefined>();
 
     // DnD (Keep for Graph Tab logic if needed, though split pane is gone)
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
@@ -88,6 +93,7 @@ export default function TriageView({
     const [isSavingContext, setIsSavingContext] = useState(false);
     const [editingAsset, setEditingAsset] = useState<any | null>(null);
     const [assetNote, setAssetNote] = useState("");
+    const [isApproving, setIsApproving] = useState(false);
 
     const handleDeleteNode = useCallback((id: string) => {
         if (isReadOnly) return;
@@ -259,6 +265,8 @@ export default function TriageView({
                 // or just rely on the pending filter.
                 setAssets(projectData.assets || []);
                 setSystemPrompt(projectData.prompt || "");
+                setSourceTech(projectData.source_tech);
+                setDestTech(projectData.target_tech);
             }
         } catch (error) {
             console.error("Init error:", error);
@@ -412,6 +420,7 @@ export default function TriageView({
     // Approve Design
     // Approve Design
     const handleApprove = async () => {
+        setIsApproving(true);
         try {
             // 1. Save final layout
             await saveLayout(nodes, edges);
@@ -432,16 +441,18 @@ export default function TriageView({
             } else {
                 console.error("Approve failed", await res.text());
                 alert("Error approving design. Please try again.");
+                setIsApproving(false);
             }
         } catch (e) {
             console.error("Failed to approve", e);
             alert("Connection error while approving.");
+            setIsApproving(false);
         }
     };
 
     const fetchTriageLogs = useCallback(async () => {
         try {
-            const res = await fetchWithAuth(`projects/${projectId}/logs?type=triage`);
+            const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=triage`);
             const data = await res.json();
             if (data.logs) {
                 setTriageLog(data.logs);
@@ -498,6 +509,39 @@ export default function TriageView({
             else setFileContent("Error reading file.");
         } catch (e) {
             setFileContent("Error loading content.");
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+            formData.append("files", file);
+        });
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/triage/upload`, {
+                method: "POST",
+                body: formData
+            });
+
+            if (res.ok) {
+                await fetchFiles();
+                // Optionally add a log entry if there was a log system here
+            } else {
+                const err = await res.json();
+                alert(`Upload failed: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("Failed to upload files.");
+        } finally {
+            setIsUploading(false);
+            // Reset input
+            e.target.value = '';
         }
     };
 
@@ -592,6 +636,30 @@ export default function TriageView({
         }
     };
 
+    const handleCancelTriage = async () => {
+        if (!window.confirm("¿Estás seguro de que deseas cancelar el proceso de análisis?")) return;
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/cancel`, {
+                method: "POST",
+                headers: {
+                    ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
+                }
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setIsLoading(false);
+                setTriageLog(prev => prev + "\n[SYSTEM] Process cancelled by user.");
+            } else {
+                setTriageLog(prev => prev + `\n[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`);
+            }
+        } catch (e) {
+            console.error("Failed to cancel process", e);
+            setTriageLog(prev => prev + `\n[ERROR] Network error during cancellation: ${e}`);
+        }
+    };
+
     return (
         <ReactFlowProvider>
             <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'}`}>
@@ -603,6 +671,7 @@ export default function TriageView({
                     onApprove={handleApprove}
                     approveLabel="Start Drafting"
                     isApproveDisabled={isLoading || assets.length === 0}
+                    isExecuting={isApproving}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={onToggleFullscreen}
                     onReset={onReset}
@@ -612,14 +681,34 @@ export default function TriageView({
                         <button
                             onClick={handleRunTriage}
                             disabled={isLoading}
-                            className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-secondary transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
+                            className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-secondary transition-all shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95"
                         >
                             {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
                             {isLoading ? "Processing..." : "Run Analysis"}
                         </button>
+
+                        {isLoading && (
+                            <button
+                                onClick={handleCancelTriage}
+                                className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
+                            >
+                                <X size={12} />
+                                Cancel
+                            </button>
+                        )}
+
+                        <DownloadReportButton
+                            projectId={projectId}
+                            reportType="triage"
+                            variant="secondary"
+                            className="bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-xl px-4 py-2"
+                            icon={<FileText size={16} className="text-cyan-400" />}
+                            label="Download Report"
+                        />
+
                         <button
                             onClick={() => saveLayout(nodes, edges)}
-                            className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
+                            className="px-4 py-2 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
                         >
                             <Save size={14} /> Save Design
                         </button>
@@ -696,9 +785,28 @@ export default function TriageView({
                             <div className="max-w-4xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-xl font-black text-white uppercase tracking-wider">Triage Files</h3>
-                                    <button onClick={fetchFiles} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-cyan-500">
-                                        <RefreshCw size={16} className={loadingFiles ? "animate-spin" : ""} />
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`flex items-center gap-2 p-2 px-4 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 rounded-lg cursor-pointer transition-all border border-cyan-500/30 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            {isUploading ? (
+                                                <RefreshCw size={16} className="animate-spin" />
+                                            ) : (
+                                                <FileUp size={16} />
+                                            )}
+                                            <span className="text-[10px] font-black uppercase tracking-widest">
+                                                {isUploading ? 'Uploading...' : 'Upload Files'}
+                                            </span>
+                                            <input
+                                                type="file"
+                                                multiple
+                                                className="hidden"
+                                                onChange={handleFileUpload}
+                                                disabled={isUploading}
+                                            />
+                                        </label>
+                                        <button onClick={fetchFiles} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                                            <RefreshCw size={16} className={loadingFiles ? "animate-spin" : ""} />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {triageFiles.length === 0 ? (
@@ -1148,36 +1256,7 @@ export default function TriageView({
                         </div>
                     )}
 
-                    {/* 4. PROMPT TAB */}
-                    {activeTab === 'prompt' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
-                            <div className="max-w-7xl mx-auto space-y-6">
-                                <div className="flex items-center justify-between mb-8">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2.5 bg-cyan-500/10 rounded-2xl text-cyan-500 border border-cyan-500/20">
-                                            <Zap size={20} />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-black text-white uppercase tracking-wider">GLOBAL BUSINESS CONTEXT</h3>
-                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">AI Instruction Overrides</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={handleRunTriage}
-                                        className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
-                                    >
-                                        <Play size={16} /> Re-Run Triage
-                                    </button>
-                                </div>
 
-                                <div className="card-glass overflow-hidden p-0 border-none shadow-2xl h-[700px]">
-                                    <PromptsExplorer
-                                        projectId={projectId}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* 4. USER INPUT TAB */}
                     {activeTab === 'context' && (

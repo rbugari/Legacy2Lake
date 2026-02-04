@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { Database, Code, Zap, CheckCircle, RefreshCw, Cloud, Server, Box, Snowflake } from 'lucide-react';
-import { API_BASE_URL } from '../../lib/config';
+import { fetchWithAuth } from '../../lib/auth-client';
 
 interface TechnologyMixerProps {
     projectId: string;
@@ -15,7 +15,7 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
     const fetchStack = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/projects/${projectId}/registry`);
+            const res = await fetchWithAuth(`/projects/${projectId}/registry`);
             const data = await res.json();
             if (data.registry) {
                 const target = data.registry.find((r: any) => r.key === 'target_stack');
@@ -36,7 +36,7 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
         if (newStack === stack) return;
         setSaving(true);
         try {
-            await fetch(`${API_BASE_URL}/projects/${projectId}/registry`, {
+            await fetchWithAuth(`/projects/${projectId}/registry`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

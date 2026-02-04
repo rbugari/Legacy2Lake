@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Upload, FileCode, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-import { API_BASE_URL } from '../lib/config';
+import { fetchWithAuth } from '../lib/auth-client';
 
 interface UploadProps {
     onSuccess: (data: any) => void;
@@ -28,7 +28,7 @@ export default function FileUpload({ onSuccess }: UploadProps) {
         try {
             // First phase: Uploading
             setStatus('uploading');
-            const response = await fetch(`${API_BASE_URL}/ingest/upload`, {
+            const response = await fetchWithAuth('/ingest/upload', {
                 method: 'POST',
                 body: formData,
             });

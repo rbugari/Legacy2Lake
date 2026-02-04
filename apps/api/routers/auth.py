@@ -6,7 +6,10 @@ from typing import Optional, List
 from datetime import datetime
 
 from services.persistence_service import SupabasePersistence
+from services.email_service import EmailService
 from routers.dependencies import require_admin, get_identity
+import secrets
+import string
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -27,9 +30,22 @@ class LoginResponse(BaseModel):
 
 class TenantCreate(BaseModel):
     username: str
-    password: str
+    password: Optional[str] = None
+    email: Optional[str] = None
     client_id: str
     role: str = "USER"
+
+
+class TenantInvite(BaseModel):
+    username: str
+    email: str
+    client_id: Optional[str] = None # Optional now as we auto-create
+    role: str = "USER"
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class TenantUpdate(BaseModel):
@@ -244,3 +260,143 @@ async def create_client(payload: ClientCreate, admin: dict = Depends(require_adm
     
     client_id = await db.create_client(payload.name)
     return {"success": True, "client_id": client_id}
+
+
+# --- User Self-Service ---
+
+@router.post("/change-password")
+async def change_password(payload: PasswordChange, identity: dict = Depends(get_identity)):
+    """User changes their own password."""
+    tenant_id = identity.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Invalid Session")
+
+    db = SupabasePersistence(tenant_id=None)
+    
+    # 1. Fetch current user
+    res = db.client.table("utm_tenants").select(
+        "password_hash, password_hash_bcrypt"
+    ).eq("tenant_id", tenant_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user = res.data[0]
+    
+    # 2. Verify current password
+    password_valid = False
+    if user.get("password_hash_bcrypt"):
+        password_valid = verify_password_bcrypt(payload.current_password, user["password_hash_bcrypt"])
+    elif user.get("password_hash"):
+        password_valid = verify_password_sha256(payload.current_password, user["password_hash"])
+        
+    if not password_valid:
+        raise HTTPException(status_code=400, detail="Current password incorrect")
+        
+    # 3. Update to new bcrypt hash
+    new_hash = hash_password_bcrypt(payload.new_password)
+    db.client.table("utm_tenants").update({
+        "password_hash_bcrypt": new_hash,
+        "password_hash": None # Clear legacy hash
+    }).eq("tenant_id", tenant_id).execute()
+    
+    return {"success": True, "message": "Password updated successfully"}
+
+
+@router.post("/invite")
+async def invite_tenant(payload: TenantInvite, admin: dict = Depends(require_admin)):
+    """Invite a new user (Admin only). Generates random password, sends email, and AUTO-CREATES client."""
+    db = SupabasePersistence(tenant_id=None)
+    
+    # 1. Check if username exists
+    existing = db.client.table("utm_tenants").select("tenant_id").eq("username", payload.username).execute()
+    if existing.data:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # 2. Auto-Create Client
+    try:
+        client_res = db.client.table("utm_clients").insert({"name": payload.username}).execute()
+        if not client_res.data:
+            raise Exception("Failed to create client record")
+        new_client_id = client_res.data[0]["client_id"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create associated client: {str(e)}")
+
+    # 3. Generate random password
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    # 4. Create tenant (Enforce role: "USER" and use new client_id)
+    new_tenant = {
+        "username": payload.username,
+        "email": payload.email,
+        "password_hash_bcrypt": hash_password_bcrypt(temp_password),
+        "client_id": new_client_id,
+        "role": "USER" 
+    }
+    
+    try:
+        res = db.client.table("utm_tenants").insert(new_tenant).execute()
+        tenant_data = res.data[0]
+        
+        # 4. Send Email
+        email_svc = EmailService()
+        sent = email_svc.send_invitation(payload.username, payload.email, temp_password)
+        
+        if not sent:
+            return {
+                "success": True, 
+                "message": "User created but email failed to send. Please provide password manually.",
+                "temp_password": temp_password,
+                "tenant_id": tenant_data["tenant_id"]
+            }
+            
+        return {"success": True, "tenant_id": tenant_data["tenant_id"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+
+
+@router.post("/reset-password")
+async def reset_password(payload: dict, admin: dict = Depends(require_admin)):
+    """Admin resets a user's password. Generates random password and sends email."""
+    tenant_id = payload.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+
+    db = SupabasePersistence(tenant_id=None)
+    
+    # 1. Fetch user email and username
+    res = db.client.table("utm_tenants").select("username, email").eq("tenant_id", tenant_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user = res.data[0]
+    username = user["username"]
+    email = user.get("email")
+
+    if not email:
+        raise HTTPException(status_code=400, detail="User has no email associated. Cannot reset via email.")
+
+    # 2. Generate random password
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    # 3. Update password hash
+    new_hash = hash_password_bcrypt(temp_password)
+    db.client.table("utm_tenants").update({
+        "password_hash_bcrypt": new_hash,
+        "password_hash": None # Clear legacy hash
+    }).eq("tenant_id", tenant_id).execute()
+
+    # 4. Send Email
+    email_svc = EmailService()
+    sent = email_svc.send_password_reset(username, email, temp_password)
+    
+    if not sent:
+        return {
+            "success": True, 
+            "message": "Password reset successfully but email failed to send. Please provide password manually.",
+            "temp_password": temp_password
+        }
+        
+    return {"success": True, "message": f"Password reset successfully for {username}. Email sent to {email}."}

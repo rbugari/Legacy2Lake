@@ -67,23 +67,43 @@ class AuditService:
              if res.data:
                  project_name = res.data[0]['name']
 
-        project_path = PersistenceService.ensure_solution_dir(project_name)
-        refined_dir = Path(project_path) / "Refined"
+        storage = PersistenceService.get_storage()
+        project_path = PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
+        refined_dir = f"{project_path.rstrip('/')}/Refinement"
         
-        if not refined_dir.exists():
-            return {"error": "No refined files found to audit."}
-
-        # 1. Collect all code
+        # 1. Collect all code via Storage
+        items = storage.list_files(refined_dir, recursive=True)
+        def get_all_files(nodes):
+            files = []
+            for n in nodes:
+                if n["type"] == "folder" and n.get("children"):
+                    files.extend(get_all_files(n["children"]))
+                elif n["type"] == "file":
+                    files.append(n)
+            return files
+        
+        all_refined_files = get_all_files(items)
         audit_content = []
-        for root, _, files in os.walk(refined_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    rel_path = os.path.relpath(os.path.join(root, file), refined_dir)
-                    with open(os.path.join(root, file), "r", encoding="utf-8") as f:
+
+        for f_node in all_refined_files:
+            if f_node["name"].endswith(".py"):
+                # Use path relative to Refinement
+                full_key = f_node["path"]
+                norm_key = full_key.replace("\\", "/")
+                norm_prefix = refined_dir.replace("\\", "/").rstrip("/") + "/"
+                
+                rel_path = norm_key[len(norm_prefix):] if norm_key.startswith(norm_prefix) else f_node["name"]
+                
+                try:
+                    content = storage.read_file(full_key)
+                    if content:
+                        if isinstance(content, bytes): content = content.decode("utf-8")
                         audit_content.append({
                             "file": rel_path,
-                            "content": f.read()
+                            "content": content
                         })
+                except:
+                    pass
 
         if not audit_content:
              return {"error": "Project contains folder but no .py files."}

@@ -20,6 +20,10 @@ interface ProjectCardProps {
         updated_at?: string;
         source_tech?: string;
         target_tech?: string;
+        lines_generated?: number;
+        complexity_high?: number;
+        complexity_medium?: number;
+        complexity_low?: number;
     };
     onDelete: (e: React.MouseEvent, id: string) => void;
     onReset: (e: React.MouseEvent, id: string) => void;
@@ -67,8 +71,8 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
                 {/* Header Row */}
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2 text-[var(--text-tertiary)] text-[10px] font-bold tracking-widest uppercase">
-                        {originConfig.icon}
-                        {originConfig.label}
+                        <Database size={14} className="text-cyan-500" />
+                        {project.name}
                     </div>
 
                     <div className={cn(
@@ -119,26 +123,66 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
                     </div>
                 </div>
 
-                {/* Metrics Row */}
-                <div className="flex items-center gap-4 mb-6 mt-auto">
-                    <div className="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
-                        <FileText size={14} className="text-cyan-400" />
-                        <span className="font-bold">{project.assets_count || 0}</span>
-                        <span className="opacity-60">assets</span>
+                {/* Dashboard Metrics */}
+                <div className="grid grid-cols-2 gap-3 mb-6 mt-auto">
+                    {/* Assets Count */}
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <FileText size={12} className="text-cyan-400" />
+                            <span className="text-[9px] font-black text-cyan-400 uppercase tracking-wider">Assets</span>
+                        </div>
+                        <div className="text-2xl font-black text-white">{project.assets_count || 0}</div>
                     </div>
 
+                    {/* Lines Generated */}
+                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Package size={12} className="text-purple-400" />
+                            <span className="text-[9px] font-black text-purple-400 uppercase tracking-wider">Lines</span>
+                        </div>
+                        <div className="text-2xl font-black text-white">{project.lines_generated ? `${(project.lines_generated / 1000).toFixed(1)}k` : '0'}</div>
+                    </div>
+
+                    {/* Complexity Breakdown (if available) */}
+                    {(project.complexity_high || project.complexity_medium || project.complexity_low) && (
+                        <div className="col-span-2 bg-white/5 border border-white/10 rounded-xl p-3">
+                            <div className="text-[9px] font-black text-gray-400 uppercase tracking-wider mb-2">Complexity</div>
+                            <div className="flex gap-2">
+                                {(project.complexity_high ?? 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs">
+                                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                        <span className="font-bold text-red-400">{project.complexity_high}</span>
+                                    </div>
+                                )}
+                                {(project.complexity_medium ?? 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs">
+                                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                                        <span className="font-bold text-amber-400">{project.complexity_medium}</span>
+                                    </div>
+                                )}
+                                {(project.complexity_low ?? 0) > 0 && (
+                                    <div className="flex items-center gap-1 text-xs">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                        <span className="font-bold text-emerald-400">{project.complexity_low}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Health Status */}
                     {project.alerts && project.alerts > 0 ? (
-                        <div className="flex items-center gap-2 text-xs font-medium text-orange-400">
+                        <div className="col-span-2 bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 flex items-center gap-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
                             </span>
-                            <span className="font-bold">{project.alerts} alerts</span>
+                            <span className="text-xs font-bold text-orange-400">{project.alerts} Alerts</span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-2 text-xs font-medium text-emerald-400">
-                            <AlertCircle size={14} />
-                            <span className="font-bold">Healthy</span>
+                        <div className="col-span-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2">
+                            <AlertCircle size={14} className="text-emerald-400" />
+                            <span className="text-xs font-bold text-emerald-400">Healthy</span>
                         </div>
                     )}
                 </div>

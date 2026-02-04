@@ -42,7 +42,10 @@ Navigate to **"Intelligence Configuration"** to review or customize.
 
 ### 3. Review Logical Plan
 
-**Drafting Output Explorer**:
+**Drafting Output Explorer** (v3.6 UI Update):
+- **Resizable Split Pane**: Drag the border between file tree and code preview to adjust widths
+- **Tree Toggle**: Click the "Panel" button to show/hide the file tree for maximum preview space
+- **Persistent Layout**: Your preferred tree width and visibility are saved per project
 - **Logical Steps View**: Browse generated IR for each asset
 - **Dependency Graph**: Visual representation of execution order
 - **Schema Reference**: Target DDL organized by layer (Bronze → Silver → Gold)

@@ -12,6 +12,7 @@ from routers.dependencies import get_db
 from services.persistence_service import SupabasePersistence, PersistenceService
 from services.discovery_service import DiscoveryService
 from services.agent_a_service import AgentAService
+from services.agent_s_service import AgentSService
 
 router = APIRouter(tags=["Triage & Discovery"])
 
@@ -49,9 +50,21 @@ async def get_discovery_project(project_id: str, db: SupabasePersistence = Depen
         agent_a = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
         prompt = await agent_a._load_prompt()
         
+    # Extract tech info from config or settings
+    def get_tech(key):
+        if not meta: return None
+        # Try settings first as it's the standard for new projects
+        val = meta.get("settings", {}).get(key)
+        if not val:
+            # Fallback to config
+            val = meta.get("config", {}).get(key)
+        return val
+
     return {
         "assets": assets,
-        "prompt": prompt
+        "prompt": prompt,
+        "source_tech": get_tech("source_tech"),
+        "target_tech": get_tech("target_tech")
     }
 
 
@@ -103,60 +116,91 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         }
 
     import datetime
+    
+    # 0. Clear previous logs for TRIAGE phase
+    try:
+        await db.clear_execution_logs(project_uuid, phase="TRIAGE")
+    except Exception as e:
+        print(f"WARNING: Could not clear TRIAGE DB logs: {e}")
+
     log_lines = []
     
     # Helper to persist log incrementally
-    def _log(msg: str, agent: str = "SYSTEM"):
+    async def _log(msg: str, agent: str = "SYSTEM"):
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted_msg = f"[{now}] [{agent}] {msg}"
         log_lines.append(formatted_msg)
+        
+        # 1. Database Logging (Primary for real-time streaming)
+        await db.log_execution(project_uuid, "TRIAGE", msg, step=agent)
+        
+        # 2. Storage Logging (Fallback / Historical)
         try:
-            path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
-            with open(os.path.join(path, "triage.log"), "a", encoding="utf-8") as f:
-                f.write(f"{formatted_msg}\n")
-        except:
-            pass
+            current_log_content = "\n".join(log_lines)
+            storage = PersistenceService.get_storage()
+            proj_base = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
+            log_key = f"{proj_base.rstrip('/')}/triage.log"
+            storage.save_file(log_key, current_log_content)
+        except Exception as e:
+            print(f"DEBUG: Triage Log Error: {e}")
             
-    # Clear previous log
+    async def _check_cancellation():
+        """Check if cancellation has been requested for this project."""
+        try:
+            return await db.check_cancellation(project_uuid)
+        except: return False
+
+    # 1. Reset cancellation flag and clear previous logs for TRIAGE phase
     try:
-        path = PersistenceService.ensure_solution_dir(project_folder, tenant_id=db.tenant_id)
-        with open(os.path.join(path, "triage.log"), "w", encoding="utf-8") as f:
-            f.write(f"--- Triage Started for {project_id} ---\n")
-            f.write(f"Tenant: {db.tenant_id}\n")
-    except:
-        pass
+        await db.update_project_metadata(project_uuid, {"cancellation_requested": False})
+        await db.clear_execution_logs(project_uuid, phase="TRIAGE")
+    except Exception as e:
+        print(f"WARNING: Could not reset flag or clear TRIAGE DB logs: {e}")
+
+    # Clear previous log in storage
+    await _log("--- Triage Started ---", agent="SYSTEM")
     
-    _log(f"Initializing Shift-T Triage Agent for Project: {project_id}")
+    # Check for cancellation
+    if await _check_cancellation():
+        await _log("Triage cancelled by user.", agent="SYSTEM")
+        return {"log": "\n".join(log_lines), "status": "cancelled"}
+
+    await _log(f"Initializing Legacy2Lake Triage Agent for Project: {project_id}")
 
     # 1. Deep Scan (The Scanner / Pre-processing)
-    _log("Running Deep Scanner (Python Engine)...", agent="SCANNER")
+    await _log("Running Deep Scanner (Python Engine)...", agent="SCANNER")
     
     # Fetch persistent human context
     user_context = await db.get_project_context(project_uuid)
     if user_context:
-        _log(f"Found {len(user_context)} human context overrides. Injecting into scanner...", agent="SCANNER")
+        await _log(f"Found {len(user_context)} human context overrides. Injecting into scanner...", agent="SCANNER")
         
     manifest = DiscoveryService.generate_manifest(project_folder, tenant_id=db.tenant_id, user_context=user_context)
     manifest["project_id"] = project_uuid
     
     file_count = len(manifest["file_inventory"])
     tech_stats = manifest["tech_stats"]
-    _log(f"Scanned {file_count} files.", agent="SCANNER")
-    _log(f"Tech Stack Detected: {tech_stats}", agent="SCANNER")
+    await _log(f"Scanned {file_count} files.", agent="SCANNER")
+    await _log(f"Tech Stack Detected: {tech_stats}", agent="SCANNER")
+    
+    # Check for cancellation
+    if await _check_cancellation():
+        await _log("Triage cancelled by user.", agent="SYSTEM")
+        return {"log": "\n".join(log_lines), "status": "cancelled"}
     
     # 2. Agent A Analysis (The Detective)
-    _log("Invoking Agent A (Mesh Architect)...", agent="ORCHESTRATOR")
+    await _log("Invoking Agent A (Mesh Architect)...", agent="ORCHESTRATOR")
     if params.system_prompt:
-        _log("Applying custom System Prompt override.", agent="ORCHESTRATOR")
+        await _log("Applying custom System Prompt override.", agent="ORCHESTRATOR")
     
     # Resolve Model info for logging before calling agent
     llm_config = await db.resolve_agent_model("agent-a")
     if llm_config:
         provider = llm_config.get('provider', 'UNKNOWN').upper()
         model = llm_config.get('deployment') or llm_config.get('model_name', 'UNKNOWN')
-        _log(f"Initiating Agent A (Detective) via {provider} using model {model}", agent="AGENT_A")
+        await _log(f"Initiating Agent A (Detective) via {provider} using model {model}", agent="AGENT_A")
     else:
-        _log("FAILED: LLM configuration for 'agent-a' is missing or invalid for this tenant.", agent="AGENT_A")
+        await _log("FAILED: LLM configuration for 'agent-a' is missing or invalid for this tenant.", agent="AGENT_A")
         return {
             "log": "\n".join(log_lines),
             "error": "LLM Configuration Missing. Please define Agent Matrix and Provider Vault for this tenant."
@@ -171,8 +215,8 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         result = await agent_a.analyze_manifest(manifest, system_prompt_override=prompt)
         
         if "error" in result:
-            _log(f"Agent A failed: {result['error']}", agent="AGENT_A")
-            return {"log": "\n".join(log_lines), "error": result['error']}
+            await _log(f"Agent A failed: {result['error']}", agent="AGENT_A")
+            return {"log": "\n".join(log_lines), **result}
              
         rf_nodes = result.get("mesh_graph", {}).get("nodes", [])
         rf_edges = result.get("mesh_graph", {}).get("edges", [])
@@ -195,14 +239,43 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
                         "target_name": item["name"]
                     })
         
-        _log(f"Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}", agent="AGENT_A")
+        await _log(f"Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}", agent="AGENT_A")
         
     except Exception as e:
-        _log(f"CRITICAL Architecture Analysis Failed: {e}", agent="AGENT_A")
+        await _log(f"CRITICAL Architecture Analysis Failed: {e}", agent="AGENT_A")
         return {"log": "\n".join(log_lines), "error": str(e)}
 
-    # 3. Persistence (Supabase)
-    _log("Persisting Mesh Graph and Discovered Assets...", agent="DATABASE")
+    # Check for cancellation
+    if await _check_cancellation():
+        await _log("Triage cancelled by user.", agent="SYSTEM")
+        return {"log": "\n".join(log_lines), "status": "cancelled"}
+
+    # 3. Agent S (The Scout / Forensic)
+    await _log("Invoking Agent S (Scout) for Forensic Assessment...", agent="ORCHESTRATOR")
+    agent_s = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
+    
+    # Extract simple file list for Scout
+    scout_files = [f["path"] for f in manifest["file_inventory"]]
+    
+    try:
+        scout_report = await agent_s.assess_repository(scout_files)
+        
+        score = scout_report.get("completeness_score", 0)
+        gaps = len(scout_report.get("detected_gaps", []))
+        await _log(f"Scout Assessment: Score {score}/100, Gaps Found: {gaps}", agent="AGENT_S")
+        
+    except Exception as e:
+        logger.error(f"Agent S Failed: {e}", "Triage")
+        await _log(f"Agent S Failed: {e}", agent="AGENT_S")
+        scout_report = {}
+
+    # Check for cancellation
+    if await _check_cancellation():
+        await _log("Triage cancelled by user.", agent="SYSTEM")
+        return {"log": "\n".join(log_lines), "status": "cancelled"}
+
+    # 4. Persistence (Supabase)
+    await _log("Persisting Mesh Graph and Discovered Assets...", agent="DATABASE")
     
     db_assets = []
     for item in manifest["file_inventory"]:
@@ -218,7 +291,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
             "type": category,
             "source_path": item["path"],
             "metadata": {**item.get("metadata", {}), "size": item["size"]},
-            "selected": True if category != "IGNORED" else False
+            "selected": True if category == "CORE" else False
         })
     
     saved_assets = await db.batch_save_assets(project_uuid, db_assets)
@@ -229,14 +302,15 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     graph_eligible = [n for n in rf_nodes if n.get("category") != "IGNORED"]
     
     for i, n in enumerate(graph_eligible):
-        n_uuid = asset_map.get(n["id"], n["id"])
+        n_id = n.get("id") or f"node_{i}" 
+        n_uuid = asset_map.get(n_id, n_id)
         
         final_nodes.append({
             "id": n_uuid,
             "type": "custom", 
             "position": {"x": 200 + (i % 5 * 250), "y": 100 + (i // 5 * 150)},
             "data": { 
-                "label": n["label"], 
+                "label": n.get("label") or n.get("id") or f"Node {i}", 
                 "category": n.get("category", "CORE"),
                 "complexity": n.get("complexity", "LOW"),
                 "status": "pending"
@@ -245,18 +319,38 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
         
     final_edges = []
     for e in rf_edges:
-        src_uid = asset_map.get(e['from'], e['from'])
-        tgt_uid = asset_map.get(e['to'], e['to'])
+        e_from = e.get('from') or e.get('source')
+        e_to = e.get('to') or e.get('target')
+        
+        if not e_from or not e_to: continue
+        
+        src_uid = asset_map.get(e_from, e_from)
+        tgt_uid = asset_map.get(e_to, e_to)
         
         final_edges.append({
             "id": f"e{src_uid}-{tgt_uid}",
             "source": src_uid,
             "target": tgt_uid,
-            "label": e.get('type', 'SEQUENTIAL')
+            "label": e.get('type') or e.get('label') or 'SEQUENTIAL'
         })
         
     await db.save_project_layout(project_uuid, {"nodes": final_nodes, "edges": final_edges})
-    _log("Graph and Assets saved to database.", agent="DATABASE")
+    
+    # Release 3.7: Persist Support Intelligence and Total Lines for reports/dashboard
+    total_lines = sum(item.get("lines", 0) for item in manifest["file_inventory"])
+    
+    settings_update = {
+        "lines_generated": total_lines # Map input lines to this field for the dashboard
+    }
+    if manifest.get("support_intelligence"):
+        settings_update["support_intelligence"] = manifest["support_intelligence"]
+        
+    if scout_report:
+        settings_update["scout_assessment"] = scout_report
+        
+    await db.update_project_settings(project_uuid, settings_update)
+    
+    await _log(f"Graph and Assets saved to database. Total Lines: {total_lines}", agent="DATABASE")
     
     # Map back to assets list for the frontend
     final_assets = []
@@ -271,7 +365,8 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
                 "type": agent_node["category"] if agent_node else "IGNORED",
                 "status": "analyzed" if agent_node else "unlinked",
                 "tags": str(item["signatures"]),
-                "selected": True if (agent_node and agent_node["category"] != "IGNORED") else False,
+                "lines": item["lines"],
+                "selected": True if (agent_node and agent_node["category"] == "CORE") else False,
                 "dependencies": []
             })
 
@@ -383,4 +478,4 @@ async def get_context(project_id: str, db: SupabasePersistence = Depends(get_db)
             project_uuid = u
             
     context = await db.get_project_context(project_uuid)
-    return {"context": context}
+    return {"contexts": context}

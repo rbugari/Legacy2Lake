@@ -26,58 +26,95 @@ class TopologyService:
 
     def __init__(self, project_id: str, tenant_id: str = None):
         self.project_id = project_id
+        self.tenant_id = tenant_id
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
-        self.output_path = os.path.join(self.base_path, "Output")
+        # Stage folders
+        self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
+        self.storage = PersistenceService.get_storage()
 
     def build_orchestration_plan(self) -> Dict[str, Any]:
         """Scans all .dtsx files and constructs the dependency graph."""
         logger.info(f"Building orchestration plan for {self.project_id}...", "Topology")
         
-        # 1. Inventory Packages & Extract Metadata
+        # 1. Inventory Packages & Extract Metadata via Storage
         package_metadatas = []
         dtsx_files = []
         
-        # Recursive scan
-        for root, dirs, files in os.walk(self.base_path):
-            for f in files:
-                if f.lower().endswith(".dtsx"):
-                   dtsx_files.append(os.path.join(root, f))
+        try:
+            items = self.storage.list_files(self.base_path, recursive=True)
+            def get_all_files(nodes):
+                files = []
+                for n in nodes:
+                    if n["type"] == "folder" and n.get("children"):
+                        files.extend(get_all_files(n["children"]))
+                    elif n["type"] == "file":
+                        files.append(n)
+                return files
+            
+            # Find all .dtsx and .sql files
+            all_files = get_all_files(items)
+            task_files = [f for f in all_files if f["name"].lower().endswith((".dtsx", ".sql"))]
+        except Exception as e:
+            logger.error(f"Error listing packages for topology: {e}", "Topology")
         
-        logger.info(f"Found {len(dtsx_files)} packages.", "Topology")
+        logger.info(f"Found {len(task_files)} task files (dtsx/sql) in storage.", "Topology")
 
-        for p_path in dtsx_files:
+        for f_node in task_files:
+            p_path = f_node["path"]
             try:
-                parser = SSISCartridge()
-                metadata = parser.parse(p_path)
-                
-                summary = metadata.metadata["summary"]
-                data_flow = metadata.components
+                # Read content instead of passing path
+                content = self.storage.read_file(p_path)
+                if isinstance(content, bytes):
+                    content = content.decode("utf-8", errors="ignore")
                 
                 pkg_name = os.path.basename(p_path)
-                
-                # Analyze INPUTS (Sources) and OUTPUTS (Destinations)
                 inputs = []
                 outputs = []
                 lookups = []
-                
-                for comp in data_flow:
-                    # UPDATED: Use 'raw_properties' instead of 'logic'
-                    logic = comp.get("raw_properties", {})
-                    table_ref = logic.get("OpenRowset") or logic.get("TableOrViewName")
-                    sql_command = logic.get("SqlCommand")
-                    
-                    if not table_ref and sql_command:
-                        table_ref = f"QUERY: {sql_command}" # Embed query for now, or use a struct
-                        
-                    # UPDATED: Use 'original_intent' instead of 'intent'
-                    intent = comp.get("original_intent", "UNKNOWN")
+                complexity = "LOW"
 
-                    if intent == "SOURCE":
-                        if table_ref: inputs.append(table_ref)
-                    elif intent == "DESTINATION":
-                        if table_ref: outputs.append(table_ref)
-                    elif intent == "LOOKUP":
-                        if table_ref: lookups.append(table_ref)
+                if pkg_name.lower().endswith(".dtsx"):
+                    parser = SSISCartridge()
+                    metadata = parser.parse(content, name=f_node["name"])
+                    data_flow = metadata.components
+                    
+                    for comp in data_flow:
+                        logic = comp.get("raw_properties", {})
+                        table_ref = logic.get("OpenRowset") or logic.get("TableOrViewName")
+                        sql_command = logic.get("SqlCommand")
+                        
+                        if not table_ref and sql_command:
+                            table_ref = f"QUERY: {sql_command}"
+                            
+                        intent = comp.get("original_intent", "UNKNOWN")
+
+                        if intent == "SOURCE":
+                            if table_ref: inputs.append(table_ref)
+                        elif intent == "DESTINATION":
+                            if table_ref: outputs.append(table_ref)
+                        elif intent == "LOOKUP":
+                            if table_ref: lookups.append(table_ref)
+                            
+                    if len(lookups) > 2: complexity = "HIGH"
+                
+                elif pkg_name.lower().endswith(".sql"):
+                     # Basic SQL Dependency Parsing
+                     import re
+                     upper_sql = content.upper()
+                     
+                     # Heuristic for Outputs: INSERT INTO, MERGE INTO, UPDATE, CREATE TABLE/VIEW
+                     # Regex matches: INSERT INTO [schema.]table
+                     out_matches = re.findall(r'(?:INSERT\s+INTO|MERGE\s+INTO|UPDATE|CREATE\s+TABLE|CREATE\s+VIEW)\s+([a-zA-Z0-9_$.]+)', upper_sql)
+                     outputs.extend(out_matches)
+                     
+                     # Heuristic for Inputs: FROM, JOIN
+                     in_matches = re.findall(r'(?:FROM|JOIN)\s+([a-zA-Z0-9_$.]+)', upper_sql)
+                     inputs.extend(in_matches)
+                     
+                     if len(inputs) > 3 or len(content.splitlines()) > 50:
+                         complexity = "MEDIUM"
+                     if len(content.splitlines()) > 200:
+                         complexity = "HIGH"
 
                 package_metadatas.append({
                     "package_name": pkg_name,
@@ -85,7 +122,7 @@ class TopologyService:
                     "inputs": list(set(inputs)),
                     "outputs": list(set(outputs)),
                     "lookups": list(set(lookups)),
-                    "complexity": "HIGH" if len(lookups) > 2 else "MEDIUM"
+                    "complexity": complexity
                 })
             except Exception as e:
                 logger.error(f"Failed to parse {p_path}: {e}", "Topology")
@@ -168,10 +205,9 @@ class TopologyService:
                 "packages": gold_layer
             })
 
-        # Save Artifact
-        self._ensure_output_dir()
-        with open(os.path.join(self.output_path, "orchestration_plan.json"), "w", encoding="utf-8") as f:
-            json.dump(orchestration, f, indent=2)
+        # Save Artifact to Storage (Drafting folder)
+        output_key = f"{self.output_path.rstrip('/')}/orchestration_plan.json"
+        self.storage.save_file(output_key, json.dumps(orchestration, indent=2))
             
         logger.debug("Orchestration Plan Generated", "Topology", orchestration)
         return {

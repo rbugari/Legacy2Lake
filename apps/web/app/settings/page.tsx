@@ -5,9 +5,9 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import VaultEditor from "../components/settings/VaultEditor";
 import ModelCatalog from "../components/settings/ModelCatalog";
-import AgentMatrix from "../components/settings/AgentMatrix";
+import StrategicIntelligenceHub from "../components/settings/StrategicIntelligenceHub";
 import Link from "next/link";
-import { ArrowLeft, Building, Database, GitMerge, FileKey } from "lucide-react";
+import { ArrowLeft, Building, Database, Sparkles, FileKey } from "lucide-react";
 
 export default function SettingsPage() {
     const { user } = useAuth();
@@ -45,8 +45,8 @@ export default function SettingsPage() {
                     <TabButton
                         active={activeTab === "matrix"}
                         onClick={() => setActiveTab("matrix")}
-                        icon={<GitMerge size={18} />}
-                        label="Agent Matrix"
+                        icon={<Sparkles size={18} />}
+                        label="Intelligence Hub & Matrix"
                     />
                 </div>
 
@@ -82,17 +82,17 @@ export default function SettingsPage() {
 
                     {activeTab === "matrix" && (
                         <section>
-                            <div className="flex justify-between items-center mb-6">
+                            <div className="flex justify-between items-center mb-1">
                                 <div>
                                     <h2 className="text-xl font-semibold flex items-center gap-2">
-                                        <GitMerge className="w-5 h-5" /> Strategic Agent Matrix
+                                        <Sparkles className="w-5 h-5 text-blue-500" /> Strategic Intelligence Hub
                                     </h2>
                                     <p className="text-sm text-[var(--text-secondary)]">
-                                        Assign specific models to each Agent role to optimize for cost or performance.
+                                        Audit agent instructions, manage model assignments, and preview cross-technology expertise.
                                     </p>
                                 </div>
                             </div>
-                            <AgentMatrix />
+                            <StrategicIntelligenceHub />
                         </section>
                     )}
                 </div>
@@ -107,8 +107,8 @@ function TabButton({ active, onClick, icon, label }: any) {
         <button
             onClick={onClick}
             className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-all ${active
-                    ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                    : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-t-lg"
+                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 rounded-t-lg"
                 }`}
         >
             {icon}

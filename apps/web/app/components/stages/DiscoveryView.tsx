@@ -37,6 +37,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
     const [showConflict, setShowConflict] = useState(false);
     const [hasContext, setHasContext] = useState(false);
     const [isApproved, setIsApproved] = useState(false);
+    const [isApproving, setIsApproving] = useState(false);
 
     // Agent S Assessment Results
     const [assessment, setAssessment] = useState<{
@@ -47,6 +48,19 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
     }>({ summary: "", score: 0, gaps: [], detectedTech: "" });
 
     const logEndRef = useRef<HTMLDivElement>(null);
+
+    const [sourceTech, setSourceTech] = useState("UNKNOWN");
+
+    const normalizeTech = (tech: string) => {
+        const t = tech.toUpperCase();
+        if (t.includes("SSIS") || t.includes("SQL SERVER") || t.includes("T-SQL") || t.includes("TSQL")) return "SQL_SERVER";
+        if (t.includes("ORACLE") || t.includes("PLSQL") || t.includes("PL/SQL")) return "ORACLE";
+        if (t.includes("PYTHON") || t.includes("PY")) return "PYTHON";
+        if (t.includes("SPARK") || t.includes("DATABRICKS") || t.includes("PYSPARK")) return "DATABRICKS";
+        if (t.includes("SNOWFLAKE") || t.includes("SNOWPARK")) return "SNOWFLAKE";
+        if (t.includes("FABRIC")) return "FABRIC";
+        return t;
+    };
 
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,7 +78,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             const filesRes = await fetchWithAuth(`projects/${projectId}/triage/files`);
             const filesData = await filesRes.json();
 
-            if (!filesData.success || filesData.file_count === 0) {
+            if (!filesData || !filesData.success || filesData.file_count === 0) {
                 setScanLogs(prev => [...prev,
                     "⚠️ No files found in Triage folder",
                     "Please upload SSIS packages or source files first"
@@ -92,7 +106,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             // ✅ STEP 2: Call Agent S with real file list
             const res = await fetchWithAuth("system/scout/assess", {
                 method: "POST",
-                body: JSON.stringify({ file_list })
+                body: JSON.stringify({ project_id: projectId, file_list })
             });
             const data = await res.json();
 
@@ -120,12 +134,19 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 ]);
 
                 // Trigger conflict if low score OR tech mismatch
+                const detectedNormalized = normalizeTech(data.detected_technology || "");
+                const sourceNormalized = normalizeTech(sourceTech);
+
                 const mismatch = data.detected_technology &&
                     sourceTech !== "UNKNOWN" &&
-                    !data.detected_technology.toUpperCase().includes(sourceTech.toUpperCase());
+                    detectedNormalized !== sourceNormalized;
 
-                if (data.completeness_score < 70 || mismatch || (sourceTech === "UNKNOWN" && data.detected_technology)) {
+                // Only show conflict if there is a real mismatch and we have a decent score
+                // or if it's unknown but we detected something.
+                if (mismatch || (sourceTech === "UNKNOWN" && data.detected_technology)) {
                     setShowConflict(true);
+                } else {
+                    setShowConflict(false);
                 }
             }
         } catch (e) {
@@ -135,8 +156,6 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             setScanProgress(100);
         }
     };
-
-    const [sourceTech, setSourceTech] = useState("UNKNOWN");
 
     useEffect(() => {
         // Fetch project settings to get Source Tech
@@ -175,6 +194,42 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
         }
     };
 
+    const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append("files", file);
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/triage/upload`, {
+                method: "POST",
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const newFiles = data.files || [];
+                setUploadedFiles(prev => [...prev, ...newFiles]);
+                setHasContext(true);
+                newFiles.forEach((f: string) => {
+                    setScanLogs(prev => [...prev, `✓ Uploaded support document: ${f}`]);
+                });
+            } else {
+                alert("Failed to upload file");
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("Connection error during upload");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
@@ -182,9 +237,13 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 subtitle="Agent S: Forensic repository audit and gap detection"
                 icon={<Activity className="text-cyan-500" />}
                 helpText="Initial analysis to ensure technical consistency and fill tribal knowledge gaps before triage."
-                onApprove={() => onStageChange(2)}
+                onApprove={async () => {
+                    setIsApproving(true);
+                    onStageChange(2);
+                }}
                 approveLabel="Start Triage"
                 isApproveDisabled={scanProgress < 100 || showConflict}
+                isExecuting={isApproving}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
                 onReset={onReset}
@@ -194,7 +253,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                     <button
                         onClick={handleScan}
                         disabled={isScanning}
-                        className="px-6 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 disabled:opacity-50"
+                        className="px-6 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 disabled:opacity-50 active:scale-95"
                     >
                         {isScanning ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
                         {isScanning ? "Scanning..." : "Start Forensic Scan"}
@@ -362,23 +421,45 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                             </div>
                         </div>
 
-                        {!hasContext ? (
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/5 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-cyan-500/50 transition-all group">
-                                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <FileUp className="w-8 h-8 mb-3 text-gray-600 group-hover:text-cyan-500 transition-colors" />
-                                    <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Upload Business Rules / Docs</p>
+                        <div className="space-y-3">
+                            {uploadedFiles.map((file, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 animate-in zoom-in-95 group">
+                                    <div className="flex items-center gap-3">
+                                        <CheckCircle2 size={14} className="text-emerald-500" />
+                                        <span className="text-[10px] font-black text-white uppercase tracking-widest truncate max-w-[180px]">
+                                            {file}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const newFiles = uploadedFiles.filter((_, i) => i !== idx);
+                                            setUploadedFiles(newFiles);
+                                            if (newFiles.length === 0) setHasContext(false);
+                                        }}
+                                        className="text-[9px] font-bold text-gray-500 hover:text-red-500 uppercase transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                        Remove
+                                    </button>
                                 </div>
-                                <input type="file" className="hidden" onChange={() => setHasContext(true)} />
+                            ))}
+
+                            <label className={`flex flex-col items-center justify-center w-full border-2 border-dashed border-white/5 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-cyan-500/50 transition-all group relative ${uploadedFiles.length > 0 ? 'h-16' : 'h-32'}`}>
+                                {isUploading ? (
+                                    <div className="flex items-center gap-3">
+                                        <RefreshCw size={14} className="text-cyan-500 animate-spin" />
+                                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Uploading...</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center">
+                                        <FileUp size={uploadedFiles.length > 0 ? 14 : 20} className="mb-1 text-gray-600 group-hover:text-cyan-500 transition-colors" />
+                                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest text-center px-4">
+                                            {uploadedFiles.length > 0 ? "+ Add More Docs" : "Upload Business Rules / Docs / PDF"}
+                                        </p>
+                                    </div>
+                                )}
+                                <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
-                        ) : (
-                            <div className="flex items-center justify-between p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 animate-in zoom-in-95">
-                                <div className="flex items-center gap-3">
-                                    <CheckCircle2 size={16} className="text-emerald-500" />
-                                    <span className="text-[10px] font-black text-white uppercase tracking-widest">biz-logic-rules.pdf</span>
-                                </div>
-                                <button onClick={() => setHasContext(false)} className="text-[9px] font-bold text-emerald-500 uppercase hover:underline">Remove</button>
-                            </div>
-                        )}
+                        </div>
                         <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4 leading-relaxed">
                             These documents will be used by Agent R and Agent F to respect legacy business rules.
                         </p>

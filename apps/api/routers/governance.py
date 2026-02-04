@@ -8,6 +8,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import json
+import io
+import os
+import zipfile
 
 from routers.dependencies import get_db
 from services.persistence_service import SupabasePersistence, PersistenceService
@@ -169,26 +172,71 @@ async def generate_governance(payload: DocumentRequest):
     }
 
 
-@router.get("/projects/{project_id}/export")
-async def export_project_bundle(project_id: str, db: SupabasePersistence = Depends(get_db)):
+@router.get("/projects/{project_id}/export/governance")
+async def export_governance(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Streams the project solution as a full governance ZIP bundle."""
-    project_name = project_id
-    if "-" in project_id:
-        n = await db.get_project_name_by_id(project_id)
-        if n: 
-            project_name = n
+    metadata = await db.get_project_metadata(project_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project_name = metadata.get("name")
+    effective_tenant_id = db.tenant_id or metadata.get("tenant_id")
 
-    service = GovernanceService()
+    service = GovernanceService(tenant_id=effective_tenant_id, client_id=db.client_id)
     try:
         zip_buffer = await service.create_export_bundle(project_id) # Using ID
         filename = f"Legacy2Lake_Solution_{project_name}.zip"
         
         return StreamingResponse(
             zip_buffer,
-            media_type="application/x-zip-compressed",
+            media_type="application/zip",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
         import traceback
         print(f"EXPORT ERROR: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/export/delivery")
+async def export_delivery(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Streams the technical deployment-only ZIP bundle (COP)."""
+    # 1. Resolve project name and REQUIRED tenant_id
+    metadata = await db.get_project_metadata(project_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project_name = metadata.get("name")
+    effective_tenant_id = db.tenant_id or metadata.get("tenant_id")
+    
+    # 2. Use PackagingService to create COP structure
+    try:
+        from services.packaging_service import PackagingService
+        packager = PackagingService(project_id, tenant_id=effective_tenant_id, client_id=db.client_id)
+        # prepares "root_dir" inside "_package_staging"
+        package_root = await packager.prepare_bundle()
+        
+        # 3. ZIP the structured package
+        zip_buffer = io.BytesIO()
+        base_dir = os.path.dirname(package_root) # .../_package_staging
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(package_root):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Relpath from _package_staging so the zip has ProjectName/config/...
+                    arcname = os.path.relpath(file_path, base_dir)
+                    zf.write(file_path, arcname)
+                    
+        zip_buffer.seek(0)
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=Legacy2Lake_Delivery_{project_name}.zip"}
+        )
+        
+    except Exception as e:
+        import traceback
+        print(f"Delivery Export Error: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate package: {str(e)}")

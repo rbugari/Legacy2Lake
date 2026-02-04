@@ -36,57 +36,97 @@ class LibrarianService:
     """
 
     def __init__(self, project_id: str, tenant_id: str = None):
-        # We assume project_id maps to a folder name or we resolve it.
-        # For this implementation, we assume the persistence service has already ensured the folder exists.
-        # But here we need to know the path.
-        # TODO: Refactor to use PersistenceService to resolve paths cleanly.
         self.project_id = project_id
-        # Strict I/O: Data flows IN from 'Data' folder
+        self.tenant_id = tenant_id
+        # Strict I/O: Data flows IN from normalized project path
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
-        self.data_path = os.path.join(self.base_path, "Data")
-        self.output_path = os.path.join(self.base_path, "Output")
+        # In the new flow, we read from STAGE_TRIAGE where files were uploaded
+        self.inbound_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+        self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
         
-        # Ensure Output exists
-        os.makedirs(self.output_path, exist_ok=True)
+        self.storage = PersistenceService.get_storage()
 
         # Load platform spec using the dedicated class
         self.platform_spec_loader = PlatformSpec()
         self.platform_spec = self.platform_spec_loader.load_platform_spec()
 
-    def scan_project(self) -> Dict[str, Any]:
-        """Main entry point: Scans DDLs and returns the Schema Reference."""
-        logger.info(f"Scanning project {self.project_id}...", "Librarian")
+    async def scan_project(self) -> Dict[str, Any]:
+        """Main entry point: Scans DDLs using StorageProvider."""
+        logger.info(f"Scanning project {self.project_id} in {self.inbound_path}...", "Librarian")
         
+        # Resolve Dialect from DB (Source Tech)
+        source_tech = None
+        try:
+             # Instantiate Persistence to get metadata
+             db = PersistenceService(tenant_id=self.tenant_id)
+             # Resolve UUID if needed
+             p_uuid = self.project_id
+             if len(p_uuid) < 30: # If name provided, try to get ID, or rely on ensure_solution_dir logic
+                 # For metadata, we need UUID or we search by name
+                 try:
+                     u = await db.get_project_id_by_name(self.project_id)
+                     if u: p_uuid = u
+                 except: pass
+                 
+             meta = await db.get_project_metadata(p_uuid)
+             if meta:
+                 # Check settings then config
+                 source_tech = meta.get("settings", {}).get("source_tech") or meta.get("config", {}).get("source_tech")
+                 
+             if source_tech:
+                 logger.info(f"Librarian detected configured source tech: {source_tech}", "Librarian")
+        except Exception as e:
+             logger.warning(f"Librarian could not fetch project metadata: {e}", "Librarian")
+
         schema_reference = {
             "project_id": self.project_id,
             "tables": {},
             "flat_files": []
         }
 
-        # 1. Scan SQL DDLs
-        sql_files = glob.glob(os.path.join(self.data_path, "*.sql"))
-        logger.info(f"Found {len(sql_files)} SQL files.", "Librarian")
-        
-        for sql_file in sql_files:
-            try:
-                logger.debug(f"Parsing {os.path.basename(sql_file)}...", "Librarian")
-                with open(sql_file, "r") as f:
-                    ddl_content = f.read()
-                
-                # Pre-process content (remove GO, USE, etc.)
-                clean_ddl = self._preprocess_sql(ddl_content)
-                parsed_tables = self._parse_ddl(clean_ddl)
-                
-                for table_name, meta in parsed_tables.items():
-                    schema_reference["tables"][table_name] = meta
+        # 1. Scan SQL DDLs via Storage
+        try:
+            items = self.storage.list_files(self.inbound_path, recursive=True)
+            # Flatten files from tree
+            def get_all_files(nodes):
+                files = []
+                for n in nodes:
+                    if n["type"] == "folder" and n.get("children"):
+                        files.extend(get_all_files(n["children"]))
+                    elif n["type"] == "file":
+                        files.append(n)
+                return files
+            
+            sql_files = [f for f in get_all_files(items) if f["name"].lower().endswith(".sql")]
+            logger.info(f"Found {len(sql_files)} SQL files in storage.", "Librarian")
+            
+            for sql_file in sql_files:
+                try:
+                    full_key = sql_file["path"]
+                    logger.debug(f"Parsing {sql_file['name']} from {full_key}...", "Librarian")
                     
-            except Exception as e:
-                logger.error(f"Error parsing {sql_file}: {e}", "Librarian")
+                    ddl_content = self.storage.read_file(full_key)
+                    if isinstance(ddl_content, bytes):
+                        ddl_content = ddl_content.decode("utf-8")
+                    
+                    # Pre-process content (remove GO, USE, etc.)
+                    clean_ddl = self._preprocess_sql(ddl_content)
+                    
+                    # Determine dialect from project config or heuristic
+                    dialect = source_tech.lower() if source_tech else None
+                    parsed_tables = self._parse_ddl(clean_ddl, dialect=dialect)
+                    
+                    for table_name, meta in parsed_tables.items():
+                        schema_reference["tables"][table_name] = meta
+                        
+                except Exception as e:
+                    logger.error(f"Error parsing {sql_file['name']}: {e}", "Librarian")
+        except Exception as e:
+            logger.error(f"Error listing storage files: {e}", "Librarian")
 
-        # 2. Save Output
-        output_file = os.path.join(self.output_path, "schema_reference.json")
-        with open(output_file, "w") as f:
-            json.dump(schema_reference, f, indent=2)
+        # 2. Save Output to Storage (Drafting folder)
+        output_key = f"{self.output_path.rstrip('/')}/schema_reference.json"
+        self.storage.save_file(output_key, json.dumps(schema_reference, indent=2))
             
         return schema_reference
 
@@ -172,15 +212,37 @@ class LibrarianService:
             cleaned_lines.append(line)
         return "\n".join(cleaned_lines)
 
-    def _parse_ddl(self, ddl_content: str) -> Dict[str, Any]:
+    def _parse_ddl(self, ddl_content: str, dialect: str = None) -> Dict[str, Any]:
         """Parses DDL string and extracts table info."""
         tables = {}
+        
+        # Determine Dialect
+        if not dialect:
+            dialect = "tsql"
+            upper = ddl_content.upper()
+            # Oracle indicators: VARCHAR2, NUMBER, PLS_INTEGER, CREATE OR REPLACE
+            if "VARCHAR2" in upper or "NUMBER" in upper or "CREATE OR REPLACE" in upper:
+                dialect = "oracle"
+        
+        logger.debug(f"Parsing with dialect: {dialect}", "Librarian")
+
         try:
-            for expression in sqlglot.parse(ddl_content, read="tsql"):
+            for expression in sqlglot.parse(ddl_content, read=dialect):
                 if isinstance(expression, exp.Create):
                     table_def = self._extract_table_info(expression)
                     if table_def:
                         tables[table_def["name"]] = table_def
         except Exception as e:
-            logger.error(f"SQLGlot Parse Error: {e}", "Librarian")
+            logger.error(f"SQLGlot Parse Error ({dialect}): {e}", "Librarian")
+            # Optional: Fallback to tsql if oracle failed?
+            if dialect == "oracle":
+                 logger.debug("Falling back to TSQL parser...", "Librarian")
+                 try:
+                    for expression in sqlglot.parse(ddl_content, read="tsql"):
+                        if isinstance(expression, exp.Create):
+                            table_def = self._extract_table_info(expression)
+                            if table_def:
+                                tables[table_def["name"]] = table_def
+                 except: pass
+
         return tables

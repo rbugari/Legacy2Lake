@@ -28,33 +28,46 @@ class RefinementOrchestrator:
         self.client_id = client_id
         
         # Services are instantiated once.
-        # [Fix] Pass tenant_id to sub-services for isolation
-        self.profiler = ProfilerService(tenant_id=tenant_id)
-        self.architect = ArchitectService(tenant_id=tenant_id)
-        self.refactorer = RefactoringService(tenant_id=tenant_id)
-        self.ops_auditor = OpsAuditorService(tenant_id=tenant_id)
+        # [Fix] Pass tenant_id AND client_id to sub-services for isolation
+        self.profiler = ProfilerService(tenant_id=tenant_id, client_id=client_id)
+        self.architect = ArchitectService(tenant_id=tenant_id, client_id=client_id)
+        self.refactorer = RefactoringService(tenant_id=tenant_id, client_id=client_id)
+        self.ops_auditor = OpsAuditorService(tenant_id=tenant_id, client_id=client_id)
 
     async def _resolve_agent_full_metadata(self, persistence, agent_id: str, default_name: str) -> str:
-        """Resolves provider and model name for an agent."""
+        """Resolves provider and model name for an agent. Returns default if DB lookup fails."""
         try:
+            # If project_uuid is just a name like 'test10', resolve_agent_model might fail FK check
+            # but we catch it here to allow pipeline to continue with R2 logic.
             model_info = await persistence.resolve_agent_model(agent_id)
             if model_info:
                 provider = model_info.get("provider", "Unknown").capitalize()
                 model = model_info.get("deployment") or model_info.get("model_id", "Unknown")
                 return f"{default_name} (Provider: {provider}, Model: {model})"
-        except:
+        except Exception as e:
+            # Silently fallback to default name to avoid blocking storage verification
             pass
         return f"{default_name} (Heuristic Engine)"
 
     async def start_pipeline(self, project_id: str):
         from apps.api.services.persistence_service import SupabasePersistence
         persistence = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        storage = PersistenceService.get_storage()
+        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
 
         # Resolve models for agents dynamically
         p_info = await self._resolve_agent_full_metadata(persistence, "agent-p", "Pattern Discovery")
         a_info = await self._resolve_agent_full_metadata(persistence, "agent-a", "Medallion Mapper")
         r_info = await self._resolve_agent_full_metadata(persistence, "agent-r", "Spark Optimizer")
         o_info = await self._resolve_agent_full_metadata(persistence, "agent-o", "Compliance Auditor")
+
+        # 0. Clear previous logs
+        try:
+            await persistence.clear_execution_logs(project_id, phase="REFINEMENT")
+            log_key = f"{base_path.rstrip('/')}/refinement.log"
+            storage.save_file(log_key, "--- REFINEMENT PIPELINE STARTED ---\n")
+        except Exception as e:
+            print(f"WARNING: Could not clear log storage/DB: {e}")
 
         models = {
             "Profiler": p_info,
@@ -67,12 +80,43 @@ class RefinementOrchestrator:
         
         async def _log(msg: str, step: str = None):
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # For the per-line log, we might want a shorter version or the same
             model_label = models.get(step, "System")
-            # If model_label is long (like with provider), maybe just use the agent name or truncate
-            # But the user asked for it, so let's use it.
             formatted_msg = f"[{timestamp}] [{step or 'SYSTEM'}] [{model_label}] {msg}"
-            await persistence.log_execution(project_id, "REFINEMENT", msg, step=step)
+            
+            # DB Logging (Bypass if fails to allow R2-only flow)
+            try:
+                await persistence.log_execution(project_id, "REFINEMENT", msg, step=step)
+            except:
+                pass
+            
+            # R2 Logging (Append logic)
+            log_key = f"{base_path.rstrip('/')}/refinement.log"
+            existing = ""
+            try:
+                existing = storage.read_file(log_key) or ""
+            except: pass
+            storage.save_file(log_key, existing + formatted_msg + "\n")
+            
+            return formatted_msg
+        
+    async def _check_cancellation(self, project_id: str):
+        """Check if cancellation has been requested for this project."""
+        try:
+            return await self.persistence.check_cancellation(project_id)
+        except: return False
+
+    async def run_refinement(self, project_id: str, models: Dict[str, str]):
+        """Executes the standard refinement pipeline."""
+        timestamp_start = datetime.now().isoformat()
+        
+        # Reset cancellation flag for the new run
+        try:
+            await self.persistence.update_project_metadata(project_id, {"cancellation_requested": False})
+        except: pass
+
+        async def _log(msg: str, agent: str = "SYSTEM"):
+            formatted_msg = f"[{datetime.now().strftime('%H:%M:%S')}] [{agent}] {msg}"
+            await self.persistence.log_execution(project_id, "REFINEMENT", msg, step=agent)
             return formatted_msg
         
         local_log = [] 
@@ -95,16 +139,28 @@ class RefinementOrchestrator:
             "="*80,
             ""
         ]
-        local_log.extend(header)
+        for line in header: local_log.append(line)
 
         try:
+            # Check for cancellation
+            if await self._check_cancellation(project_id):
+                msg = await _log("Refinement cancelled by user.", "SYSTEM")
+                local_log.append(msg)
+                return {"log": local_log, "status": "cancelled"}
+
             # 1. Profile (Agent P)
             local_log.append(f"--- [PHASE 1] PROFILER: {models['Profiler']} ---")
             msg = await _log("Starting analysis...", "Profiler")
             local_log.append(msg)
             
-            profile_meta = self.profiler.analyze_codebase(project_id, local_log)
+            profile_meta = await self.profiler.analyze_codebase(project_id, local_log)
             
+            # Check for cancellation
+            if await self._check_cancellation(project_id):
+                msg = await _log("Refinement cancelled by user.", "SYSTEM")
+                local_log.append(msg)
+                return {"log": local_log, "status": "cancelled"}
+
             msg = await _log(f"Complete. Analyzed {profile_meta.get('total_files', 0)} files.", "Profiler")
             local_log.append(msg)
             local_log.append("")
@@ -115,6 +171,12 @@ class RefinementOrchestrator:
             local_log.append(msg)
             architect_out = await self.architect.refine_project(project_id, profile_meta, local_log)
             
+            # Check for cancellation
+            if await self._check_cancellation(project_id):
+                msg = await _log("Refinement cancelled by user.", "SYSTEM")
+                local_log.append(msg)
+                return {"log": local_log, "status": "cancelled"}
+
             msg = await _log(f"Medallion structure created.", "Architect")
             local_log.append(msg)
             local_log.append("")
@@ -125,6 +187,12 @@ class RefinementOrchestrator:
             local_log.append(msg)
             refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log)
             
+            # Check for cancellation
+            if await self._check_cancellation(project_id):
+                msg = await _log("Refinement cancelled by user.", "SYSTEM")
+                local_log.append(msg)
+                return {"log": local_log, "status": "cancelled"}
+            
             msg = await _log(f"Optimized {refactor_out.get('optimized_files_count', 0)} files.", "Refactoring")
             local_log.append(msg)
             local_log.append("")
@@ -133,7 +201,7 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 4] OPS AUDITOR: {models['OpsAuditor']} ---")
             msg = await _log("Validating operational readiness and generating DevOps assets...", "OpsAuditor")
             local_log.append(msg)
-            ops_out = self.ops_auditor.audit_project(project_id, architect_out, local_log)
+            ops_out = await self.ops_auditor.audit_project(project_id, architect_out, local_log)
             
             msg = await _log(f"Audit result: {ops_out['status']}", "OpsAuditor")
             local_log.append(msg)
@@ -143,10 +211,6 @@ class RefinementOrchestrator:
             msg = await _log("Pipeline Complete.", "Orchestrator")
             local_log.append(msg)
             local_log.append("="*80)
-
-            project_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
-            with open(os.path.join(project_path, "refinement.log"), "w", encoding="utf-8") as f:
-                f.write("\n".join(local_log))
 
             return {
                 "status": "COMPLETED",
@@ -162,11 +226,10 @@ class RefinementOrchestrator:
             error_msg = f"Pipeline failed: {str(e)}\n{traceback.format_exc()}"
             local_log.append(error_msg)
             
-            # Try to save error log too
+            # Try to save error log too to R2
             try:
-                project_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
-                with open(os.path.join(project_path, "refinement.log"), "w", encoding="utf-8") as f:
-                    f.write("\n".join(local_log))
+                log_key = f"{base_path.rstrip('/')}/refinement.log"
+                storage.save_file(log_key, "\n".join(local_log))
             except: 
                 pass
 

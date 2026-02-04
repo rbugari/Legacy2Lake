@@ -21,7 +21,9 @@ import {
 } from 'lucide-react';
 import StageHeader from '../StageHeader';
 
+import { fetchWithAuth } from '../../lib/auth-client';
 import { API_BASE_URL } from '../../lib/config';
+import DownloadReportButton from '../DownloadReportButton';
 
 interface Variable {
     key: string;
@@ -56,6 +58,46 @@ export default function HandoverView({
     const [selectedCartridge, setSelectedCartridge] = useState<'dbc' | 'sql' | 'yaml'>('dbc');
     const [isExporting, setIsExporting] = useState(false);
     const [showRunbook, setShowRunbook] = useState(false);
+    const [project, setProject] = useState<any>(null);
+    const [fileStats, setFileStats] = useState({ total: 0, artifacts: 0 });
+
+    React.useEffect(() => {
+        fetchWithAuth(`/projects/${projectId}`)
+            .then(res => res.json())
+            .then(data => {
+                setProject(data);
+                // Dynamically update default variables based on destination
+                if (data.target_tech && data.target_tech.toLowerCase().includes('snowflake')) {
+                    setVariables(prev => prev.map(v =>
+                        v.key === 'CATALOG' ? { ...v, description: 'Snowflake Database destination' } : v
+                    ));
+                    setSelectedCartridge('sql');
+                } else if (data.target_tech && data.target_tech.toLowerCase().includes('databricks')) {
+                    setSelectedCartridge('dbc');
+                }
+            })
+            .catch(err => console.error("Failed to fetch project details:", err));
+
+        // Fetch file stats
+        fetchWithAuth(`/projects/${projectId}/files`)
+            .then(res => res.json())
+            .then(data => {
+                let total = 0;
+                let artifacts = 0;
+                const count = (nodes: any[]) => {
+                    nodes.forEach(n => {
+                        if (n.type === 'file') {
+                            total++;
+                            if (n.name.endsWith('.py') || n.name.endsWith('.sql') || n.name.endsWith('.dbc')) artifacts++;
+                        }
+                        if (n.children) count(n.children);
+                    });
+                };
+                if (data.children) count(data.children);
+                setFileStats({ total, artifacts });
+            })
+            .catch(err => console.error("Failed to fetch file stats:", err));
+    }, [projectId]);
 
     const addVariable = () => {
         setVariables([...variables, { key: "", value: "", description: "" }]);
@@ -71,10 +113,10 @@ export default function HandoverView({
         setVariables(variables.filter((_, i) => i !== idx));
     };
 
-    const handleExport = () => {
+    const handleExport = (type: 'delivery' | 'governance') => {
         setIsExporting(true);
         // Trigger download via API
-        const exportUrl = `${API_BASE_URL}/projects/${projectId}/export`;
+        const exportUrl = `${API_BASE_URL}/projects/${projectId}/export/${type}`;
 
         // Use a hidden iframe or standard navigation to trigger download
         window.location.href = exportUrl;
@@ -82,8 +124,10 @@ export default function HandoverView({
         // Reset state after a short delay
         setTimeout(() => {
             setIsExporting(false);
-            const name = projectName ? `Legacy2Lake_${projectName}.zip` : "Legacy2Lake_Solution.zip";
-            alert(`Handover Bundle Ready! Downloading ${name}...`);
+            const name = type === 'delivery'
+                ? (projectName ? `Legacy2Lake_Delivery_${projectName}.zip` : "Legacy2Lake_Delivery.zip")
+                : (projectName ? `Legacy2Lake_Solution_${projectName}.zip` : "Legacy2Lake_Solution.zip");
+            alert(`${type === 'delivery' ? 'Delivery' : 'Governance'} Bundle Ready! Downloading ${name}...`);
         }, 2000);
     };
 
@@ -94,7 +138,7 @@ export default function HandoverView({
                 subtitle="Artifact generation and deployment package Export"
                 icon={<Package className="text-emerald-500" />}
                 helpText="Final modernization package ready for deployment. Includes code, config, and runbooks."
-                onApprove={handleExport}
+                onApprove={() => handleExport('governance')}
                 approveLabel={isExporting ? "Exporting..." : "Generate & Download"}
                 isApproveDisabled={isExporting}
                 isFullscreen={isFullscreen}
@@ -105,14 +149,22 @@ export default function HandoverView({
                 <div className="flex gap-2">
                     <button
                         onClick={() => setShowRunbook(!showRunbook)}
-                        className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
+                        className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 active:scale-95 transition-all"
                     >
                         <Eye size={14} /> {showRunbook ? "Edit Variables" : "View Runbook"}
                     </button>
+                    <DownloadReportButton
+                        projectId={projectId}
+                        reportType="final"
+                        variant="secondary"
+                        className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
+                        icon={<FileText size={14} className="text-cyan-400" />}
+                        label="PDF Report"
+                    />
                     <button
-                        onClick={handleExport}
+                        onClick={() => handleExport('delivery')}
                         disabled={isExporting}
-                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-600/20 disabled:opacity-50"
+                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-500 active:scale-95 transition-all shadow-xl shadow-emerald-600/20 disabled:opacity-50"
                     >
                         {isExporting ? <Zap size={14} className="animate-pulse" /> : <Download size={14} />}
                         {isExporting ? "Bundling..." : "Export Delivery"}
@@ -166,7 +218,7 @@ export default function HandoverView({
                                     </div>
                                     <button
                                         onClick={addVariable}
-                                        className="p-2.5 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 hover:text-white transition-all border border-white/5"
+                                        className="p-2.5 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 hover:text-white active:scale-95 transition-all border border-white/5"
                                     >
                                         <Plus size={20} />
                                     </button>
@@ -222,24 +274,28 @@ export default function HandoverView({
                             <div className="bg-black/40 border border-white/5 rounded-3xl p-8 shadow-2xl">
                                 <h3 className="text-xs font-black text-white uppercase tracking-widest mb-6">Execution Cartridge</h3>
                                 <div className="space-y-3">
-                                    <CartridgeOption
-                                        active={selectedCartridge === 'dbc'}
-                                        onClick={() => setSelectedCartridge('dbc')}
-                                        title="Databricks Archive"
-                                        ext=".dbc"
-                                        icon={<Globe size={18} />}
-                                    />
-                                    <CartridgeOption
-                                        active={selectedCartridge === 'sql'}
-                                        onClick={() => setSelectedCartridge('sql')}
-                                        title="Snowflake Script"
-                                        ext=".sql"
-                                        icon={<Database size={18} />}
-                                    />
+                                    {(!project?.target_tech || project.target_tech.toLowerCase().includes('databricks') || project.target_tech.toLowerCase().includes('pyspark')) && (
+                                        <CartridgeOption
+                                            active={selectedCartridge === 'dbc'}
+                                            onClick={() => setSelectedCartridge('dbc')}
+                                            title={`${project?.target_tech || 'Databricks'} Archive`}
+                                            ext=".dbc"
+                                            icon={<Globe size={18} />}
+                                        />
+                                    )}
+                                    {(!project?.target_tech || project.target_tech.toLowerCase().includes('snowflake') || project.target_tech.toLowerCase().includes('sql')) && (
+                                        <CartridgeOption
+                                            active={selectedCartridge === 'sql'}
+                                            onClick={() => setSelectedCartridge('sql')}
+                                            title={`${project?.target_tech || 'Snowflake'} Script`}
+                                            ext=".sql"
+                                            icon={<Database size={18} />}
+                                        />
+                                    )}
                                     <CartridgeOption
                                         active={selectedCartridge === 'yaml'}
                                         onClick={() => setSelectedCartridge('yaml')}
-                                        title="Airflow Pipeline"
+                                        title="Orchestration Pipeline"
                                         ext=".yaml"
                                         icon={<HardDrive size={18} />}
                                     />
@@ -253,13 +309,13 @@ export default function HandoverView({
                                 <div className="text-3xl font-black mb-6">Final Bundle</div>
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
-                                        <CheckCircle2 size={12} className="text-emerald-300" /> 148 Optimized Files
+                                        <CheckCircle2 size={12} className="text-emerald-300" /> {fileStats.artifacts > 0 ? `${fileStats.artifacts} Optimized Artifacts` : `Artifacts Generated`}
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
                                         <CheckCircle2 size={12} className="text-emerald-300" /> Compliance Certificate Included
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
-                                        <CheckCircle2 size={12} className="text-emerald-300" /> Variable Payload Attached
+                                        <CheckCircle2 size={12} className="text-emerald-300" /> {variables.length} Variable overrides detected
                                     </div>
                                 </div>
                             </div>
@@ -276,7 +332,7 @@ function CartridgeOption({ active, onClick, title, ext, icon }: any) {
     return (
         <button
             onClick={onClick}
-            className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${active ? 'bg-emerald-600/10 border-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-white/5 border-white/5 hover:border-white/10 opacity-60 hover:opacity-100'}`}
+            className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${active ? 'bg-emerald-600/10 border-emerald-500 shadow-lg shadow-emerald-500/10 active:scale-[0.98]' : 'bg-white/5 border-white/5 hover:border-white/10 opacity-60 hover:opacity-100 active:scale-95'}`}
         >
             <div className="flex items-center gap-4">
                 <div className={`p-2.5 rounded-xl ${active ? 'bg-emerald-500 text-white' : 'bg-white/5 text-gray-500'}`}>

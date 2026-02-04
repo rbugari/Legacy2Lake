@@ -36,24 +36,24 @@ class AgentSService:
         deployment = resolved.get("deployment")
         api_version = resolved.get("api_version")
         temperature = resolved.get("temperature", 0)
-            
+
         if provider == "azure":
             return AzureChatOpenAI(
                 azure_endpoint=endpoint,
                 azure_deployment=deployment,
-                openai_api_version=api_version or "2023-05-15", # Fallback default
+                openai_api_version=api_version or "2023-05-15",
                 api_key=key,
                 temperature=temperature
             )
         else:
             from langchain_openai import ChatOpenAI
             return ChatOpenAI(
-                model=deployment,
+                model=deployment, # This is crucial: 'deployment' holds the model ID for OpenRouter
                 api_key=key,
                 base_url=endpoint,
                 temperature=temperature
             )
-        
+
     async def _load_prompt(self) -> str:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         return await db.get_prompt("agent_s_scout")

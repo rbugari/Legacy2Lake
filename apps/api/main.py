@@ -10,6 +10,12 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from apps.api.utils.logger import logger
+import sys
+import asyncio
+
+# Fix for Windows asyncio subprocess support (required for Playwright)
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from services.agent_a_service import AgentAService
 from services.graph_service import GraphService
@@ -42,21 +48,16 @@ from routers.projects import router as projects_router
 from routers.triage import router as triage_router
 from routers.transpile import router as transpile_router
 from routers.governance import router as governance_router
+from routers.lab import router as lab_router
 
 app = FastAPI(title="Legacy2Lake API", version="2.0.0")
 
 from fastapi import Request, Header, Depends
 from fastapi.responses import JSONResponse
 
-# --- Identity & Antigravity (Release 1.1) ---
-async def get_identity(
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"), 
-    x_client_id: Optional[str] = Header(None, alias="X-Client-ID")
-):
-    return {"tenant_id": x_tenant_id, "client_id": x_client_id}
-
-async def get_db(identity: dict = Depends(get_identity)) -> SupabasePersistence:
-    return SupabasePersistence(tenant_id=identity["tenant_id"], client_id=identity["client_id"])
+# --- Identity & Multi-tenancy (Phase 1 Refactored) ---
+# We now use shared dependencies from routers/dependencies.py
+from routers.dependencies import get_identity, get_db
 
 
 class LoginPayload(BaseModel):
@@ -66,6 +67,15 @@ class LoginPayload(BaseModel):
 @app.get("/ping-antigravity")
 async def ping_antigravity():
     return {"message": "pong-antigravity"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Railway and monitoring."""
+    return {
+        "status": "healthy",
+        "version": "3.7",
+        "service": "Legacy2Lake API"
+    }
 
 @app.post("/login")
 async def login(request: Request):
@@ -194,10 +204,16 @@ app.include_router(projects_router) # ✅ ACTIVE: CRUD, settings, layout
 app.include_router(triage_router)   # ✅ ACTIVE: Discovery, Triage, Agent S
 app.include_router(transpile_router) # ✅ ACTIVE: Agent R, Agent C, Transpilation
 app.include_router(governance_router) # ✅ ACTIVE: Agent G, Documentation
+app.include_router(lab_router)        # ✅ ACTIVE: Prompt Laboratory
+
+# Release 3.5: PDF Reporting System
+from routers.reports import router as reports_router
+app.include_router(reports_router)    # ✅ NEW: PDF report generation (Triage + Final)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:3002",
@@ -205,12 +221,15 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3005", 
         "http://127.0.0.1:8085",
-        "http://localhost:5173"
+        "http://localhost:5173",
+        # Production (Vercel)
+        "https://*.vercel.app",  # All Vercel preview deployments
+        "https://legacy2lake.vercel.app",  # Production domain (update as needed)
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
+    expose_headers=["Content-Disposition", "X-Suggested-Filename"]
 )
 
 
@@ -234,6 +253,15 @@ async def get_agent_f_prompt(db: SupabasePersistence = Depends(get_db)):
 async def get_agent_g_prompt(db: SupabasePersistence = Depends(get_db)):
     agent_g = AgentGService(tenant_id=db.tenant_id, client_id=db.client_id)
     return {"prompt": await agent_g._load_prompt()}
+
+@app.get("/prompts/{agent_id}")
+async def get_generic_prompt(agent_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Returns the current system prompt for any agent by searching the DB and lab folders."""
+    from services.prompt_lab_service import PromptLabService
+    lab = PromptLabService(tenant_id=db.tenant_id, client_id=db.client_id)
+    # The lab service already has fallback logic to DB
+    prompt = lab._load_agent_prompt(agent_id)
+    return {"prompt": prompt or "No prompt found for this agent."}
 
 @app.get("/ping")
 async def ping():
@@ -597,13 +625,12 @@ async def update_provider(payload: ProviderUpdate):
 # --- Source & Generator Config (Release 4.1) ---
 
 @app.get("/config/sources")
-async def list_sources():
+async def list_sources(db: SupabasePersistence = Depends(get_db)):
     """Returns configured source profiles (Knowledge Context)."""
-    db = SupabasePersistence()
     
     # 1. Fetch available source technologies from metadata
-    tech_res = supabase.table("utm_supported_techs").select("tech_id, label, description, version").eq("role", "SOURCE").eq("is_active", True).execute()
-    tech_map = {t["tech_id"]: t for t in tech_res.data}
+    sources = await db.list_supported_techs(role="SOURCE")
+    tech_map = {t["tech_id"]: t for t in sources}
     
     # 2. Fetch configured profiles
     config = await db.get_global_config("sources") or {}
@@ -611,11 +638,11 @@ async def list_sources():
     # 3. Merge profile data with tech metadata
     results = []
     for sid, profile in config.items():
-        tech_type = profile.get("type", "").upper()
+        tech_type = profile.get("type", "").lower()
         tech_info = tech_map.get(tech_type, {})
         results.append({
             **profile,
-            "tech_label": tech_info.get("label", profile["type"]),
+            "tech_label": tech_info.get("label", profile.get("type", "Unknown")),
             "tech_description": tech_info.get("description"),
             "tech_version": tech_info.get("version")
         })
@@ -631,9 +658,8 @@ class SourceConfig(BaseModel):
     context_prompt: Optional[str] = None # Instructions for Agent A
 
 @app.post("/config/sources")
-async def save_source(payload: SourceConfig):
+async def save_source(payload: SourceConfig, db: SupabasePersistence = Depends(get_db)):
     """Saves a source profile."""
-    db = SupabasePersistence()
     config = await db.get_global_config("sources") or {}
     
     # Store
@@ -642,9 +668,8 @@ async def save_source(payload: SourceConfig):
     return {"success": True}
 
 @app.delete("/config/sources/{source_id}")
-async def delete_source(source_id: str):
+async def delete_source(source_id: str, db: SupabasePersistence = Depends(get_db)):
     """Deletes a source profile."""
-    db = SupabasePersistence()
     config = await db.get_global_config("sources") or {}
     
     if source_id in config:
@@ -661,30 +686,29 @@ class GeneratorDefault(BaseModel):
     default: str # 'spark' or 'snowflake'
 
 @app.get("/config/generators")
-async def get_generator_config():
+async def get_generator_config(db: SupabasePersistence = Depends(get_db)):
     """Returns generator configuration including defaults and overrides from DB metadata."""
-    db = SupabasePersistence()
     
     # 1. Fetch config from global store (internal overrides like instruction_prompt)
     config = await db.get_global_config("generators") or {}
     default_gen_type = config.get("default", "DATABRICKS") # Default to Databricks ID
 
     # 2. Fetch all valid target technologies from metadata table
-    res = supabase.table("utm_supported_techs").select("tech_id, label, description, version").eq("role", "TARGET").eq("is_active", True).execute()
+    targets = await db.list_supported_techs(role="TARGET")
     
     # 3. Transform and Merge with user overrides
     result_generators = []
-    for tech in res.data:
+    for tech in targets:
         gen_type = tech["tech_id"]
         # Check if specific user override exists for this type
         gen_config = config.get(gen_type, {})
         
         result_generators.append({
             "id": f"gen_{gen_type.lower()}",
-            "name": tech["label"],
+            "name": tech.get("label", gen_type),
             "type": gen_type,
-            "version": tech["version"] or "Latest",
-            "description": tech["description"],
+            "version": tech.get("version", "Latest"),
+            "description": tech.get("description"),
             "instruction_prompt": gen_config.get("instruction_prompt", ""),
             "status": "active" if gen_type == default_gen_type else "inactive"
         })
@@ -695,9 +719,8 @@ async def get_generator_config():
     }
 
 @app.post("/config/generators/update")
-async def update_generator_config(payload: GeneratorConfig):
+async def update_generator_config(payload: GeneratorConfig, db: SupabasePersistence = Depends(get_db)):
     """Updates specific generator instructions."""
-    db = SupabasePersistence()
     config = await db.get_global_config("generators") or {}
     
     # Update specific generator config
@@ -713,18 +736,17 @@ async def update_generator_config(payload: GeneratorConfig):
     return {"success": True}
 
 @app.post("/config/generators/default")
-async def set_default_generator(payload: GeneratorDefault):
+async def set_default_generator(payload: GeneratorDefault, db: SupabasePersistence = Depends(get_db)):
     """Sets the default code generation engine."""
-    db = SupabasePersistence()
     config = await db.get_global_config("generators") or {}
     config["default"] = payload.default
     await db.set_global_config("generators", config)
     return {"success": True}
 
-# Supabase Setup
-url: str = os.getenv("SUPABASE_URL", "").strip()
-key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-supabase: Client = create_client(url, key)
+# Supabase Setup (Deprecated global client - use dependencies.get_db)
+# url: str = os.getenv("SUPABASE_URL", "").strip()
+# key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+# supabase: Client = create_client(url, key)
 
 @app.get("/")
 async def root():
@@ -1060,7 +1082,7 @@ async def run_triage(project_id: str, params: TriageParams, db: SupabasePersiste
     except:
         pass
     
-    _log(f"[{timestamp}] Initializing Shift-T Triage Agent")
+    _log(f"[{timestamp}] Initializing Legacy2Lake Triage Agent")
     _log(f"Project: {project_name} ({project_uuid})")
 
     # 1. Deep Scan (The Scanner / Pre-processing)
@@ -1457,19 +1479,23 @@ async def trigger_orchestration(payload: Dict[str, Any], db: SupabasePersistence
     if not project_id:
         return {"error": "project_id is required"}
         
-    # 1. Resolve Project Name (Orchestrator expects Name/Folder currently)
-
+    # 1. Resolve Project Name and UUID (Orchestrator expects both)
     project_name = project_id
+    project_uuid = project_id
+    
     if "-" in project_id:
-        print(f"DEBUG: Resolving project name for ID: {project_id}")
+        print(f"DEBUG: Resolving names for UUID: {project_id}")
         n = await db.get_project_name_by_id(project_id)
-        print(f"DEBUG: Resolved project name: {n}")
         if n: project_name = n
+    else:
+        print(f"DEBUG: Resolving UUID for Name: {project_id}")
+        u = await db.get_project_id_by_name(project_id)
+        if u: project_uuid = u
 
-    print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
+    print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_uuid})")
     orchestrator = MigrationOrchestrator(
         project_name, 
-        project_uuid=project_id, 
+        project_uuid=project_uuid, 
         tenant_id=db.tenant_id, 
         client_id=db.client_id
     )
@@ -1512,6 +1538,30 @@ async def reset_project(project_id: str, db: SupabasePersistence = Depends(get_d
 
     success = await db.reset_project_data(project_id)
     return {"success": success}
+
+@app.post("/projects/{project_id}/cancel")
+async def cancel_process(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Sets a cancellation flag for the project to stop running processes."""
+    try:
+        # Resolve UUID if name is provided (Consistent with Triage/Orchestrate)
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved_uuid = await db.get_project_id_by_name(project_id)
+            if resolved_uuid:
+                project_uuid = resolved_uuid
+                print(f"DEBUG: Resolved project name {project_id} to UUID {project_uuid} for cancellation")
+        
+        # Standardized Update via Persistence Service (v3.6)
+        success = await db.update_project_metadata(project_uuid, {"cancellation_requested": True})
+        
+        if success:
+            logger.info(f"Cancellation requested for project {project_uuid} (Original: {project_id})", "API")
+            return {"success": True, "message": f"Cancellation signal sent to {project_uuid}"}
+        else:
+            return {"success": False, "error": "Failed to update project metadata"}
+    except Exception as e:
+        logger.error(f"Failed to set cancellation flag: {e}", "API")
+        return {"success": False, "error": str(e)}
 
 @app.post("/projects/{project_id}/approve")
 async def approve_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
@@ -2120,38 +2170,51 @@ async def delete_vault_entry(
 @app.get("/system/origins")
 async def get_system_origins(db: SupabasePersistence = Depends(get_db)):
     """Fetches all Origin Cartridges."""
-    res = db.client.table("utm_system_cartridges").select("*").eq("type", "origin").order("name").execute()
+    res = db.client.table("utm_system_catalog").select("*").eq("type", "origin").order("name").execute()
+    # Backward compatibility: map tech_id to id/subtype if needed
+    for item in res.data:
+        if "subtype" not in item: item["subtype"] = item["tech_id"]
+        if "label" not in item: item["label"] = item["name"]
     return {"origins": res.data}
 
 @app.get("/system/destinations")
 async def get_system_destinations(db: SupabasePersistence = Depends(get_db)):
     """Fetches all Destination Cartridges."""
-    res = db.client.table("utm_system_cartridges").select("*").eq("type", "destination").order("name").execute()
+    res = db.client.table("utm_system_catalog").select("*").eq("type", "destination").order("name").execute()
+    for item in res.data:
+        if "subtype" not in item: item["subtype"] = item["tech_id"]
+        if "label" not in item: item["label"] = item["name"]
     return {"destinations": res.data}
 
 @app.post("/system/cartridges")
 async def create_cartridge(payload: dict, db: SupabasePersistence = Depends(get_db)):
-    """Creates a new System Cartridge (Origin or Destination)."""
-    # Payload: name, type, subtype, version, config
-    res = db.client.table("utm_system_cartridges").insert(payload).execute()
+    """Creates a new System Tech (Origin or Destination)."""
+    # Payload: name, type, tech_id, version, config, category
+    # Ensure tech_id is lowercase
+    if "tech_id" in payload: payload["tech_id"] = payload["tech_id"].lower()
+    res = db.client.table("utm_system_catalog").insert(payload).execute()
     return {"success": True, "data": res.data}
 
 @app.post("/system/cartridges/{id}/toggle")
 async def toggle_cartridge(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Toggles status active/disabled."""
     status = payload.get("status") # 'active' or 'disabled'
-    db.client.table("utm_system_cartridges").update({"status": status}).eq("id", id).execute()
+    is_active = (status == "active")
+    db.client.table("utm_system_catalog").update({"is_active": is_active}).eq("id", id).execute()
     return {"success": True}
 
 @app.post("/system/cartridges/{id}/config")
 async def update_cartridge_config(id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Updates configuration JSON."""
     config = payload.get("config")
-    db.client.table("utm_system_cartridges").update({"config": config}).eq("id", id).execute()
+    db.client.table("utm_system_catalog").update({"config": config}).eq("id", id).execute()
     return {"success": True}
 
 @app.delete("/system/cartridges/{id}")
 async def delete_cartridge(id: str, db: SupabasePersistence = Depends(get_db)):
-    """Deletes a cartridge."""
-    db.client.table("utm_system_cartridges").delete().eq("id", id).execute()
+    """Deletes a tech from catalog."""
+    db.client.table("utm_system_catalog").delete().eq("id", id).execute()
     return {"success": True}
+
+
+# --- End of API ---

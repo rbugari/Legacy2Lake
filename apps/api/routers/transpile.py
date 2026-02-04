@@ -98,8 +98,22 @@ async def transpile_all(payload: TranspileAllRequest, db: SupabasePersistence = 
     solution_name = context.get("solution_name", "BulkProject")
     asset_id = context.get("asset_id")
 
+    # Release 3.7: Fetch Intelligence Context
+    project_id = context.get("project_id")
+    support_intel = []
+    scout_assessment = {}
+    if project_id:
+        project_meta = await db.get_project_metadata(project_id)
+        settings = project_meta.get("settings", {})
+        support_intel = settings.get("support_intelligence", [])
+        scout_assessment = settings.get("scout_assessment", {})
+
     for node in nodes:
-        node_data = node.get("data", {})
+        node_data = node.get("data", {}).copy() # Use copy to avoid mutating source
+        # Inject Intelligence
+        node_data["support_intelligence"] = support_intel
+        node_data["scout_assessment"] = scout_assessment
+        
         # Skip purely decorative or empty nodes
         if not node_data.get("label"):
             continue
@@ -136,7 +150,7 @@ async def transpile_all(payload: TranspileAllRequest, db: SupabasePersistence = 
             "path": local_path
         })
         
-    return {"summary": results, "solution_path": os.path.join(PersistenceService.BASE_DIR, solution_name)}
+    return {"summary": results, "solution_path": solution_name}
 
 
 # --- Optimization ---

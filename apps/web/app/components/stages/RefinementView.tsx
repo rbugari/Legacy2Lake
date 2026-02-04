@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react';
 import StageHeader from "../StageHeader";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -143,6 +143,27 @@ export default function RefinementView({
             }
         } catch (e) {
             alert("Failed to approve stage.");
+        }
+    };
+
+    const handleCancelRefinement = async () => {
+        if (!window.confirm("¿Estás seguro de que deseas cancelar el proceso de refinamiento?")) return;
+
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/cancel`, {
+                method: "POST"
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setIsRunning(false);
+                setLogs(prev => [...prev, "[SYSTEM] Process cancelled by user."]);
+            } else {
+                setLogs(prev => [...prev, `[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`]);
+            }
+        } catch (e) {
+            console.error("Failed to cancel process", e);
+            setLogs(prev => [...prev, `[ERROR] Network error during cancellation: ${e}`]);
         }
     };
 
@@ -300,6 +321,16 @@ export default function RefinementView({
                         <Play size={12} className={isRunning ? "animate-spin" : ""} />
                         {isRunning ? "Refining..." : "Refine & Modernize"}
                     </button>
+
+                    {isRunning && (
+                        <button
+                            onClick={handleCancelRefinement}
+                            className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
+                        >
+                            <X size={12} />
+                            Cancel
+                        </button>
+                    )}
                 </div>
             </StageHeader>
 

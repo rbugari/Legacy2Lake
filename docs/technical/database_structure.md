@@ -151,6 +151,19 @@ Catálogo técnico de Modelos soportados.
 | `is_active` | `boolean` | YES | Disponibilidad. |
 | `created_at` | `timestamptz` | YES | Fecha de alta. |
 
+### `utm_system_catalog` (v3.6)
+Catálogo de configuraciones técnicas y reglas de cumplimiento por tecnología.
+| Columna | Tipo | Nullable | Descripción |
+| :--- | :--- | :--- | :--- |
+| `tech_id` | `text` | NO | PK. ID de la tecnología (ej. `oracle`, `fabric`). |
+| `label` | `text` | YES | Nombre legible (ej. "Oracle Database"). |
+| `category` | `text` | YES | Tipo (ej. `source`, `destination`). |
+| `config` | `jsonb` | YES | Configuración completa (rules, features, templates). |
+| `is_active` | `boolean` | YES | Disponibilidad. |
+| `created_at` | `timestamptz` | YES | Fecha de alta. |
+
+> **v3.6 Note**: El campo `config` almacena reglas de cumplimiento específicas por tecnología (e.g., `oracle.compliance.rules`). Los cartuchos obtienen estas reglas dinámicamente durante la generación de código.
+
 ### `utm_design_registry`
 Configuraciones y patrones de diseño (Knowledge Base).
 | Columna | Tipo | Nullable | Descripción |

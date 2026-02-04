@@ -15,12 +15,18 @@ class SSISCartridge(BaseParser):
             'SQLTask': 'www.microsoft.com/sqlserver/dts/tasks/sqltask'
         }
 
-    def parse(self, file_path: str) -> MetadataObject:
+    def parse(self, content_or_path: str, name: str = None) -> MetadataObject:
         """
-        Reads a .dtsx file and returns a standardized MetadataObject.
+        Parses a .dtsx (either raw content or path) and returns a MetadataObject.
         """
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        if "<DTS:Executable" in content_or_path or "<?xml" in content_or_path:
+            content = content_or_path
+            source_name = name or "unknown.dtsx"
+        else:
+            # Legacy Path support
+            with open(content_or_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            source_name = content_or_path.split("\\")[-1]
             
         parser = _LegacySSISLogic(content, self.namespaces)
         medulla = parser.get_logical_medulla()
@@ -28,7 +34,7 @@ class SSISCartridge(BaseParser):
         # Transform legacy 'medulla' dict into standardized MetadataObject
         # This acts as the Adapter layer
         return MetadataObject(
-            source_name=file_path.split("\\")[-1],
+            source_name=source_name,
             source_tech="SSIS",
             raw_content=content,
             components=medulla.get("data_flow_logic", []),

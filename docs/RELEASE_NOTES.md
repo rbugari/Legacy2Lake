@@ -1,6 +1,61 @@
 # Release Notes
 
-## Version 3.5 (The Cloud-Native & Multi-Tenant Reset) - 2026-01-31 ⭐ LATEST
+## Version 3.6 (Quality & Stability Enhancement) - 2026-02-03 ⭐ LATEST
+
+This release focuses on improving code quality enforcement, UI polish, and system stability through compliance rule externalization and critical bug fixes.
+
+### 🌟 Major Features
+
+#### Compliance Rule Externalization (Phase 4)
+*   **Database-Driven Compliance**: Moved hardcoded cartridge rules from Python code to `utm_system_catalog.config` for centralized management.
+*   **Technology-Specific Rules**: Each target technology (Oracle, SSIS, Fabric, etc.) now stores its unique compliance guidelines in the database.
+*   **Agent F Synchronization**: Updated compliance auditor to fetch rules dynamically, ensuring knowledge parity with code generators.
+*   **Migration Bitácora**: Introduced auto-generated markdown logbooks that document Agent F critiques, scores, and reasoning for each migration file.
+
+#### UI/UX Refinements (Phase 5)
+*   **Resizable Drafting Explorer**: Output Explorer in Stage 3 now features a draggable split pane, allowing users to adjust the file tree and preview panel widths.
+*   **Tree Visibility Toggle**: Added a "Panel" button to show/hide the file tree, maximizing code preview space when needed.
+*   **Persistent Preferences**: Tree width and visibility state are saved per project in localStorage, preserving user layout preferences across sessions.
+*   **Enhanced Toolbar**: Improved icons and visual styling for better contrast and clarity in the Drafting stage.
+
+#### Stability Fixes (Phase 6)
+*   **Cartridge Factory Synchronization**: Fixed a critical crash in the Refinement pipeline where `CartridgeFactory.get_cartridge` was incorrectly defined as `async`.
+*   **Method Refactoring**: Converted `get_cartridge` to synchronous execution and updated all callers (`AgentCService`, `AgentFService`, `ArchitectService`).
+*   **Pipeline Verification**: Confirmed end-to-end success of the full refinement pipeline (Profiler → Architect → Refactoring → OpsAuditor).
+
+### 🎨 UI/UX Enhancements
+
+*   Drafting stage now provides professional-grade code review experience with adjustable layouts.
+*   Improved visual feedback with better icon choices (`PanelLeftClose`, `PanelLeftOpen`).
+*   Smooth transitions and hover effects on resize handles and toggle buttons.
+
+### 🐛 Bug Fixes
+
+*   **Fixed**: `AttributeError: 'coroutine' object has no attribute 'generate_scaffolding'` in Architect service.
+*   **Fixed**: Incorrect tech ID capitalization in Solution Configuration UI defaults (now uses lowercase consistently).
+*   **Fixed**: Removed erroneous `await` from synchronous Supabase `execute()` calls in cartridge factory.
+
+### ⚠️ Technical Changes
+
+*   **Modified Services**:
+    *   `CartridgeFactory.get_cartridge` (`factory.py`): Now synchronous.
+    *   `AgentCService` (`agent_c_service.py`): Removed `await` from cartridge calls.
+    *   `AgentFService` (`agent_f_service.py`): Removed `await` from cartridge calls.
+    *   `DraftingView.tsx`: Added resizable split pane logic with `useCallback` and `useRef` hooks.
+*   **Database Schema**:
+    *   `utm_system_catalog.config`: Now stores technology-specific compliance rules (e.g., `oracle.compliance.rules`).
+*   **Frontend Components**:
+    *   New resize handle implementation with visual feedback.
+    *   localStorage integration for UI state persistence.
+
+### 📚 Documentation Updates
+*   Updated stage documentation to reflect UI improvements.
+*   Revised technical documentation for cartridge synchronization changes.
+*   Enhanced database structure documentation with compliance rule schema.
+
+---
+
+## Version 3.5 (The Cloud-Native & Multi-Tenant Reset) - 2026-01-31
 
 This foundational release completes the transition to a fully cloud-native, multi-tenant architecture, removing all local filesystem dependencies and introducing high-performance data handling via Cloudflare R2 and Supabase.
 

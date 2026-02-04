@@ -38,10 +38,14 @@ You can review and override the detection in the Triage configuration panel.
 - **Graph View**: Switch to the Graph tab to see a visual dependency mesh.
 - **Approve Triage**: Locks the scope and advances to Drafting stage
 
-### 4. Context Injection (Tribal Knowledge)
 - Select any file to add "User Context".
 - Example: *"This table is deprecated, map it to `sales_history` instead."*
 - Context is stored in `utm_solution_context` and injected into all agent prompts
+
+### 5. Process Cancellation (v3.6)
+- **Immediate Termination**: If a Triage analysis is taking too long or was started by mistake, you can use the **"Cancel Process"** button.
+- **Graceful Detection**: The backend checks for a `cancellation_requested` flag in `utm_projects` between agent calls (Agent S and Agent A).
+- **Auto-Cleanup**: When a process is cancelled, the project state remains in Triage, allowing you to re-configure and restart when ready.
 
 ## ⚙️ Technical Details
 

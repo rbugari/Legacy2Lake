@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { fetchWithAuth } from "../lib/auth-client";
 import Link from "next/link";
-import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users } from "lucide-react";
+import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key } from "lucide-react";
 import CartridgeList from "../components/admin/CartridgeList";
 import { getAgentDisplayName } from "../lib/constants";
 
@@ -33,6 +33,13 @@ export default function SystemPage() {
     const [testInput, setTestInput] = useState("");
     const [testOutput, setTestOutput] = useState("");
     const [isTesting, setIsTesting] = useState(false);
+    // Lab State
+    const [isExporting, setIsExporting] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [labPath, setLabPath] = useState("./prompt_lab_export");
+    const [promptVersions, setPromptVersions] = useState<any[]>([]);
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+
     const [API_BASE_URL, setApiBaseUrl] = useState("http://localhost:8085"); // Fallback
 
     useEffect(() => {
@@ -77,6 +84,15 @@ export default function SystemPage() {
         config: "{\n  \"icon\": \"default\"\n}"
     });
 
+    // Invitation State
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [isInviting, setIsInviting] = useState(false);
+    const [inviteData, setInviteData] = useState({
+        username: "",
+        email: ""
+    });
+    const [clients, setClients] = useState<any[]>([]);
+
     const fetchData = () => {
         // Parallel Fetch
         Promise.all([
@@ -92,6 +108,10 @@ export default function SystemPage() {
             setDestinations(destData.destinations || []);
             setTenants(Array.isArray(tenantsData) ? tenantsData : []);
 
+            fetchWithAuth("auth/clients").then(res => res.json()).then(data => {
+                setClients(Array.isArray(data) ? data : []);
+            });
+
             setLoading(false);
         }).catch(err => {
             console.error("Failed to load system data", err);
@@ -102,6 +122,68 @@ export default function SystemPage() {
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (selectedPromptId && activeTab === "prompts") {
+            fetchWithAuth(`lab/versions/${selectedPromptId}`).then(res => res.json()).then(data => {
+                setPromptVersions(data.versions || []);
+            });
+        }
+    }, [selectedPromptId, activeTab]);
+
+    const handleExportLab = async () => {
+        setIsExporting(true);
+        try {
+            const res = await fetchWithAuth("lab/export", { method: "POST" });
+            const data = await res.json();
+            if (data.status === "success") {
+                // Trigger Download
+                const downloadUrl = `${API_BASE_URL}/lab/download`;
+                const link = document.createElement("a");
+                link.href = downloadUrl;
+                link.setAttribute("download", "prompt_lab_export.zip");
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+
+                alert(`Export successful! Folder created at: ${data.output_path}\n\nYour download should start automatically.`);
+            } else {
+                alert("Export failed");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleActivateVersion = async (v: number) => {
+        if (!confirm(`Activate version ${v} for ${selectedPromptId}? (Blue-Green Switch)`)) return;
+        try {
+            const res = await fetchWithAuth(`lab/activate?prompt_id=${selectedPromptId}&version=${v}`, { method: "POST" });
+            const data = await res.json();
+            if (data.status === "success") {
+                fetchData();
+                fetchWithAuth(`lab/versions/${selectedPromptId}`).then(res => res.json()).then(d => setPromptVersions(d.versions || []));
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const handleImportLab = async () => {
+        try {
+            const res = await fetchWithAuth(`lab/import?prompt_id=${selectedPromptId}&lab_path=${labPath}/${selectedPromptId}`, { method: "POST" });
+            const data = await res.json();
+            if (data.status === "success") {
+                alert(`Imported version ${data.new_version} successfully!`);
+                setShowImportModal(false);
+                fetchWithAuth(`lab/versions/${selectedPromptId}`).then(res => res.json()).then(d => setPromptVersions(d.versions || []));
+            } else {
+                alert(`Import failed: ${data.message}`);
+            }
+        } catch (e) {
+            alert("Network error during import");
+        }
+    };
 
     const selectedPrompt = prompts.find(p => p.id === selectedPromptId);
 
@@ -137,9 +219,7 @@ export default function SystemPage() {
                 config: JSON.parse(newCartridge.config)
             };
 
-            // Override type based on active tab so user doesn't have to select if obviously in a tab
-            // But let's allow flexibility. For now, force type to match tab if consistent? 
-            // Better to let user choose or default to active tab.
+            // Force type to match current context but allow override if needed
             payload.type = activeTab === "origins" ? "origin" : "destination";
 
             await fetchWithAuth("system/cartridges", {
@@ -158,6 +238,63 @@ export default function SystemPage() {
             fetchData();
         } catch (e) {
             alert("Invalid Config JSON");
+        }
+    };
+
+    const handleInviteUser = async () => {
+        if (!inviteData.username || !inviteData.email) {
+            alert("Please fill all required fields");
+            return;
+        }
+
+        setIsInviting(true);
+        try {
+            const res = await fetchWithAuth("auth/invite", {
+                method: "POST",
+                body: JSON.stringify(inviteData)
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert("User invited successfully!");
+                if (data.temp_password) {
+                    alert(`NOTE: Email failed to send, but user and client were created. Temporary password: ${data.temp_password}`);
+                }
+                setShowInviteModal(false);
+                setInviteData({ username: "", email: "" });
+                fetchData();
+            } else {
+                alert(`Error: ${data.detail || "Failed to invite user"}`);
+            }
+        } catch (err) {
+            alert("Network error during invitation");
+        } finally {
+            setIsInviting(false);
+        }
+    };
+
+    const handleResetPassword = async (tenantId: string, username: string) => {
+        if (!confirm(`Are you sure you want to reset password for ${username}? A new temporary password will be generated and sent via email.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetchWithAuth("auth/reset-password", {
+                method: "POST",
+                body: JSON.stringify({ tenant_id: tenantId })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (data.temp_password) {
+                    alert(`Password reset successfully! Email failed to send. New temporary password: ${data.temp_password}`);
+                } else {
+                    alert(data.message || "Password reset successfully! Email sent.");
+                }
+            } else {
+                alert(data.detail || "Failed to reset password");
+            }
+        } catch (err) {
+            alert("Network error");
         }
     };
 
@@ -206,11 +343,21 @@ export default function SystemPage() {
                     </button>
                 </div>
 
-                {!isAdmin && (
-                    <div className="flex items-center gap-2 px-3 py-1 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 rounded-full text-[10px] font-black uppercase tracking-widest">
-                        <Eye size={12} /> Inspector
-                    </div>
-                )}
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleExportLab}
+                        disabled={isExporting}
+                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+                    >
+                        <FlaskConical size={14} className={isExporting ? "animate-pulse" : ""} />
+                        {isExporting ? "Exporting..." : "Export Lab"}
+                    </button>
+                    {!isAdmin && (
+                        <div className="flex items-center gap-2 px-3 py-1 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 rounded-full text-[10px] font-black uppercase tracking-widest">
+                            <Eye size={12} /> Inspector
+                        </div>
+                    )}
+                </div>
             </header>
 
             {/* TABS CONTENT */}
@@ -249,6 +396,50 @@ export default function SystemPage() {
                                         <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">ID: {selectedPrompt.id}</p>
                                     </div>
                                     <div className="flex gap-2">
+                                        <div className="relative group mr-4">
+                                            <button
+                                                onClick={() => setShowVersionHistory(!showVersionHistory)}
+                                                className="px-4 py-2 bg-[var(--background-secondary)] border border-[var(--border)] rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500/10 transition-all"
+                                            >
+                                                <History size={14} />
+                                                v{promptVersions.find(v => v.is_active)?.version_number || 1}
+                                                <ChevronDown size={14} />
+                                            </button>
+
+                                            {showVersionHistory && (
+                                                <div className="absolute top-full right-0 mt-2 w-64 bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl z-50 overflow-hidden">
+                                                    <div className="p-3 text-[9px] font-black text-[var(--text-tertiary)] uppercase border-b border-[var(--border)]">Version History</div>
+                                                    <div className="max-h-64 overflow-y-auto">
+                                                        {promptVersions.map(v => (
+                                                            <div key={v.version_number} className={`p-4 hover:bg-cyan-500/5 transition-all border-b border-[var(--border)] last:border-0 ${v.is_active ? 'bg-cyan-500/5' : ''}`}>
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-[10px] font-black">VERSION {v.version_number}</span>
+                                                                    {v.is_active ? (
+                                                                        <span className="px-2 py-0.5 bg-green-500 text-white text-[8px] font-black rounded-full uppercase">Active</span>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => handleActivateVersion(v.version_number)}
+                                                                            className="text-[8px] font-black text-cyan-500 uppercase hover:underline"
+                                                                        >
+                                                                            Activate
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-[9px] text-[var(--text-tertiary)] truncate">{v.changelog || 'No changelog provided'}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setShowImportModal(true)}
+                                            className="px-4 py-2 bg-indigo-600/10 text-indigo-500 border border-indigo-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-600 hover:text-white transition-all shadow-lg shadow-indigo-500/10"
+                                        >
+                                            <Upload size={14} /> Import optimized
+                                        </button>
+
                                         <button className="p-2 hover:bg-cyan-500/10 rounded-xl text-[var(--text-tertiary)] hover:text-cyan-500 transition-all" title="Copy Prompt">
                                             <Copy size={18} />
                                         </button>
@@ -329,7 +520,7 @@ export default function SystemPage() {
                             {isAdmin && (
                                 <button
                                     className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 active:scale-95"
-                                    onClick={() => alert("Simplified: Creation flow not yet connected to UI modal")}
+                                    onClick={() => setShowInviteModal(true)}
                                 >
                                     <Plus size={16} /> Invite User
                                 </button>
@@ -375,6 +566,15 @@ export default function SystemPage() {
                                                     >
                                                         <Eye size={16} />
                                                     </button>
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={() => handleResetPassword(t.tenant_id, t.username)}
+                                                            className="p-2 text-[var(--text-tertiary)] hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
+                                                            title="Reset Password"
+                                                        >
+                                                            <Key size={16} />
+                                                        </button>
+                                                    )}
                                                     {isAdmin && t.tenant_id !== user?.tenant_id && (
                                                         <button
                                                             className="p-2 text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
@@ -452,72 +652,204 @@ export default function SystemPage() {
             {/* ADD MODAL */}
             {
                 showAddModal && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-[var(--border)]">
-                            <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-[var(--background)]">
-                                <h3 className="font-bold text-lg">Add New Cartridge</h3>
-                                <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-[var(--surface-hover)] rounded-full">
-                                    <X size={20} />
+                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+                        <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-[var(--border)] animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-cyan-500/10 to-transparent">
+                                <div>
+                                    <h3 className="text-xl font-bold">Register New Technology</h3>
+                                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Add support for a new {activeTab === "origins" ? "Origin" : "Destination"} in the catalog</p>
+                                </div>
+                                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]">
+                                    <X size={24} />
                                 </button>
                             </div>
-                            <div className="p-6 space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold uppercase text-[var(--text-secondary)] mb-1">Name</label>
+
+                            <div className="p-8 space-y-6">
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Display Name</label>
                                         <input
-                                            className="w-full p-2 rounded border border-[var(--border)] bg-[var(--background)] text-sm"
-                                            placeholder="e.g. My Custom Oracle"
+                                            className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-bold"
+                                            placeholder="e.g. Snowflake Advanced"
                                             value={newCartridge.name}
                                             onChange={e => setNewCartridge({ ...newCartridge, name: e.target.value })}
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold uppercase text-[var(--text-secondary)] mb-1">Subtype/Key</label>
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Technical ID (Key)</label>
                                         <input
-                                            className="w-full p-2 rounded border border-[var(--border)] bg-[var(--background)] text-sm"
-                                            placeholder="e.g. oracle-custom"
+                                            className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono"
+                                            placeholder="e.g. snowflake"
                                             value={newCartridge.subtype}
-                                            onChange={e => setNewCartridge({ ...newCartridge, subtype: e.target.value })}
+                                            onChange={e => setNewCartridge({ ...newCartridge, subtype: e.target.value.toLowerCase() })}
                                         />
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-[var(--text-secondary)] mb-1">Version</label>
-                                    <input
-                                        className="w-full p-2 rounded border border-[var(--border)] bg-[var(--background)] text-sm"
-                                        placeholder="e.g. 19c"
-                                        value={newCartridge.version}
-                                        onChange={e => setNewCartridge({ ...newCartridge, version: e.target.value })}
-                                    />
+
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Version</label>
+                                        <input
+                                            className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                            placeholder="e.g. v1.2"
+                                            value={newCartridge.version}
+                                            onChange={e => setNewCartridge({ ...newCartridge, version: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Capability Role</label>
+                                        <select
+                                            disabled // Tied to active tab for sanity
+                                            className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-xs font-black uppercase tracking-widest outline-none opacity-50"
+                                            value={activeTab === "origins" ? "origin" : "destination"}
+                                        >
+                                            <option value="origin">ORIGIN (Source)</option>
+                                            <option value="destination">DESTINATION (Target)</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-[var(--text-secondary)] mb-1">Configuration (JSON)</label>
+
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Engine Configuration (JSON)</label>
                                     <textarea
-                                        className="w-full h-32 p-2 rounded border border-[var(--border)] bg-[var(--background)] text-sm font-mono"
+                                        className="w-full h-40 px-4 py-4 rounded-3xl border border-[var(--border)] bg-[var(--background)] text-xs font-mono outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all resize-none"
+                                        placeholder='{"driver": "...", "dialect": "..."}'
                                         value={newCartridge.config}
                                         onChange={e => setNewCartridge({ ...newCartridge, config: e.target.value })}
                                     />
                                 </div>
                             </div>
-                            <div className="p-4 border-t border-[var(--border)] bg-[var(--background)] flex justify-end gap-2">
+
+                            <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
                                 <button
                                     onClick={() => setShowAddModal(false)}
-                                    className="px-4 py-2 rounded-lg text-sm font-bold border border-[var(--border)] hover:bg-[var(--surface)]"
+                                    className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleAdd}
-                                    className="px-4 py-2 rounded-lg text-sm font-bold bg-[var(--color-primary)] text-white hover:brightness-110"
+                                    className="px-8 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-xl shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
                                     disabled={!newCartridge.name || !newCartridge.subtype}
                                 >
-                                    Create Cartridge
+                                    Register Technology
                                 </button>
                             </div>
                         </div>
                     </div>
                 )
             }
+            {/* IMPORT MODAL */}
+            {showImportModal && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-indigo-500/10 to-transparent">
+                            <div>
+                                <h3 className="text-lg font-bold">Import Optimized Prompt</h3>
+                                <p className="text-xs text-[var(--text-tertiary)] mt-1">Select the laboratory path for {selectedPromptId}</p>
+                            </div>
+                            <button onClick={() => setShowImportModal(false)} className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl flex items-start gap-4">
+                                <Activity size={20} className="text-indigo-500 shrink-0 mt-1" />
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                    The laboratory expected structure is: <br />
+                                    <code>{labPath}/{selectedPromptId}/prompt_v2.md</code>
+                                </p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Base Lab Path</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        className="flex-1 px-4 py-3 bg-[var(--background)] border border-[var(--border)] rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                        value={labPath}
+                                        onChange={e => setLabPath(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowImportModal(false)}
+                                className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleImportLab}
+                                className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                            >
+                                Run Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* INVITE MODAL */}
+            {showInviteModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)] animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-cyan-500/10 to-transparent">
+                            <div>
+                                <h3 className="text-xl font-bold">Invite New User</h3>
+                                <p className="text-xs text-[var(--text-tertiary)] mt-1">Credentials will be sent via email</p>
+                            </div>
+                            <button onClick={() => setShowInviteModal(false)} className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Username</label>
+                                    <input
+                                        className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-bold"
+                                        placeholder="e.g. jsmith"
+                                        value={inviteData.username}
+                                        onChange={e => setInviteData({ ...inviteData, username: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Email Address</label>
+                                    <input
+                                        type="email"
+                                        className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                        placeholder="user@enterprise.com"
+                                        value={inviteData.email}
+                                        onChange={e => setInviteData({ ...inviteData, email: e.target.value })}
+                                    />
+                                </div>
+                                <div className="p-4 bg-cyan-500/5 rounded-2xl border border-cyan-500/10 mb-4">
+                                    <p className="text-[10px] text-cyan-500 font-bold uppercase tracking-tight text-center">
+                                        System will automatically create a new Client record for this user.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowInviteModal(false)}
+                                className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleInviteUser}
+                                className="px-8 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-xl shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
+                                disabled={isInviting || !inviteData.username || !inviteData.email}
+                            >
+                                {isInviting ? "Sending..." : "Send Invitation"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

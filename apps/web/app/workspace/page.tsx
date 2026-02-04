@@ -20,7 +20,7 @@ import { API_BASE_URL } from "../lib/config";
 import { fetchWithAuth } from "../lib/auth-client";
 import {
     Activity, ArrowRight, CheckCircle, Code, FileText, GitCommit,
-    GitPullRequest, Layout, Play, Save, Settings, Share2,
+    GitPullRequest, Layout, Play, Save, SlidersHorizontal, Share2,
     Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield
 } from "lucide-react";
 
@@ -335,7 +335,7 @@ function WorkspaceContent() {
                                     className="p-1.5 text-gray-500 hover:text-cyan-500 hover:bg-cyan-500/10 rounded-md transition-all"
                                     title="Configure Solution"
                                 >
-                                    <Settings size={18} />
+                                    <SlidersHorizontal size={18} />
                                 </button>
                                 <button
                                     onClick={handleResetProject}
@@ -466,6 +466,9 @@ function WorkspaceContent() {
                     <SolutionConfigDrawer
                         isOpen={showConfig}
                         onClose={() => setShowConfig(false)}
+                        projectId={id}
+                        sourceTech={sourceTech}
+                        targetTech={targetTech}
                     />
                 </main >
             </div >

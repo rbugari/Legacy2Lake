@@ -19,6 +19,17 @@ except ImportError:
 class PromptLabService:
     """Service for Export/Import of prompts for external laboratory optimization."""
     
+    AGENT_MAP = {
+        "agent-s": "agent_s_scout",
+        "agent-a": "agent_a_discovery",
+        "agent-c": "agent_c_interpreter",
+        "agent-f": "agent_f_critic",
+        "agent-g": "agent_g_governance",
+        "agent-b": "agent_b_cartographer",
+        "agent_s": "agent_s_scout",
+        "agent_a": "agent_a_discovery"
+    }
+    
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
         self.tenant_id = tenant_id
         self.client_id = client_id
@@ -30,21 +41,18 @@ class PromptLabService:
         agent_name: str,
         origin_tech: Optional[str] = None,
         dest_tech: Optional[str] = None
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
         Returns an agent prompt enriched with technology-specific best practices.
-        
-        Args:
-            agent_name: Agent identifier (e.g., 'agent_c_interpreter')
-            origin_tech: Origin technology ID (e.g., 'ssis', 'sqlserver')
-            dest_tech: Destination technology ID (e.g., 'databricks', 'snowflake')
-            
-        Returns:
-            Enriched prompt with injected knowledge from improvements.md files
         """
+        # Normalize tech IDs and resolve mapped name
+        resolved_name = self.AGENT_MAP.get(agent_name, agent_name)
+        origin_id = origin_tech.lower() if origin_tech else None
+        dest_id = dest_tech.lower() if dest_tech else None
+        
         try:
             # 1. Load base agent prompt
-            base_prompt = self._load_agent_prompt(agent_name)
+            base_prompt = self._load_agent_prompt(resolved_name)
             
             if not base_prompt:
                 logger.warning(f"Base prompt not found for {agent_name}", "PromptLabService")
@@ -52,21 +60,21 @@ class PromptLabService:
             
             # 2. Load origin knowledge (if specified)
             origin_knowledge = ""
-            if origin_tech:
-                origin_knowledge = self._load_improvements(f"origins/{origin_tech}")
+            if origin_id:
+                origin_knowledge = self._load_improvements(f"origins/{origin_id}")
             
             # 3. Load destination knowledge (if specified)
             dest_knowledge = ""
-            if dest_tech:
-                dest_knowledge = self._load_improvements(f"destinations/{dest_tech}")
+            if dest_id:
+                dest_knowledge = self._load_improvements(f"destinations/{dest_id}")
             
             # 4. Inject knowledge into prompt
             enriched_prompt = self._inject_knowledge(
                 base_prompt=base_prompt,
                 origin_knowledge=origin_knowledge,
                 dest_knowledge=dest_knowledge,
-                origin_tech=origin_tech,
-                dest_tech=dest_tech
+                origin_tech=origin_id,
+                dest_tech=dest_id
             )
             
             logger.info(
@@ -74,27 +82,48 @@ class PromptLabService:
                 "PromptLabService"
             )
             
-            return enriched_prompt
+            return {
+                "prompt": enriched_prompt,
+                "base_prompt": base_prompt,
+                "origin_knowledge": origin_knowledge,
+                "dest_knowledge": dest_knowledge,
+                "is_enriched": bool(origin_knowledge or dest_knowledge)
+            }
             
         except Exception as e:
             logger.error(f"Error enriching prompt for {agent_name}: {e}", "PromptLabService")
             # Fall back to base prompt
-            return self._load_agent_prompt(agent_name) or ""
+            base = self._load_agent_prompt(agent_name) or ""
+            return {
+                "prompt": base,
+                "base_prompt": base,
+                "origin_knowledge": "",
+                "dest_knowledge": "",
+                "is_enriched": False
+            }
     
     def _load_agent_prompt(self, agent_name: str) -> str:
-        """Load base agent prompt from prompt_lab_export directory."""
+        """Load base agent prompt from prompt_lab_export directory with DB fallback."""
+        # 1. Try prompt_lab_export filesystem
         agent_path = os.path.join(self.lab_export_path, "core_agents", agent_name, "prompt_v1.md")
         
         if os.path.exists(agent_path):
             with open(agent_path, "r", encoding="utf-8") as f:
                 return f.read()
         
-        # Fallback: try to load from database
+        # 2. Fallback: try to load from database
+        # Try both the name provided and its reverse mapping if possible
+        lookup_names = [agent_name]
+        # If we have a reverse mapping (e.g. agent_s_scout -> agent-s), add it
+        reverse_map = {v: k for k, v in self.AGENT_MAP.items()}
+        if agent_name in reverse_map:
+            lookup_names.append(reverse_map[agent_name])
+            
         try:
             res = self.db.client.table("utm_prompts")\
                 .select("content")\
-                .eq("prompt_id", agent_name)\
                 .eq("is_active", True)\
+                .in_("prompt_id", lookup_names)\
                 .limit(1)\
                 .execute()
             

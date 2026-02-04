@@ -1,8 +1,8 @@
-# Arquitectura de Agentes y System Prompts (v3.5)
+# Arquitectura de Agentes y System Prompts (v3.6)
 
-El "cerebro" de la plataforma UTM (Legacy2Lake) no es un modelo monolítico, sino una orquestación de múltiples agentes especializados que colaboran para escanear, interpretar, auditar y documentar la migración.
+El "cerebro" de la plataforma UTM (Legacy2Lake) no es un modelo monolítico, sino una orquestación de múltiples agentes especializados que colaboran para escanear, interpretar, auditor y documentar la migración.
 
-> **v3.5 Update**: Introducción del **Prompt Laboratory** - sistema dinámico de gestión de prompts con 22 knowledge modules (7 core agents + 9 origins + 6 destinations).
+> **v3.6 Update**: Agent F ahora obtiene reglas de cumplimiento dinámicamente desde `utm_system_catalog`, garantizando paridad con los generadores de código. Introducción de **Migration Bitácora** (logbook) para auditoría detallada.
 
 Este documento detalla el rol de cada agente y expone sus **System Prompts reales**, revelando las reglas de comportamiento que gobiernan la IA.
 
@@ -168,16 +168,33 @@ Cada agente tiene un `contract.json` que define la estructura JSON de salida:
 
 ---
 
-### Agent F: El Auditor (Critic Service)
+### Agent F: El Auditor (Critic Service) → **DYNAMIC COMPLIANCE (v3.6)**
 **Misión:** Garantizar la calidad antes de que el código toque el repositorio. Actúa como un "Senior Code Reviewer" despiadado.
 
 **System Prompt Actual (`agent_f_critic.md`):**
 > "You are a Senior Data Architect and the ultimate guardian of code quality... ensure it is not just functional, but **architecturally superior**."
 
+**Nuevas Capacidades (v3.6):**
+1. **Dynamic Rule Fetching**: Obtiene reglas de cumplimiento desde `utm_system_catalog.config` en tiempo real
+2. **Technology-Specific Critiques**: Aplica reglas específicas para Oracle, SSIS, Fabric, etc.
+3. **Knowledge Parity**: Sincronización garantizada con las reglas que usa Agent C en la generación
+4. **Migration Bitácora**: Genera logs markdown con critiques detalladas, scores y razonamiento
+
 **Reglas Clave (Checklist Estricto):**
-1.  **Reject Hardcoding:** Si ve credenciales o rutas absolutas -> `REJECTED`.
+1.  **Reject Hardcoding:** Si ve credenciales o rutas absolutas → `REJECTED`.
 2.  **Precision Casting:** Verifica que los `cast()` de Spark coincidan exactamente con el DDL de destino (ej. `Decimal(18,2)` vs `Double`).
 3.  **Merge Validation:** Si es una carga Delta y no hay `MERGE`, rechaza el código.
+4.  **Cartridge Rule Enforcement**: Valida contra las mismas reglas que el cartridge usó para generar el código.
+
+**Code Example (Dynamic Rules)**:
+```python
+# Fetch compliance rules from database
+cartridge = CartridgeFactory.get_cartridge(project_id, registry, tenant_id)
+cartridge_rules = cartridge.get_rules(task_info)
+
+# Inject rules into Agent F context
+prompt += f"\nCARTRIDGE COMPLIANCE RULES:\n{cartridge_rules}"
+```
 
 ---
 

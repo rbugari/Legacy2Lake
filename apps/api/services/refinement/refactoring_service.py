@@ -26,9 +26,6 @@ class RefactoringService:
         """
         if log is None: log = []
         
-        # In a real scenario, this would parse the files and replace strings or AST.
-        # For now, we just acknowledge the files and maybe append a 'Refactored' comment.
-        
         refined_files = architect_output.get("refined_files", {})
         processed_count = 0
         
@@ -37,7 +34,6 @@ class RefactoringService:
         # Release 2.0: Fetch Design Registry to know the stack
         try:
              from apps.api.services.persistence_service import SupabasePersistence
-             # [Fix] Pass context to persistence
              db_instance = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
              registry_raw = await db_instance.get_design_registry(project_id)
         except Exception as e:
@@ -56,8 +52,8 @@ class RefactoringService:
             if not files: continue
             
             self._log(log, f"Optimizing {layer.upper()} layer ({len(files)} files)...")
-            for file_path_str in files:
-                self._apply_refactoring(Path(file_path_str), target_stack, log)
+            for file_key in files:
+                await self._apply_refactoring(file_key, target_stack, log)
                 processed_count += 1
                 
         return {
@@ -65,15 +61,17 @@ class RefactoringService:
             "optimized_files_count": processed_count
         }
         
-    def _apply_refactoring(self, file_path: Path, stack: str, log: list = None):
+    async def _apply_refactoring(self, file_key: str, stack: str, log: list = None):
         """
-        Injects optimization hints and security placeholders.
+        Injects optimization hints and security placeholders via R2.
         """
-        if not file_path.exists():
+        storage = PersistenceService.get_storage()
+        content = storage.read_file(file_key)
+        if not content:
             return
             
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
             
         # Optimization Logic
         if stack == "snowflake":
@@ -84,14 +82,14 @@ class RefactoringService:
             optimization_note = "# [Refactoring Agent] Optimization: Ensure Z-ORDERING on high cardinality columns for performance.\n"
             sec_note = "# [Refactoring Agent] Security: All hardcoded credentials have been replaced with dbutils.secrets.get calls (simulated).\n"
 
-        if log: self._log(log, f"  > {file_path.name}: Added Optimization hint for {stack}")
+        filename = file_key.split("/")[-1]
+        if log: self._log(log, f"  > {filename}: Added Optimization hint for {stack}")
         
         # Example Security:
         security_note = sec_note
-        if log: self._log(log, f"  > {file_path.name}: Validated Security Scopes")
-        if log: self._log(log, f"  > {file_path.name}: Validated Secret Scope usage")
+        if log: self._log(log, f"  > {filename}: Validated Security Scopes")
+        if log: self._log(log, f"  > {filename}: Validated Secret Scope usage")
         
         new_content = optimization_note + security_note + content
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(new_content)
+        storage.save_file(file_key, new_content)

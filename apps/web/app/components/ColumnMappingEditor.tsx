@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Save, Trash2, Sparkles, Shield, AlertCircle } from "lucide-react";
-import { API_BASE_URL } from "../lib/config";
+import { fetchWithAuth } from "../lib/auth-client";
 
 interface ColumnMapping {
     id?: string;
@@ -43,7 +43,7 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
 
     const fetchMappings = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/assets/${assetId}/column-mappings`);
+            const res = await fetchWithAuth(`/assets/${assetId}/column-mappings`);
             const data = await res.json();
             setMappings(data.mappings || []);
         } catch (e) {
@@ -77,7 +77,7 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
         const mapping = mappings[index];
         if (mapping.id) {
             try {
-                await fetch(`${API_BASE_URL}/assets/${assetId}/column-mappings/${mapping.source_column}`, {
+                await fetchWithAuth(`/assets/${assetId}/column-mappings/${mapping.source_column}`, {
                     method: "DELETE"
                 });
             } catch (e) {
@@ -92,7 +92,7 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
         if (!mapping.source_column || !mapping.source_datatype) return;
 
         try {
-            const res = await fetch(`${API_BASE_URL}/assets/${assetId}/column-mappings/suggest`, {
+            const res = await fetchWithAuth(`/assets/${assetId}/column-mappings/suggest`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -114,7 +114,7 @@ export default function ColumnMappingEditor({ assetId, onSave }: ColumnMappingEd
     const handleSaveAll = async () => {
         setSaving(true);
         try {
-            await fetch(`${API_BASE_URL}/assets/${assetId}/column-mappings/bulk`, {
+            await fetchWithAuth(`/assets/${assetId}/column-mappings/bulk`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(mappings.filter(m => m.source_column))
