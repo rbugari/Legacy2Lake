@@ -1,6 +1,6 @@
 import os
 import json
-import datetime
+from datetime import datetime
 from typing import Optional, Dict
 from .profiler_service import ProfilerService
 from .architect_service import ArchitectService
