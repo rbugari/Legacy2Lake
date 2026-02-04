@@ -102,8 +102,8 @@ class RefinementOrchestrator:
         # Store persistence for use in _check_cancellation
         self.persistence = persistence
         
-        # Execute the refinement pipeline
-        return await self.run_refinement(self.project_uuid, models)
+        # Execute the refinement pipeline - use project_name not project_uuid for R2 paths
+        return await self.run_refinement(self.project_name, models)
         
     async def _check_cancellation(self, project_id: str):
         """Check if cancellation has been requested for this project."""
