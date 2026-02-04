@@ -33,11 +33,18 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
         };
     }, []);
 
-    // Prefetch projects for the palette
+    // Prefetch projects for the palette (only if authenticated)
     useEffect(() => {
         const loadProjects = async () => {
+            // Check if user is authenticated by looking for tenant_id in localStorage
+            const tenantId = localStorage.getItem('tenant_id');
+            if (!tenantId) {
+                // User not logged in, skip loading projects
+                return;
+            }
+
             try {
-                const res = await fetchWithAuth('projects');
+                const res = await fetchWithAuth('/projects');
                 if (res.ok) {
                     const data = await res.json();
                     setProjects(data);
