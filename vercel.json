@@ -28,8 +28,5 @@
                 }
             ]
         }
-    ],
-    "env": {
-        "NEXT_PUBLIC_API_URL": "@backend_url"
-    }
+    ]
 }
