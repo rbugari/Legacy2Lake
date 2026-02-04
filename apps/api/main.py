@@ -158,6 +158,10 @@ async def login(request: Request):
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
+    # Skip processing for OPTIONS requests (CORS preflight)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
     start_time = time.perf_counter()
     
     # Extract identity for logging if possible
