@@ -1,9 +1,0 @@
-{
-  "tech_id": "ssis",
-  "name": "Microsoft SSIS",
-  "version": "Latest",
-  "category": "extraction",
-  "config": {
-    "parse_xml": true
-  }
-}

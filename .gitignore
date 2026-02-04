@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.env
+.env.local
+.env.*.local
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Database & Local Storage
+solutions/
+*.log
+*.sqlite
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary / Artifacts
+*.zip
+*.rar
+*.7z
+# Avoid broad *.json ignore that hides critical configs
+# Ignore common log/temp json patterns instead
+*.log.json
+*._tmp.json
+solutions/
+prompt_lab_export/
+test_lab_export/
+
+# Explicitly Include critical deployment/config files
+!package.json
+!tsconfig.json
+!composer.json
+!next-env.d.ts
+!railway.json
+!nixpacks.toml
+!Procfile
+!requirements.txt
+!apps/api/config/platform_spec.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project Specific
+reproduce_issue.py
+test_encoding.js
+apps/web/apps/
+apps/web/next.config_clean.js
+apps/web/test_encoding.js
+import_payload.json
+phase4_r2_verify.zip
+prompt_lab_export.zip

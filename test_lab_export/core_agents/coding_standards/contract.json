@@ -1,9 +1,0 @@
-{
-  "contract_id": "coding_standards_v1",
-  "version": 1,
-  "description": "Output contract for Coding Standards",
-  "immutable_schema": {
-    "type": "object",
-    "notes": "Define the expected JSON output schema here."
-  }
-}

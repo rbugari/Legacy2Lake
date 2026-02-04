@@ -1,7 +1,0 @@
-{
-  "tech_id": "pentaho",
-  "name": "Pentaho (Kettle)",
-  "version": "v9.x",
-  "category": "extraction",
-  "config": {}
-}

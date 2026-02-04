@@ -1,7 +1,0 @@
-{
-  "tech_id": "sqlserver",
-  "name": "Microsoft SQL Server",
-  "version": "Latest",
-  "category": "extraction",
-  "config": {}
-}

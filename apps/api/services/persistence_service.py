@@ -1541,4 +1541,43 @@ class SupabasePersistence:
         except Exception as e:
             print(f"Error resolving LLM for {agent_id}: {e}")
 
+    # --- System Catalog & Multi-Tenancy (v3.7) ---
+
+    async def list_system_catalog(self) -> List[Dict[str, Any]]:
+        """Returns all supported technologies from the unified catalog."""
+        try:
+            res = self.client.table("utm_system_catalog").select("*").order("name").execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing system catalog: {e}")
+            return []
+
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Returns all models from the global catalog, filtered by tenant if applicable."""
+        try:
+            query = self.client.table("utm_model_catalog").select("*")
+            if self.tenant_id:
+                # [Refactor] Consider showing both global and tenant-specific
+                # For now, just all available
+                pass
+            res = query.order("label").execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error listing models: {e}")
+            return []
+
+    async def list_supported_techs(self, role: str = None) -> List[Dict[str, Any]]:
+        """Alias for backward compatibility with some legacy routers."""
+        data = await self.list_system_catalog()
+        if not role:
+            return data
+        
+        # Filter by role
+        filtered = []
+        for tech in data:
+            tech_role = "SOURCE" if tech.get("type") == "origin" else "TARGET"
+            if tech_role == role.upper():
+                filtered.append(tech)
+        return filtered
+
 

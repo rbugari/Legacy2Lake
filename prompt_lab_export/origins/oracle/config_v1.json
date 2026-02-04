@@ -1,9 +1,0 @@
-{
-  "tech_id": "oracle",
-  "name": "Oracle DB",
-  "version": "Latest",
-  "category": "extraction",
-  "config": {
-    "compatibility_mode": "strict"
-  }
-}
