@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NEXT_TELEMETRY_DISABLED=1 next build --no-lint 2>&1 | tee build.log",
+    "build": "next build",
     "start": "next start",
     "serve": "node ../../server.js",
     "lint": "eslint"
