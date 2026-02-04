@@ -229,27 +229,6 @@ app.include_router(lab_router)        # ✅ ACTIVE: Prompt Laboratory
 from routers.reports import router as reports_router
 app.include_router(reports_router)    # ✅ NEW: PDF report generation (Triage + Final)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        # Local development
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://localhost:3005",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3005", 
-        "http://127.0.0.1:8085",
-        "http://localhost:5173",
-        # Production (Vercel)
-        "https://*.vercel.app",  # All Vercel preview deployments
-        "https://legacy2lake.vercel.app",  # Production domain (update as needed)
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Suggested-Filename"]
-)
 
 
 @app.get("/prompts/agent-a")
