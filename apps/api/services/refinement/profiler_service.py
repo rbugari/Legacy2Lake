@@ -56,6 +56,12 @@ class ProfilerService:
         all_files = get_all_files(items)
         py_files = [f["name"] for f in all_files if f["name"].endswith(".py")]
         
+        # Debug logging
+        print(f"[PROFILER DEBUG] input_dir: {input_dir}")
+        print(f"[PROFILER DEBUG] items returned from storage.list_files: {len(items)} items")
+        print(f"[PROFILER DEBUG] all_files after get_all_files: {len(all_files)} files")
+        print(f"[PROFILER DEBUG] py_files: {py_files}")
+        
         if not py_files:
             self._log(log, f"No Python files found in {PersistenceService.STAGE_DRAFTING}.", level="Profiler", model="System")
             return {"total_files": 0, "analyzed_files": []}
