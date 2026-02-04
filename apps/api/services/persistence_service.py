@@ -396,6 +396,11 @@ class SupabasePersistence:
             project_settings = item.get("settings", {}) or {}
             item["lines_generated"] = project_settings.get("lines_generated", 0)
             
+            # Extract source_tech and target_tech from config for dashboard display
+            project_config = item.get("config", {}) or {}
+            item["source_tech"] = project_config.get("source_tech") or project_config.get("origin_tech")
+            item["target_tech"] = project_config.get("target_tech") or project_config.get("dest_tech")
+            
         return projects
 
     async def list_supported_techs(self, role: str = None) -> List[Dict[str, Any]]:
