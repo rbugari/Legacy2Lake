@@ -225,20 +225,12 @@ class RefinementOrchestrator:
                 "ops_audit": ops_out
             }
 
-
-            
         except Exception as e:
             import traceback
             error_msg = f"Pipeline failed: {str(e)}\n{traceback.format_exc()}"
             local_log.append(error_msg)
+            print(f"ERROR in run_refinement: {error_msg}")  # Print to Railway logs
             
-            # Try to save error log too to R2
-            try:
-                log_key = f"{base_path.rstrip('/')}/refinement.log"
-                storage.save_file(log_key, "\n".join(local_log))
-            except: 
-                pass
-
             return {
                 "status": "FAILED",
                 "log": local_log,
