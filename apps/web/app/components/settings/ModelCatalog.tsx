@@ -35,9 +35,9 @@ export default function ModelCatalog() {
 
     const fetchCatalog = () => {
         Promise.all([
-            fetchWithAuth("catalog").then(res => res.json()),
-            fetchWithAuth("providers").then(res => res.json())
-        ]).then(([catalogData, providersData]) => {
+            fetchWithAuth("system/catalog").then(res => res.json()),
+            fetchWithAuth("system/vault").then(res => res.json())
+        ]).then(([catalogData, vaultData]) => {
             const mapped = (catalogData.catalog || []).map((m: any) => ({
                 id: m.model_id,
                 provider: m.provider,
@@ -50,11 +50,10 @@ export default function ModelCatalog() {
             }));
             setModels(mapped);
 
-            // Use the filtered list from backend (already tenant-aware)
-            // providersData is an array of objects: { id: "openai", name: "OpenAI", connected: true ... }
-            const activeProviders = (providersData || [])
-                .filter((p: any) => p.connected) // Only show connected/active providers
-                .map((p: any) => p.id);
+            // Use credentials from vault to determine active providers (normalized)
+            const activeProviders = (vaultData.credentials || [])
+                .filter((c: any) => c.is_active)
+                .map((c: any) => c.provider_name.toLowerCase());
 
             setAvailableProviders(activeProviders);
 
@@ -69,7 +68,7 @@ export default function ModelCatalog() {
     const handleDelete = async (id: string) => {
         if (!confirm("¿Eliminar este modelo?")) return;
         try {
-            await fetchWithAuth(`catalog/${id}`, { method: "DELETE" });
+            await fetchWithAuth(`system/catalog/${id}`, { method: "DELETE" });
             fetchCatalog();
         } catch (e) {
             console.error("Failed to delete model", e);
@@ -81,7 +80,7 @@ export default function ModelCatalog() {
         setModels(models.map(m => m.id === id ? { ...m, is_active: newState } : m));
 
         try {
-            await fetchWithAuth(`catalog/${id}/toggle`, {
+            await fetchWithAuth(`system/catalog/${id}/toggle`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ is_active: newState })
@@ -128,7 +127,7 @@ export default function ModelCatalog() {
         };
 
         try {
-            const endpoint = editMode ? `catalog/${currentModelId}/update` : "catalog";
+            const endpoint = editMode ? `system/catalog/${currentModelId}/update` : "system/catalog";
             await fetchWithAuth(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -143,7 +142,12 @@ export default function ModelCatalog() {
         }
     };
 
-    const filteredModels = models.filter(m => filter === "all" || m.provider.toLowerCase() === filter.toLowerCase());
+    // Only show models for ACTIVE providers
+    const filteredModels = models.filter(m => {
+        const providerActive = availableProviders.includes(m.provider.toLowerCase());
+        const matchesFilter = filter === "all" || m.provider.toLowerCase() === filter.toLowerCase();
+        return providerActive && matchesFilter;
+    });
 
     if (loading) return <div className="p-4 text-center text-[var(--text-secondary)]">Cargando Catálogo...</div>;
 

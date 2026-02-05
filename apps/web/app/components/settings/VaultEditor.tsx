@@ -28,22 +28,31 @@ export default function VaultEditor() {
     const [newProviderId, setNewProviderId] = useState("");
     const [newProviderLabel, setNewProviderLabel] = useState("");
 
+    // Static defaults to ensure UI is never empty
+    const DEFAULT_PROVIDERS = [
+        { id: "azure", label: "AZURE OPENAI", description: "Standard Enterprise AI" },
+        { id: "openai", label: "OPENAI", description: "Direct API Access" },
+        { id: "deepseek", label: "DEEPSEEK", description: "High Efficiency Models" },
+        { id: "ollama", label: "OLLAMA", description: "Local Inference" },
+    ];
+
     const fetchVault = async () => {
         try {
-            const res = await fetchWithAuth("vault");
+            const res = await fetchWithAuth("system/vault");
             if (res.ok) {
                 const data = await res.json();
                 const creds = data.credentials || [];
                 setCredentials(creds);
 
-                // Derive providers only from actual credentials in DB
-                const dynamicProviders = creds.map((c: Credential) => ({
+                // Merge configured credentials with defaults
+                // Only show what is explicitly in the DB
+                const providers = creds.map((c: Credential) => ({
                     id: c.provider_name,
                     label: c.provider_name.toUpperCase(),
-                    description: "Proveedor Configurado"
+                    description: DEFAULT_PROVIDERS.find(p => p.id === c.provider_name.toLowerCase())?.description || "Custom Provider"
                 }));
 
-                setAllProviders(dynamicProviders);
+                setAllProviders(providers);
             }
         } catch (err) {
             console.error("Failed to fetch vault", err);
@@ -57,7 +66,7 @@ export default function VaultEditor() {
     }, []);
 
     const handleEdit = (providerId: string) => {
-        const cred = credentials.find(c => c.provider_name === providerId);
+        const cred = credentials.find(c => c.provider_name.toLowerCase() === providerId.toLowerCase());
         setApiKey("");
         setBaseUrl(cred?.base_url || "");
         setNewProviderName(providerId);
@@ -76,7 +85,7 @@ export default function VaultEditor() {
                 new_provider_name: newProviderName
             };
 
-            const res = await fetchWithAuth("vault/update", {
+            const res = await fetchWithAuth("system/vault/update", {
                 method: "POST",
                 body: JSON.stringify(payload)
             });
@@ -117,7 +126,10 @@ export default function VaultEditor() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+                <p className="text-xs text-[var(--text-secondary)] italic">
+                    * These settings are <strong>Tenant-Wide</strong> (Global). They apply to all your projects.
+                </p>
                 <button
                     onClick={() => setShowAddModal(true)}
                     className="text-xs px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded hover:bg-[var(--text-primary)]/5 font-medium"
@@ -128,7 +140,7 @@ export default function VaultEditor() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {allProviders.map(p => {
-                    const cred = credentials.find(c => c.provider_name === p.id);
+                    const cred = credentials.find(c => c.provider_name.toLowerCase() === p.id.toLowerCase());
                     const isActive = cred?.is_active;
                     const isEditing = editingProvider === p.id;
 
@@ -196,7 +208,7 @@ export default function VaultEditor() {
                                         <button
                                             onClick={async () => {
                                                 if (!confirm("Are you sure you want to delete these credentials?")) return;
-                                                const res = await fetchWithAuth("vault/delete", { method: "POST", body: JSON.stringify({ provider: p.id }) });
+                                                const res = await fetchWithAuth("system/vault/delete", { method: "POST", body: JSON.stringify({ provider: p.id }) });
 
                                                 if (res.ok) {
                                                     await fetchVault();
@@ -230,8 +242,34 @@ export default function VaultEditor() {
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-[var(--surface)] rounded-xl p-6 w-full max-w-sm shadow-2xl border border-[var(--border)]">
-                        <h3 className="text-lg font-bold mb-4">Add Custom Provider</h3>
-                        <div className="space-y-4">
+                        <h3 className="text-lg font-bold mb-4">Add Provider</h3>
+
+                        <div className="mb-4">
+                            <label className="text-xs font-bold text-[var(--text-secondary)] uppercase block mb-2">Quick Add Standard</label>
+                            <div className="flex flex-wrap gap-2">
+                                {DEFAULT_PROVIDERS.map(dp => {
+                                    // Don't show if already added
+                                    const exists = allProviders.find(p => p.id.toLowerCase() === dp.id.toLowerCase());
+                                    if (exists) return null;
+
+                                    return (
+                                        <button
+                                            key={dp.id}
+                                            onClick={() => {
+                                                setNewProviderId(dp.id);
+                                                setNewProviderLabel(dp.label);
+                                                // Trigger add immediately? Or just fill form? Let's just fill form for clarity
+                                            }}
+                                            className="px-2 py-1 text-[10px] font-bold border rounded hover:bg-white/5 active:scale-95 transition-all"
+                                        >
+                                            {dp.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 border-t border-[var(--border)] pt-4">
                             <div>
                                 <label className="text-xs font-bold text-[var(--text-secondary)] uppercase block mb-1">Provider Label</label>
                                 <input

@@ -26,6 +26,10 @@ class PromptLabService:
         "agent-f": "agent_f_critic",
         "agent-g": "agent_g_governance",
         "agent-b": "agent_b_cartographer",
+        "agent-d": "agent_d_auditor",
+        "agent-p": "agent_p_profiler",
+        "agent-r": "agent_r_refactor",
+        "agent-o": "agent_o_devops",
         "agent_s": "agent_s_scout",
         "agent_a": "agent_a_discovery"
     }

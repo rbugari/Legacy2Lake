@@ -69,19 +69,26 @@ export default function StrategicIntelligenceHub() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [matrixData, catalogData] = await Promise.all([
-                fetchWithAuth("matrix").then(res => res.json()),
-                fetchWithAuth("catalog").then(res => res.json())
+            const [matrixData, catalogData, vaultData] = await Promise.all([
+                fetchWithAuth("system/matrix").then(res => res.json()),
+                fetchWithAuth("system/catalog").then(res => res.json()),
+                fetchWithAuth("system/vault").then(res => res.json())
             ]);
 
             const matrixList = matrixData.matrix || [];
             setMatrix(matrixList);
 
-            const mappedCatalog = (catalogData.catalog || []).map((m: any) => ({
-                id: m.model_id,
-                provider: m.provider,
-                label: m.label
-            }));
+            const activeProviders = (vaultData.credentials || [])
+                .filter((c: any) => c.is_active)
+                .map((c: any) => c.provider_name.toLowerCase());
+
+            const mappedCatalog = (catalogData.catalog || [])
+                .filter((m: any) => activeProviders.includes(m.provider.toLowerCase()))
+                .map((m: any) => ({
+                    id: m.model_id,
+                    provider: m.provider,
+                    label: m.label
+                }));
             setCatalog(mappedCatalog);
 
             // Fix empty dropdown: use newly mapped data immediately
@@ -184,7 +191,7 @@ export default function StrategicIntelligenceHub() {
         setSaving(true);
         try {
             const updates = matrix.map(entry =>
-                fetchWithAuth("matrix", {
+                fetchWithAuth("system/matrix", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(entry)
