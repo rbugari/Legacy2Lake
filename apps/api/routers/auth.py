@@ -11,7 +11,7 @@ from routers.dependencies import require_admin, get_identity
 import secrets
 import string
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(tags=["Authentication"])
 
 
 # --- Models ---
