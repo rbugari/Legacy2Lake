@@ -27,6 +27,10 @@ class StorageFactory:
             if not all([endpoint, access, secret, bucket]):
                 print("WARNING: R2 Configuration missing. Falling back to LOCAL.")
                 provider_type = "LOCAL"
+            elif "<account_id>" in endpoint:
+                print("ERROR: R2_ENDPOINT_URL still contains '<account_id>' placeholder. Please update your environment variables.")
+                print("Falling back to LOCAL to avoid crash.")
+                provider_type = "LOCAL"
             else:
                 cls._instance = R2StorageProvider(
                     endpoint_url=endpoint,
