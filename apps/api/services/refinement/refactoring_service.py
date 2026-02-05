@@ -20,7 +20,7 @@ class RefactoringService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def refactor_project(self, project_id: str, architect_output: dict, log: list = None) -> dict:
+    async def refactor_project(self, project_id: str, architect_output: dict, log: list = None, project_name: str = None) -> dict:
         """
         Applies Spark Optimizations and Security best practices to the generated Medallion code.
         """

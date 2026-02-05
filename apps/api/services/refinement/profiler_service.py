@@ -27,7 +27,7 @@ class ProfilerService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def analyze_codebase(self, project_id: str, log: List[str] = None) -> Dict[str, Any]:
+    async def analyze_codebase(self, project_id: str, log: List[str] = None, project_name: str = None) -> Dict[str, Any]:
         """
         Executes the profiling logic.
         1. Scans .py files in {project}/drafting (R2)
@@ -36,7 +36,10 @@ class ProfilerService:
         if log is None: log = []
         
         storage = PersistenceService.get_storage()
-        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        
+        # [Fix] Use project_name for R2 paths if provided
+        folder_id = project_name or project_id
+        base_path = PersistenceService.ensure_solution_dir(folder_id, tenant_id=self.tenant_id)
         self._log(log, f"Target Project Directory (R2): {base_path}")
 
         input_dir = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"

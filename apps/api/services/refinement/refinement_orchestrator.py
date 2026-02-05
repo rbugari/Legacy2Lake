@@ -49,11 +49,18 @@ class RefinementOrchestrator:
             pass
         return f"{default_name} (Heuristic Engine)"
 
-    async def start_pipeline(self, project_id: str):
+    async def run(self):
+        """Standard entry point for the refinement pipeline."""
+        # Use project_uuid for DB, but project_name for R2 Paths
+        project_uuid = self.project_uuid
+        project_name = self.project_name
+        
         from apps.api.services.persistence_service import SupabasePersistence
         persistence = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         storage = PersistenceService.get_storage()
-        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        
+        # [Fix] R2 paths must use project_name for consistency with legacy folders
+        base_path = PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
 
         # Resolve models for agents dynamically
         p_info = await self._resolve_agent_full_metadata(persistence, "agent-p", "Pattern Discovery")
@@ -63,7 +70,7 @@ class RefinementOrchestrator:
 
         # 0. Clear previous logs
         try:
-            await persistence.clear_execution_logs(project_id, phase="REFINEMENT")
+            await persistence.clear_execution_logs(project_uuid, phase="REFINEMENT")
             log_key = f"{base_path.rstrip('/')}/refinement.log"
             storage.save_file(log_key, "--- REFINEMENT PIPELINE STARTED ---\n")
         except Exception as e:
@@ -76,36 +83,13 @@ class RefinementOrchestrator:
             "OpsAuditor": o_info
         }
         
-        timestamp_start = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        async def _log(msg: str, step: str = None):
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            model_label = models.get(step, "System")
-            formatted_msg = f"[{timestamp}] [{step or 'SYSTEM'}] [{model_label}] {msg}"
-            
-            # DB Logging (Bypass if fails to allow R2-only flow)
-            try:
-                await persistence.log_execution(project_id, "REFINEMENT", msg, step=step)
-            except:
-                pass
-            
-            # R2 Logging (Append logic)
-            log_key = f"{base_path.rstrip('/')}/refinement.log"
-            existing = ""
-            try:
-                existing = storage.read_file(log_key) or ""
-            except: pass
-            storage.save_file(log_key, existing + formatted_msg + "\n")
-            
-            return formatted_msg
-        
         # Store persistence, storage, and base_path for use in run_refinement
         self.persistence = persistence
         self.storage = storage
         self.base_path = base_path
         
-        # Execute the refinement pipeline - use project_name not project_uuid for R2 paths
-        return await self.run_refinement(self.project_name, models)
+        # Execute the refinement pipeline
+        return await self.run_refinement(project_uuid, models)
         
     async def _check_cancellation(self, project_id: str):
         """Check if cancellation has been requested for this project."""
@@ -175,7 +159,7 @@ class RefinementOrchestrator:
             msg = await _log("Starting analysis...", "Profiler")
             local_log.append(msg)
             
-            profile_meta = await self.profiler.analyze_codebase(project_id, local_log)
+            profile_meta = await self.profiler.analyze_codebase(project_id, local_log, project_name=self.project_name)
             
             # Check for cancellation
             if await self._check_cancellation(project_id):
@@ -191,7 +175,7 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 2] ARCHITECT: {models['Architect']} ---")
             msg = await _log("Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)
-            architect_out = await self.architect.refine_project(project_id, profile_meta, local_log)
+            architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name)
             
             # Check for cancellation
             if await self._check_cancellation(project_id):
@@ -207,7 +191,7 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 3] REFACTORING: {models['Refactoring']} ---")
             msg = await _log("Applying Spark Optimizations and Security Controls...", "Refactoring")
             local_log.append(msg)
-            refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log)
+            refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log, project_name=self.project_name)
             
             # Check for cancellation
             if await self._check_cancellation(project_id):
@@ -223,7 +207,7 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 4] OPS AUDITOR: {models['OpsAuditor']} ---")
             msg = await _log("Validating operational readiness and generating DevOps assets...", "OpsAuditor")
             local_log.append(msg)
-            ops_out = await self.ops_auditor.audit_project(project_id, architect_out, local_log)
+            ops_out = await self.ops_auditor.audit_project(project_id, architect_out, local_log, project_name=self.project_name)
             
             msg = await _log(f"Audit result: {ops_out['status']}", "OpsAuditor")
             local_log.append(msg)
@@ -235,6 +219,7 @@ class RefinementOrchestrator:
             local_log.append("="*80)
 
             return {
+                "success": True,
                 "status": "COMPLETED",
                 "log": local_log,
                 "artifacts": architect_out,
@@ -248,6 +233,7 @@ class RefinementOrchestrator:
             print(f"ERROR in run_refinement: {error_msg}")  # Print to Railway logs
             
             return {
+                "success": False,
                 "status": "FAILED",
                 "log": local_log,
                 "error": str(e)

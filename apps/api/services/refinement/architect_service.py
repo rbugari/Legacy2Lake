@@ -25,7 +25,7 @@ class ArchitectService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None) -> dict:
+    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None) -> dict:
         """
         Segments Code into Medallion Architecture (Bronze/Silver/Gold).
         Generates config.py and utils.py.
@@ -33,7 +33,9 @@ class ArchitectService:
         if log is None: log = []
         
         storage = PersistenceService.get_storage()
-        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        # [Fix] Use project_name for R2 paths if provided
+        folder_id = project_name or project_id
+        base_path = PersistenceService.ensure_solution_dir(folder_id, tenant_id=self.tenant_id)
         input_dir = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
         output_dir = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}"
         

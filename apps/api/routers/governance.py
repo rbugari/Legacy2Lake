@@ -36,6 +36,16 @@ class DocumentRequest(BaseModel):
 
 # --- Refinement Endpoints (Phase 3) ---
 
+@router.post("/refine/start")
+async def start_refinement_legacy(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Legacy alias for starting refinement (used by RefinementView.tsx)."""
+    project_id = payload.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="Missing project_id in payload")
+    
+    # Delegate to the standard endpoint logic
+    return await start_refinement(project_id, payload, db)
+
 @router.post("/projects/{project_id}/refinement/start")
 async def start_refinement(project_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
     """Triggers the Refinement Phase (Profiler -> Architect -> Refactor -> Ops)."""

@@ -44,6 +44,91 @@ async def get_supported_technologies(db: SupabasePersistence = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/prompts")
+async def list_system_prompts(db: SupabasePersistence = Depends(get_db)):
+    """Returns all available system prompts for management, directly from utm_prompts."""
+    try:
+        # 1. Fetch all active global prompts from DB
+        res = db.client.table("utm_prompts") \
+            .select("prompt_id, content") \
+            .is_("tenant_id", "null") \
+            .eq("is_active", True) \
+            .execute()
+            
+        if not res.data:
+            logger.warning("No active global prompts found in utm_prompts")
+            return {"prompts": []}
+            
+        # 2. Map and format for frontend
+        prompts = []
+        for row in res.data:
+            p_id = row["prompt_id"]
+            content = row.get("content") or "--- EMPTY CONTENT ---"
+            
+            # Formatear nombre: agent_s_scout -> AGENT S SCOUT
+            display_name = p_id.replace("_", " ").replace("-", " ").upper()
+            
+            prompts.append({
+                "id": p_id,
+                "name": display_name,
+                "content": content
+            })
+            
+        # Sort alphabetically by name
+        prompts.sort(key=lambda x: x["name"])
+        
+        return {"prompts": prompts}
+    except Exception as e:
+        logger.error(f"Global error loading dynamic prompts from DB: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load system prompts")
+
+@router.post("/validate")
+async def validate_prompt(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Runs a quick validation test for a prompt."""
+    agent_id = payload.get("agent_id")
+    user_input = payload.get("user_input")
+    prompt_content = payload.get("prompt_content") # Optional override from editor
+    
+    if not agent_id or not user_input:
+        raise HTTPException(status_code=400, detail="agent_id and user_input required")
+        
+    from services.agent_a_service import AgentAService
+    agent = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
+    llm = await agent._get_llm()
+    
+    current_prompt = prompt_content
+    if not current_prompt:
+        current_prompt = await agent._load_prompt()
+        
+    from langchain_core.messages import SystemMessage, HumanMessage
+    messages = [
+        SystemMessage(content=current_prompt),
+        HumanMessage(content=user_input)
+    ]
+    
+    response = await llm.ainvoke(messages)
+    return {"success": True, "response": response.content}
+
+@router.post("/scout/assess")
+async def run_scout_assessment(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Runs a forensic assessment of project files using Agent S."""
+    project_id = payload.get("project_id")
+    file_list = payload.get("file_list")
+    
+    if not project_id or not file_list:
+        raise HTTPException(status_code=400, detail="project_id and file_list required")
+        
+    from services.agent_s_service import AgentSService
+    scout = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
+    
+    try:
+        # Agent S returns the assessment JSON
+        report = await scout.assess_repository(file_list)
+        return report
+    except Exception as e:
+        logger.error(f"Agent S assessment failed for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- Model Catalog ---
 
 @router.get("/catalog")
@@ -134,7 +219,7 @@ async def update_vault(request: Request, payload: dict, db: SupabasePersistence 
         raise HTTPException(status_code=400, detail="Provider and API Key required")
         
     data = {"api_key": payload.get("api_key"), "base_url": payload.get("base_url")}
-    existing = db.client.table("utm_provider_vault").select("id").eq("tenant_id", tenant_id).eq("provider_name", provider).execute()
+    existing = db.client.table("utm_provider_vault").select("id").eq("tenant_id", tenant_id).ilike("provider_name", provider).execute()
     
     if existing.data:
         db.client.table("utm_provider_vault").update(data).eq("id", existing.data[0]["id"]).execute()
@@ -150,10 +235,82 @@ async def update_vault(request: Request, payload: dict, db: SupabasePersistence 
 async def list_cartridges(db: SupabasePersistence = Depends(get_db)):
     """Returns available cartridges and their status."""
     res = db.client.table("utm_system_catalog").select("*").execute()
-    return {"cartridges": res.data}
+    # Map for frontend compatibility (enabled vs is_active)
+    cartridges = []
+    for item in res.data:
+        cartridges.append({
+            "id": item.get("tech_id") or str(item.get("id")),
+            "tech_id": item.get("tech_id"),
+            "name": item.get("name"),
+            "type": item.get("type"),
+            "enabled": item.get("is_active", True),
+            "config": item.get("config", {})
+        })
+    return {"cartridges": cartridges}
 
-@router.post("/cartridges/update")
-async def update_cartridge_status(payload: CartridgeUpdate, db: SupabasePersistence = Depends(get_db)):
-    """Updates the enabled status of a cartridge."""
-    db.client.table("utm_system_catalog").update({"is_active": payload.enabled}).eq("tech_id", payload.id).execute()
+@router.post("/cartridges")
+async def add_cartridge(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Add a new cartridge to the catalog."""
+    data = {
+        "tech_id": payload.get("tech_id") or payload.get("name").lower().replace(" ", "_"),
+        "name": payload.get("name"),
+        "type": payload.get("type", "origin"),
+        "description": payload.get("description"),
+        "config": payload.get("config", {}),
+        "is_active": True
+    }
+    db.client.table("utm_system_catalog").insert(data).execute()
     return {"success": True}
+
+@router.post("/cartridges/{cartridge_id}/toggle")
+async def toggle_cartridge(cartridge_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Toggle cartridge status (active/disabled)."""
+    status = payload.get("status") # 'active' or 'disabled'
+    is_active = (status == "active")
+    db.client.table("utm_system_catalog").update({"is_active": is_active}).eq("tech_id", cartridge_id).execute()
+    return {"success": True}
+
+@router.post("/cartridges/{cartridge_id}/config")
+async def update_cartridge_config(cartridge_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Update cartridge configuration JSON."""
+    config = payload.get("config")
+    db.client.table("utm_system_catalog").update({"config": config}).eq("tech_id", cartridge_id).execute()
+    return {"success": True}
+
+@router.delete("/cartridges/{cartridge_id}")
+async def delete_cartridge(cartridge_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Remove a cartridge from the catalog."""
+    db.client.table("utm_system_catalog").delete().eq("tech_id", cartridge_id).execute()
+    return {"success": True}
+
+@router.get("/origins")
+async def list_origins(db: SupabasePersistence = Depends(get_db)):
+    """Backward compatibility for origins."""
+    res = db.client.table("utm_system_catalog").select("*").eq("type", "origin").eq("is_active", True).execute()
+    # Map for frontend compatibility
+    origins = []
+    for item in res.data:
+        origins.append({
+            "id": str(item.get("id") or item.get("tech_id")),
+            "name": item.get("name") or item.get("label"),
+            "desc": item.get("description"),
+            "icon": item.get("logo_url"),
+            "enabled": True
+        })
+    return {"origins": origins}
+
+@router.get("/destinations")
+async def list_destinations(db: SupabasePersistence = Depends(get_db)):
+    """Backward compatibility for destinations."""
+    res = db.client.table("utm_system_catalog").select("*").eq("type", "destination").eq("is_active", True).execute()
+    # Map for frontend compatibility
+    destinations = []
+    for item in res.data:
+        destinations.append({
+            "id": str(item.get("id") or item.get("tech_id")),
+            "name": item.get("name") or item.get("label"),
+            "desc": item.get("description"),
+            "icon": item.get("logo_url"),
+            "enabled": True
+        })
+    return {"destinations": destinations}

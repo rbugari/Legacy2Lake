@@ -154,8 +154,7 @@ async def list_project_files(project_id: str, db: SupabasePersistence = Depends(
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
-        if n: 
-            project_name = n
+        if n: project_name = n
 
     # Use direct FS scanning for real-time updates
     # Pass Tenant ID for isolation
@@ -256,13 +255,20 @@ async def approve_triage(project_id: str, db: SupabasePersistence = Depends(get_
 async def unlock_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Unlocks the project scope and transitions back to TRIAGE state."""
     project_uuid = project_id
-    if "-" not in project_id:
-        u = await db.get_project_id_by_name(project_id)
-        if u: 
-            project_uuid = u
-
     success = await db.update_project_status(project_uuid, "TRIAGE")
     return {"success": success, "status": "TRIAGE"}
+
+
+@router.post("/{project_id}/cancel")
+async def cancel_project_operation(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Request cancellation for any long-running agentic process on this project."""
+    project_uuid = project_id
+    if "-" not in project_id:
+        u = await db.get_project_id_by_name(project_id)
+        if u: project_uuid = u
+        
+    await db.update_project_metadata(project_uuid, {"cancellation_requested": True})
+    return {"success": True}
 
 
 # --- Logs ---

@@ -22,7 +22,7 @@ class OpsAuditorService:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def audit_project(self, project_id: str, architect_output: dict, log: list = None) -> dict:
+    async def audit_project(self, project_id: str, architect_output: dict, log: list = None, project_name: str = None) -> dict:
         """
         Validates the refined project and generates operational artifacts via R2.
         """
@@ -31,7 +31,10 @@ class OpsAuditorService:
 
         storage = PersistenceService.get_storage()
         refined_files = architect_output.get("refined_files", {})
-        base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=self.tenant_id)
+        
+        # [Fix] Use project_name for R2 paths if provided
+        folder_id = project_name or project_id
+        base_path = PersistenceService.ensure_solution_dir(folder_id, tenant_id=self.tenant_id)
         refined_prefix = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}"
 
         # 1. Validation Engine

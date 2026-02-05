@@ -96,7 +96,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- ROUTER INCLUSIONS ---
 
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/auth")
 app.include_router(projects_router)
 app.include_router(triage_router)
 app.include_router(transpile_router)
@@ -105,7 +105,14 @@ app.include_router(agents_router)
 app.include_router(lab_router)
 app.include_router(reports_router)
 app.include_router(config.router)
-app.include_router(system.router)
+app.include_router(system.router, prefix="/system")
+
+# --- LEGACY LOGIN SUPPORT ---
+# Maintain /login at root for older frontend components
+@app.post("/login")
+async def root_login(request: Request):
+    from apps.api.routers import auth
+    return await auth.login(request)
 
 # --- CORE ENDPOINTS ---
 
