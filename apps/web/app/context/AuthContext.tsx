@@ -49,10 +49,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (loading) return;
 
     // 2. Protect Routes
-    const publicRoutes = ["/login"];
+    const publicRoutes = ["/login", "/", "/help"];
+    const isPublicPath = publicRoutes.includes(pathname) || pathname.startsWith("/help");
     const isAdminRoute = pathname.startsWith("/admin");
 
-    if (!user && !publicRoutes.includes(pathname)) {
+    if (!user && !isPublicPath) {
       router.push("/login");
     } else if (user && isAdminRoute && user.role !== "ADMIN") {
       router.push("/dashboard"); // Unauthorized: Back to safety

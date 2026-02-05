@@ -22,13 +22,13 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
 
     const news = [
         {
-            sprint: "Sprint 3",
-            title: "Command Palette & IA Context",
-            description: "Interactúa con la plataforma mediante el teclado y obtén ayuda técnica instantánea.",
+            sprint: "v3.7 Release",
+            title: "Executive Reports & Parity",
+            description: "Major updates to governance, reporting, and environmental stability.",
             features: [
-                "Command Palette (Ctrl+K) para navegación ultrarrápida.",
-                "Tooltips técnicos en cada etapa (Agentes S, F, R).",
-                "Progressive Disclosure: Interfaz más limpia por defecto."
+                "New PDF Reports: Export blueprints and conversion manifests.",
+                "Verified 1:1 Parity Matrix: Total infra synchronization.",
+                "Agent G Governance: Advanced policy compliance engine."
             ],
             icon: <Zap className="text-yellow-400" />,
             color: "from-yellow-500/10 to-transparent"
