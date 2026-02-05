@@ -18,7 +18,7 @@ export default function SystemPage() {
     const { user } = useAuth();
     const isAdmin = user?.role === "ADMIN";
 
-    const [activeTab, setActiveTab] = useState<"prompts" | "origins" | "destinations" | "identity">("prompts");
+    const [activeTab, setActiveTab] = useState<"prompts" | "origins" | "destinations" | "identity">("identity");
 
     // Data State
     const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -318,16 +318,16 @@ export default function SystemPage() {
                 {/* Top Tabs */}
                 <div className="flex bg-[var(--background)] p-1 rounded-lg border border-[var(--border)] text-[10px] uppercase font-black tracking-widest">
                     <button
-                        onClick={() => setActiveTab("prompts")}
-                        className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "prompts" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
-                    >
-                        <span className="flex items-center gap-2"><Brain size={14} /> Agent Brains</span>
-                    </button>
-                    <button
                         onClick={() => setActiveTab("identity")}
                         className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "identity" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
                     >
                         <span className="flex items-center gap-2"><Users size={14} /> Identity</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("prompts")}
+                        className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "prompts" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
+                    >
+                        <span className="flex items-center gap-2"><Brain size={14} /> Agent Brains</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("origins")}
