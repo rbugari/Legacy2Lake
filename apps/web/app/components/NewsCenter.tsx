@@ -28,7 +28,9 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
             features: [
                 "New PDF Reports: Export blueprints and conversion manifests.",
                 "Verified 1:1 Parity Matrix: Total infra synchronization.",
-                "Agent G Governance: Advanced policy compliance engine."
+                "Agent G Governance: Advanced policy compliance engine.",
+                "Multi-Target Transpilation: Convert to Snowflake and Fabric simultaneously.",
+                "Delta Lineage Visualization: Real-time tracking of data flow."
             ],
             icon: <Zap className="text-yellow-400" />,
             color: "from-yellow-500/10 to-transparent"
