@@ -4,7 +4,7 @@ Centralizes authentication, database access, and common utilities.
 """
 from fastapi import Header, Depends, HTTPException, Request
 from typing import Optional
-from services.persistence_service import SupabasePersistence
+from apps.api.services.persistence_service import SupabasePersistence
 from supabase import create_client, Client
 import os
 
@@ -18,7 +18,7 @@ def get_supabase_client() -> Client:
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         if not url or not key:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+            raise ValueError(f"CRITICAL: SUPABASE_URL ('{url}') or SUPABASE_SERVICE_ROLE_KEY missing in environment.")
         _supabase_client = create_client(url, key)
     return _supabase_client
 

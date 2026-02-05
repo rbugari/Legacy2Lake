@@ -15,19 +15,19 @@ if sys.platform == 'win32':
 # Environment & Logging
 load_dotenv()
 from apps.api.utils.logger import logger
-from services.persistence_service import SupabasePersistence
+from apps.api.services.persistence_service import SupabasePersistence
 
 # Import Routers
-from routers import config, system
-from routers.auth import router as auth_router
-from routers.agents import router as agents_router
-from routers.projects import router as projects_router
-from routers.triage import router as triage_router
-from routers.transpile import router as transpile_router
-from routers.governance import router as governance_router
-from routers.lab import router as lab_router
-from routers.reports import router as reports_router
-from routers.dependencies import get_db
+from apps.api.routers import system, config # Standardize path
+from apps.api.routers.auth import router as auth_router
+from apps.api.routers.agents import router as agents_router
+from apps.api.routers.projects import router as projects_router
+from apps.api.routers.triage import router as triage_router
+from apps.api.routers.transpile import router as transpile_router
+from apps.api.routers.governance import router as governance_router
+from apps.api.routers.lab import router as lab_router
+from apps.api.routers.reports import router as reports_router
+from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
     title="Legacy2Lake API", 
@@ -114,11 +114,15 @@ async def ping():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 @app.get("/health", tags=["System"])
-async def health_check(db: SupabasePersistence = Depends(get_db)):
-    """Health check with DB connectivity verification."""
-    db_status = "connected"
+async def health_check():
+    """Health check (Liveness). Connectivity check moved inside."""
+    db_status = "unknown"
     try:
-        await db.client.table("utm_projects").select("count", count="exact").limit(1).execute()
+        from apps.api.routers.dependencies import get_supabase_client
+        client = get_supabase_client()
+        # Ping Supabase projects table as a connectivity check
+        res = client.table("utm_projects").select("count", count="exact").limit(1).execute()
+        db_status = "connected"
     except Exception as e:
         db_status = f"disconnected ({str(e)})"
         
