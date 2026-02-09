@@ -23,7 +23,6 @@ import StageHeader from '../StageHeader';
 
 import { fetchWithAuth } from '../../lib/auth-client';
 import { API_BASE_URL } from '../../lib/config';
-import DownloadReportButton from '../DownloadReportButton';
 
 interface Variable {
     key: string;
@@ -153,14 +152,6 @@ export default function HandoverView({
                     >
                         <Eye size={14} /> {showRunbook ? "Edit Variables" : "View Runbook"}
                     </button>
-                    <DownloadReportButton
-                        projectId={projectId}
-                        reportType="final"
-                        variant="secondary"
-                        className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
-                        icon={<FileText size={14} className="text-cyan-400" />}
-                        label="PDF Report"
-                    />
                     <button
                         onClick={() => handleExport('delivery')}
                         disabled={isExporting}

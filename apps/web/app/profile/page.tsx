@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from "../context/AuthContext";
-import Navbar from "../components/Navbar";
 import { User, Shield, Briefcase, Clock, ShieldCheck, Tag, Key, Save, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { fetchWithAuth } from "../lib/auth-client";
@@ -61,8 +60,6 @@ export default function ProfilePage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)]">
-            <Navbar />
-
             <main className="max-w-4xl mx-auto px-6 py-12">
                 <header className="mb-12">
                     <h1 className="text-3xl font-black uppercase tracking-tight mb-2">User Profile</h1>

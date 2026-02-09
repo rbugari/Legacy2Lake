@@ -109,11 +109,38 @@ def _get_generated_outputs(project_id: str, tenant_id: str) -> list:
     try:
         from services.persistence_service import PersistenceService
         files = PersistenceService.get_project_files(project_id, tenant_id)
+        
+        if not files:
+            logger.warning(f"No files found for project {project_id}")
+            return []
+        
         outputs = []
-        def collect(nodes, path=""):
-            for n in nodes:
-                if n.get("type") == "folder": collect(n.get("children", []), f"{path}/{n['name']}")
-                else: outputs.append({"name": n["name"], "path": f"{path}/{n['name']}", "type": "ARTIFACT"})
-        collect(files)
+        
+        # Files from R2 are already flat list with full paths
+        for file in files:
+            if isinstance(file, dict):
+                # R2 storage returns dicts with 'name', 'path', 'type', etc.
+                name = file.get('name', '')
+                path = file.get('path', '')
+                file_type = file.get('type', 'file')
+                
+                # Only include actual files, not folders
+                if file_type != 'folder' and name:
+                    outputs.append({
+                        "name": name,
+                        "path": path or name,
+                        "type": "ARTIFACT"
+                    })
+            elif isinstance(file, str):
+                # If it's just a string path
+                outputs.append({
+                    "name": file.split('/')[-1],
+                    "path": file,
+                    "type": "ARTIFACT"
+                })
+        
+        logger.info(f"Found {len(outputs)} artifacts for project {project_id}")
         return outputs
-    except: return []
+    except Exception as e:
+        logger.error(f"Error collecting outputs: {e}", exc_info=True)
+        return []

@@ -1,10 +1,10 @@
-# Legacy2Lake Documentation Index (v3.6)
+# Legacy2Lake Documentation Index (v3.8)
 
 Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures using advanced AI synthesis.
 
 ## 🚀 Getting Started
 - **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
-- **[Release Notes](docs/RELEASE_NOTES.md)**: Latest v3.6 featuring **Process Cancellation**, **Intelligence Hub (Vision Mode)**, and compliance refinements.
+- **[Release Notes](docs/RELEASE_NOTES.md)**: Latest v3.8 featuring **Governance Rules**, **Ownership Model**, and **Cost Control Framework**.
 - **[Introduction to Legacy2Lake](docs/INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
 
 ## 🔄 Project Lifecycle (The 6 Stages)
@@ -30,12 +30,17 @@ Legacy2Lake utilizes a 6-stage "Compiler Flow" to ensure logic is extracted corr
 - **[System Prompts & Agents](docs/technical/system_prompts_and_agents.md)**: Agent roles and core prompts.
 - **[Knowledge Injection Guide](knowledge_injection_guide.md)**: How agents are enriched with platform best practices.
 - **[Cartridge Manual](docs/technical/cartridge_manual.md)**: Rules for the 15+ supported technology cartridges.
+- **[Governance Rules](docs/technical/GOVERNANCE_RULES.md)**: 🆕 Ownership model, permission boundaries, and cost control framework.
 
-## 📊 Cloud-Native Advantage (v3.6)
+## 📊 Cloud-Native Advantage (v3.8)
 - **Zero-Trust Multi-Tenancy**: Asset isolation via Supabase RLS (Tenant Headers enforced).
-- **Process Robustness**: Standardized persistence for reliable cancellation across all orchestrators.
-- **Prompt Laboratory**: Dynamic knowledge enrichment (MERGE, Delta patterns, SCD Type 2).
+- **Formalized Governance Model**: Clear ownership boundaries between Admin, Tenant, and User responsibilities.
+- **3-Layer Prompt Architecture**: System prompts (Admin) + Cartridge prompts (Admin) + Custom modifiers (User).
+- **Cost Control Framework**: Tenant-level model assignment with cost optimization recommendations.
+- **Refactored API Architecture**: Modular System Router (`/system/*`) for centralized configuration management.
+- **Dynamic Agent Management**: Agent catalog and prompts loaded from database, eliminating hardcoded logic.
+- **Enhanced Provider Vault**: Strict filtering to display only active, configured providers per tenant.
 - **Hyperscale Storage**: All artifacts stored in high-availability Cloudflare R2.
 
 ---
-*Legacy2Lake Documentation Framework v3.6 - Multi-Tenant Enterprise Edition*
+*Legacy2Lake Documentation Framework v3.8 - Multi-Tenant Enterprise Edition*

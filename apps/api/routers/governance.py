@@ -3,7 +3,7 @@ Refinement & Governance Router
 Handles Phase 3 (Refinement) and Phase 4 (Governance) operations.
 Migrated from main.py for better modularity.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -11,12 +11,14 @@ import json
 import io
 import os
 import zipfile
+import uuid
 
-from routers.dependencies import get_db
+from routers.dependencies import get_db, get_identity
 from services.persistence_service import SupabasePersistence, PersistenceService
 from services.agent_g_service import AgentGService
 from services.refinement.governance_service import GovernanceService
 from services.refinement.refinement_orchestrator import RefinementOrchestrator
+from services.lock_service import LockService, ProcessLockError
 
 router = APIRouter(tags=["Refinement & Governance"])
 
@@ -37,45 +39,123 @@ class DocumentRequest(BaseModel):
 # --- Refinement Endpoints (Phase 3) ---
 
 @router.post("/refine/start")
-async def start_refinement_legacy(payload: dict, db: SupabasePersistence = Depends(get_db)):
+async def start_refinement_legacy(
+    payload: dict, 
+    request: Request,
+    identity: dict = Depends(get_identity),
+    db: SupabasePersistence = Depends(get_db)
+):
     """Legacy alias for starting refinement (used by RefinementView.tsx)."""
     project_id = payload.get("project_id")
     if not project_id:
         raise HTTPException(status_code=400, detail="Missing project_id in payload")
     
     # Delegate to the standard endpoint logic
-    return await start_refinement(project_id, payload, db)
+    return await start_refinement(project_id, payload, request, identity, db)
 
 @router.post("/projects/{project_id}/refinement/start")
-async def start_refinement(project_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+async def start_refinement(
+    project_id: str, 
+    payload: dict, 
+    request: Request,
+    identity: dict = Depends(get_identity),
+    db: SupabasePersistence = Depends(get_db)
+):
     """Triggers the Refinement Phase (Profiler -> Architect -> Refactor -> Ops)."""
-    project_name = project_id
-    if "-" in project_id:
-        n = await db.get_project_name_by_id(project_id)
-        if n: 
-            project_name = n
-
+    
+    # === PROCESS LOCKING ===
+    lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
+    
+    # Get username for lock
+    tenant_id = identity.get("tenant_id")
+    username = identity.get("username", "Unknown User")
+    if not username or username == "Unknown User":
+        try:
+            tenant = await db.get_tenant_by_id(tenant_id)
+            username = tenant.get("username", "Unknown User") if tenant else "Unknown User"
+        except:
+            username = "Unknown User"
+    
+    # Generate or get session ID
+    session_id = request.headers.get("X-Session-ID")
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
+    # Try to acquire lock
+    lock_id = None
     try:
-        # Update stage to REFINEMENT (Stage 3)
-        await db.update_project_stage(project_id, "3")
-        
-        orchestrator = RefinementOrchestrator(
-            project_name,
-            project_uuid=project_id,
-            tenant_id=db.tenant_id,
-            client_id=db.client_id
+        lock = await lock_service.acquire_lock(
+            project_id=project_id,
+            process_type="refinement",
+            user_id=tenant_id,
+            username=username,
+            session_id=session_id,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.headers.get("x-forwarded-for") or "unknown"
         )
+        lock_id = lock['lock_id']
         
-        result = await orchestrator.run()
-        
-        # Update stage to GOVERNANCE (Stage 4) if successful
-        if result.get("success"):
-            await db.update_project_stage(project_id, "4")
+    except ProcessLockError as e:
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "error": "Process already running",
+                "message": e.message,
+                "locked_by": e.locked_by
+            }
+        )
+    
+    # === MAIN REFINEMENT LOGIC ===
+    try:
+        project_name = project_id
+        if "-" in project_id:
+            n = await db.get_project_name_by_id(project_id)
+            if n: 
+                project_name = n
+
+        try:
+            # Update stage to REFINEMENT (Stage 3)
+            await db.update_project_stage(project_id, "3")
             
-        return result
-        
+            orchestrator = RefinementOrchestrator(
+                project_name,
+                project_uuid=project_id,
+                tenant_id=db.tenant_id,
+                client_id=db.client_id
+            )
+            
+            result = await orchestrator.run()
+            
+            # Update stage to GOVERNANCE (Stage 4) if successful
+            if result.get("success"):
+                await db.update_project_stage(project_id, "4")
+                
+            # === SUCCESS: Release lock ===
+            if lock_id:
+                try:
+                    await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                except Exception as e:
+                    print(f"WARNING: Failed to release lock {lock_id}: {e}")
+            
+            return result
+            
+        except Exception as e:
+            # === ERROR: Release lock ===
+            if lock_id:
+                try:
+                    await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                except:
+                    pass
+            return {"success": False, "error": str(e)}
+            
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        # === OUTER ERROR: Release lock ===
+        if lock_id:
+            try:
+                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            except:
+                pass
+        raise e
 
 
 @router.get("/projects/{project_id}/refinement/state")

@@ -198,6 +198,7 @@ export default function PromptsExplorer({ className, projectId, stage = 'all', o
                     <div
                         key={agent.id}
                         onClick={() => handleAgentSelect(agent.id)}
+                        title={`${getAgentDisplayName(agent.id)}: ${getAgentDescription(agent.id)}`}
                         className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedAgent === agent.id
                             ? "bg-[var(--accent)]/10 border-[var(--accent)] shadow-lg shadow-[var(--accent)]/5 scale-[1.02]"
                             : "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--accent)]/30 hover:bg-[var(--surface-elevated)]"

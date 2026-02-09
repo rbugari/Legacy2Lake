@@ -16,7 +16,9 @@ import {
     ChevronRight,
     Search,
     Maximize2,
-    Minimize2
+    Minimize2,
+    Code2,
+    Eye
 } from "lucide-react";
 import { getAgentDisplayName, AGENT_METADATA } from "../../lib/constants";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -64,7 +66,7 @@ export default function StrategicIntelligenceHub() {
     const [globalProvider, setGlobalProvider] = useState("");
     const [globalModel, setGlobalModel] = useState("");
     const [isMaximized, setIsMaximized] = useState(false);
-    const [renderMode, setRenderMode] = useState<'source' | 'vision'>('vision');
+    const [renderMode, setRenderMode] = useState<'source' | 'view'>('source');
 
     const fetchData = async () => {
         setLoading(true);
@@ -91,9 +93,33 @@ export default function StrategicIntelligenceHub() {
                 }));
             setCatalog(mappedCatalog);
 
-            // Fix empty dropdown: use newly mapped data immediately
+            // Use configured model from first agent in matrix as default
             const providers = Array.from(new Set(mappedCatalog.map((m: any) => m.provider))) as string[];
-            if (providers.length > 0) {
+            if (matrixList.length > 0 && providers.length > 0) {
+                const firstAgent = matrixList[0];
+                const configuredProvider = firstAgent.provider;
+                const configuredModel = firstAgent.model;
+                
+                // Check if configured values exist in catalog
+                if (providers.includes(configuredProvider)) {
+                    setGlobalProvider(configuredProvider);
+                    const modelExists = mappedCatalog.find((m: any) => m.id === configuredModel);
+                    if (modelExists) {
+                        setGlobalModel(configuredModel);
+                    } else {
+                        // Fallback to first model of provider
+                        const firstM = mappedCatalog.find((m: any) => m.provider === configuredProvider);
+                        if (firstM) setGlobalModel(firstM.id);
+                    }
+                } else {
+                    // Fallback to first available provider
+                    const firstP = providers[0];
+                    setGlobalProvider(firstP);
+                    const firstM = mappedCatalog.find((m: any) => m.provider === firstP);
+                    if (firstM) setGlobalModel(firstM.id);
+                }
+            } else if (providers.length > 0) {
+                // No matrix entries, use first provider
                 const firstP = providers[0];
                 setGlobalProvider(firstP);
                 const firstM = mappedCatalog.find((m: any) => m.provider === firstP);
@@ -221,7 +247,8 @@ export default function StrategicIntelligenceHub() {
     );
 
     return (
-        <div className={`space-y-6 transition-all duration-300 ${isMaximized ? "fixed inset-0 z-[100] bg-[#0B0F19] p-6 overflow-y-auto" : ""}`}>
+        <div className={`space-y-6 transition-all duration-300 ${isMaximized ? "fixed inset-0 z-[100] bg-[#0B0F19] flex items-center justify-center" : ""}`}>
+            <div className={isMaximized ? "w-[90%] h-[90%] overflow-y-auto p-6" : "w-full"}>
             {/* Top Toolbar: Global Preview Params */}
             <div className="bg-slate-900/50 border border-white/5 p-6 rounded-2xl flex flex-wrap items-center justify-between gap-6 shadow-xl">
                 <div className="flex items-center gap-4">
@@ -470,22 +497,26 @@ export default function StrategicIntelligenceHub() {
 
                                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-1">
                                     {/* Render Mode Toggle */}
-                                    {[
-                                        { id: 'source', label: 'Source', icon: <Lock size={10} /> },
-                                        { id: 'vision', label: 'Vision', icon: <Sparkles size={10} /> },
-                                    ].map(m => (
-                                        <button
-                                            key={m.id}
-                                            onClick={() => setRenderMode(m.id as any)}
-                                            className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${renderMode === m.id
-                                                ? "bg-emerald-600 text-white shadow-lg"
-                                                : "text-gray-500 hover:text-white"
-                                                }`}
-                                        >
-                                            {m.icon}
-                                            {m.label}
-                                        </button>
-                                    ))}
+                                    <button
+                                        onClick={() => setRenderMode('source')}
+                                        className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${renderMode === 'source'
+                                            ? "bg-cyan-600 text-white shadow-lg"
+                                            : "text-gray-500 hover:text-cyan-400"
+                                        }`}
+                                    >
+                                        <Code2 size={10} />
+                                        Source
+                                    </button>
+                                    <button
+                                        onClick={() => setRenderMode('view')}
+                                        className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${renderMode === 'view'
+                                            ? "bg-emerald-600 text-white shadow-lg"
+                                            : "text-gray-500 hover:text-emerald-400"
+                                        }`}
+                                    >
+                                        <Eye size={10} />
+                                        View
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -597,6 +628,7 @@ export default function StrategicIntelligenceHub() {
                         </div>
                     </div>
                 </div>
+            </div>
             </div>
 
             <style jsx>{`

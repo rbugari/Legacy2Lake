@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckCircle, XCircle, Database, Server, Settings, Trash2, Edit2, Save, X } from "lucide-react";
+import { CheckCircle, XCircle, Database, Server, Settings, Trash2, Edit2, Save, X, BookOpen } from "lucide-react";
 import { useState } from "react";
+import CartridgeKnowledgeModal from "./CartridgeKnowledgeModal";
 
 interface Cartridge {
     id: string;
@@ -25,6 +26,7 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editConfig, setEditConfig] = useState("");
     const [jsonError, setJsonError] = useState<string | null>(null);
+    const [knowledgeModalCart, setKnowledgeModalCart] = useState<any>(null);
 
     const startEditing = (cart: Cartridge) => {
         setEditingId(cart.id);
@@ -45,6 +47,13 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
     };
 
     return (
+        <>
+            {knowledgeModalCart && (
+                <CartridgeKnowledgeModal
+                    cartridge={knowledgeModalCart}
+                    onClose={() => setKnowledgeModalCart(null)}
+                />
+            )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {items.map(cart => {
                 const isActive = cart.enabled;
@@ -90,9 +99,10 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                             </div>
                         </div>
 
+                        {/* Runtime Engine Configuration */}
                         <div className="bg-[var(--background-secondary)] rounded-2xl p-5 text-xs font-mono text-[var(--text-tertiary)] border border-[var(--border)] relative group/code overflow-hidden">
                             <div className="flex justify-between items-center mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-2"><Settings size={12} className="text-cyan-500" /> Runtime Engine</span>
+                                <span className="flex items-center gap-2"><Settings size={12} className="text-cyan-500" /> Runtime Configuration</span>
                                 {!isEditing && (
                                     <button
                                         onClick={() => startEditing(cart)}
@@ -133,9 +143,19 @@ export default function CartridgeList({ items, type, onToggle, onUpdateConfig, o
                                 </pre>
                             )}
                         </div>
+
+                        {/* Expert Knowledge Button */}
+                        <button
+                            onClick={() => setKnowledgeModalCart(cart)}
+                            className="mt-4 w-full px-4 py-3 rounded-xl bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 transition-all flex items-center justify-center gap-2 text-purple-600 dark:text-purple-400 text-[10px] font-black uppercase tracking-widest group"
+                        >
+                            <BookOpen size={14} className="group-hover:scale-110 transition-transform" />
+                            View Expert Knowledge
+                        </button>
                     </div>
                 );
             })}
         </div>
+        </>
     );
 }

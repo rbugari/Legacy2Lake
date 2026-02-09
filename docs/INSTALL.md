@@ -1,4 +1,4 @@
-# Legacy2Lake Installation Guide 🛠️
+# Legacy2Lake Installation Guide 🛠️ (v3.7)
 
 This guide covers the setup process for the Legacy2Lake platform (Backend API + Frontend Console).
 
@@ -114,7 +114,7 @@ After installation, configure LLM providers in the Admin Panel (`/admin`):
 
 1. **Add API Keys**: Navigate to **Provider Vault** and add keys for OpenAI, Groq, or other providers
 2. **Create Models**: In **Model Catalog**, register available models (e.g., `gpt-4o`, `llama-3.1-70b`)
-3. **Agent Assignments**: In **Agent Matrix**, assign specific models to each agent (A, B, C, F, G, S)
+3. **Agent Assignments**: In **Agent Matrix**, assign specific models to each agent (Discovery, Context Builder, Code Generator, Compliance Auditor, Governance, Technology Scout)
 
 ### B. Technology Configuration
 

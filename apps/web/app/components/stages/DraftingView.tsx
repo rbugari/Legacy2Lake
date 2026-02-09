@@ -7,6 +7,7 @@ import PromptsExplorer from "../PromptsExplorer";
 import DesignRegistryPanel from "./DesignRegistryPanel";
 import TechnologyMixer from "./TechnologyMixer";
 import ProjectSettingsPanel from "./ProjectSettingsPanel";
+import ProcessLockModal from "../ProcessLockModal";
 
 // --- Types ---
 interface FileNode {
@@ -48,6 +49,12 @@ export default function DraftingView({
     const [progress, setProgress] = useState(0);
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
     const [isApproving, setIsApproving] = useState(false);
+    
+    // Process Lock Modal state
+    const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+    const [lockDetails, setLockDetails] = useState<{ processType: string; lockedBy: string; message: string }>(
+        { processType: '', lockedBy: '', message: '' }
+    );
 
     // Helper: Fetch Logs
     const fetchLogs = async () => {
@@ -117,10 +124,25 @@ export default function DraftingView({
                 },
                 body: JSON.stringify({ project_id: projectId, limit: migrationLimit }) // Dynamic limit from state
             });
+            
+            // Check for lock error (423)
+            if (res.status === 423) {
+                const data = await res.json();
+                setLockDetails({
+                    processType: 'drafting',
+                    lockedBy: data.detail?.locked_by || data.locked_by || 'Unknown User',
+                    message: data.detail?.message || data.message || 'Process is already running on this project'
+                });
+                setIsLockModalOpen(true);
+                setIsRunning(false);
+                return;
+            }
+            
             const data = await res.json();
 
             if (data.error) {
-                setLogs(prev => [...prev, `[ERROR] ${data.error}`]);
+                const errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error, null, 2);
+                setLogs(prev => [...prev, `[ERROR] ${errorMsg}`]);
             } else {
                 // Success: Do one final log fetch to ensure we have the latest
                 await fetchLogs();
@@ -128,7 +150,8 @@ export default function DraftingView({
                 if (onCompletion) onCompletion(true);
             }
         } catch (e) {
-            setLogs(prev => [...prev, `[Network Error] ${e}`]);
+            const errorMsg = e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e);
+            setLogs(prev => [...prev, `[Network Error] ${errorMsg}`]);
         } finally {
             setIsRunning(false);
         }
@@ -172,11 +195,13 @@ export default function DraftingView({
                 setIsRunning(false);
                 setLogs(prev => [...prev, "[SYSTEM] Process cancelled by user."]);
             } else {
-                setLogs(prev => [...prev, `[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`]);
+                const errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error || 'Unknown error');
+                setLogs(prev => [...prev, `[ERROR] Failed to cancel: ${errorMsg}`]);
             }
         } catch (e) {
             console.error("Failed to cancel process", e);
-            setLogs(prev => [...prev, `[ERROR] Network error during cancellation: ${e}`]);
+            const errorMsg = e instanceof Error ? e.message : (typeof e === 'string' ? e : JSON.stringify(e));
+            setLogs(prev => [...prev, `[ERROR] Network error during cancellation: ${errorMsg}`]);
         }
     };
 
@@ -185,7 +210,7 @@ export default function DraftingView({
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
                 title="Stage 3: Cloud Drafting"
-                subtitle="Agent C: Cloud-native Medallion code generator"
+                subtitle="Code Generator: Cloud-native Medallion code generator"
                 icon={<Code className="text-emerald-500" />}
                 helpText="Generation of optimized PySpark, dbt or Snowflake code based on the approved design."
                 onApprove={handleApprove}
@@ -252,6 +277,15 @@ export default function DraftingView({
                 )}
                 {activeTab === "files" && <FileManagerTab projectId={projectId} activeTenantId={activeTenantId} />}
             </div>
+
+            {/* Process Lock Modal */}
+            <ProcessLockModal
+                isOpen={isLockModalOpen}
+                onClose={() => setIsLockModalOpen(false)}
+                processType={lockDetails.processType}
+                lockedBy={lockDetails.lockedBy}
+                message={lockDetails.message}
+            />
         </div >
     );
 }
@@ -411,7 +445,7 @@ function FileManagerTab({ projectId, activeTenantId }: { projectId: string; acti
     }, [projectId]);
 
     return (
-        <div id="file-explorer-container" className="h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div id="file-explorer-container" className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {/* Toolbar */}
             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900 shrink-0">
                 <div className="flex items-center gap-3">
@@ -471,30 +505,32 @@ function FileManagerTab({ projectId, activeTenantId }: { projectId: string; acti
                 )}
 
                 {/* Right Pane: Code Preview (flex-1 covers remaining) */}
-                <div className="flex-1 bg-white dark:bg-gray-950 overflow-hidden flex flex-col">
+                <div className="flex-1 bg-white dark:bg-gray-950 overflow-hidden flex flex-col min-w-0">
                     {selectedFile ? (
                         <>
-                            <div className="p-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-xs font-mono text-gray-500 flex justify-between">
+                            <div className="p-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-xs font-mono text-gray-500 flex justify-between shrink-0">
                                 <span>{selectedFile.name}</span>
                                 {selectedFile.last_modified && (
                                     <span>Generated: {new Date(selectedFile.last_modified * 1000).toLocaleString()}</span>
                                 )}
                             </div>
-                            <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+                            <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
                                 {loadingContent ? (
                                     <div className="flex items-center justify-center h-full text-gray-400 gap-2">
                                         <RefreshCw size={16} className="animate-spin" /> Loading content...
                                     </div>
                                 ) : (
-                                    <SyntaxHighlighter
-                                        language={selectedFile.name.endsWith('.py') ? 'python' : selectedFile.name.endsWith('.sql') ? 'sql' : selectedFile.name.endsWith('.json') ? 'json' : selectedFile.name.endsWith('.md') ? 'markdown' : 'text'}
-                                        style={vscDarkPlus}
-                                        customStyle={{ margin: 0, padding: '1.5rem', background: '#0a0a0a', fontSize: '13px', lineHeight: '1.5', minHeight: '100%' }}
-                                        showLineNumbers={true}
-                                        wrapLines={true}
-                                    >
-                                        {fileContent}
-                                    </SyntaxHighlighter>
+                                    <div className="min-w-max">
+                                        <SyntaxHighlighter
+                                            language={selectedFile.name.endsWith('.py') ? 'python' : selectedFile.name.endsWith('.sql') ? 'sql' : selectedFile.name.endsWith('.json') ? 'json' : selectedFile.name.endsWith('.md') ? 'markdown' : 'text'}
+                                            style={vscDarkPlus}
+                                            customStyle={{ margin: 0, padding: '1.5rem', background: '#0a0a0a', fontSize: '13px', lineHeight: '1.5', maxWidth: '100%' }}
+                                            showLineNumbers={true}
+                                            wrapLines={false}
+                                        >
+                                            {fileContent}
+                                        </SyntaxHighlighter>
+                                    </div>
                                 )}
                             </div>
                         </>

@@ -26,7 +26,7 @@ export default function HelpPage() {
             color: "purple",
             description: "Complex reasoning, multi-step analysis, and deep context understanding required.",
             agents: [
-                { name: "Agent A (Triage)", reason: "Analyzes entire codebase, detects patterns, makes strategic decisions" },
+                { name: "Discovery Agent (Triage)", reason: "Analyzes entire codebase, detects patterns, makes strategic decisions" },
                 { name: "Agent D (Drafting)", reason: "Generates production-ready code with complex transformations" },
                 { name: "Agent E (Refinement)", reason: "Deep code review, optimization, and quality assurance" },
             ],
@@ -39,7 +39,7 @@ export default function HelpPage() {
             description: "Moderate complexity tasks requiring good understanding but less intensive reasoning.",
             agents: [
                 { name: "Agent B (Cartridge)", reason: "Applies technology-specific patterns and rules" },
-                { name: "Agent C (Compliance)", reason: "Validates against certification rules and standards" },
+                { name: "Code Generator (Compliance)", reason: "Validates against certification rules and standards" },
             ],
             models: ["Claude 3 Haiku", "GPT-4o Mini", "Gemini 1.5 Flash"]
         },
@@ -49,7 +49,7 @@ export default function HelpPage() {
             color: "emerald",
             description: "Simple, focused tasks with minimal context requirements.",
             agents: [
-                { name: "Agent F (Logging)", reason: "Structured log generation and formatting" },
+                { name: "Compliance Auditor (Logging)", reason: "Structured log generation and formatting" },
                 { name: "Helper Agent", reason: "Quick responses and simple assistance tasks" },
             ],
             models: ["Claude 3 Haiku", "GPT-3.5 Turbo", "Gemini Flash 8B"]
@@ -212,7 +212,7 @@ export default function HelpPage() {
                                     tasks: ["File system traversal", "Metadata extraction", "Dependency mapping"]
                                 },
                                 {
-                                    stage: "2. Triage (Agent A)",
+                                    stage: "2. Triage (Discovery Agent)",
                                     icon: <GitBranch className="w-5 h-5" />,
                                     color: "purple",
                                     description: "AI analyzes code complexity, identifies patterns, and creates migration strategy.",
@@ -233,7 +233,7 @@ export default function HelpPage() {
                                     tasks: ["Code review", "Performance optimization", "Best practices validation"]
                                 },
                                 {
-                                    stage: "5. Certification (Agent C)",
+                                    stage: "5. Certification (Compliance Auditor)",
                                     icon: <Shield className="w-5 h-5" />,
                                     color: "blue",
                                     description: "Validates code against compliance rules and certification standards.",
@@ -328,13 +328,13 @@ export default function HelpPage() {
             case "triage":
                 return (
                     <div className="space-y-6">
-                        <h2 className="text-3xl font-bold">Triage Process (Agent A)</h2>
+                        <h2 className="text-3xl font-bold">Triage Process (Discovery Agent)</h2>
                         <p className="text-[var(--text-secondary)] leading-relaxed">
-                            Agent A performs intelligent analysis of your codebase to determine migration complexity and create an optimal strategy.
+                            Discovery Agent performs intelligent analysis of your codebase to determine migration complexity and create an optimal strategy.
                         </p>
 
                         <div className="p-6 bg-purple-500/5 border border-purple-500/20 rounded-xl">
-                            <h3 className="text-xl font-bold mb-3 text-purple-400">Agent A Capabilities</h3>
+                            <h3 className="text-xl font-bold mb-3 text-purple-400">Discovery Agent Capabilities</h3>
                             <ul className="space-y-2 text-[var(--text-secondary)]">
                                 <li className="flex items-start gap-2">
                                     <ChevronRight className="w-4 h-4 text-purple-500 mt-1 flex-shrink-0" />
@@ -536,7 +536,7 @@ export default function HelpPage() {
                     <div className="space-y-6">
                         <h2 className="text-3xl font-bold">Certification & Compliance</h2>
                         <p className="text-[var(--text-secondary)] leading-relaxed">
-                            Agent C validates all generated code against a comprehensive set of certification rules to ensure
+                            Compliance Auditor validates all generated code against a comprehensive set of certification rules to ensure
                             quality, security, and compliance with industry standards.
                         </p>
 

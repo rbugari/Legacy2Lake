@@ -14,6 +14,7 @@ import LogsSidePanel from "../components/LogsSidePanel";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 import WorkspaceShield from "../components/WorkspaceShield";
+import ReportsLibraryModal from "../components/ReportsLibraryModal";
 // import StageControls from "../components/StageControls";
 
 import { API_BASE_URL } from "../lib/config";
@@ -21,7 +22,7 @@ import { fetchWithAuth } from "../lib/auth-client";
 import {
     Activity, ArrowRight, CheckCircle, Code, FileText, GitCommit,
     GitPullRequest, Layout, Play, Save, SlidersHorizontal, Share2,
-    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield
+    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield, Library
 } from "lucide-react";
 
 function WorkspaceContent() {
@@ -44,6 +45,7 @@ function WorkspaceContent() {
     const [selectedNode, setSelectedNode] = useState<any>(null);
     const [showLogs, setShowLogs] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
+    const [showReportsLibrary, setShowReportsLibrary] = useState(false);
     const [sidebarStats, setSidebarStats] = useState({ core: 0, ignored: 0, pending: 0 });
 
     // New Global UI State
@@ -346,6 +348,13 @@ function WorkspaceContent() {
                                 </button>
                                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
                                 <button
+                                    onClick={() => setShowReportsLibrary(true)}
+                                    className="p-1.5 text-gray-500 hover:text-purple-500 hover:bg-purple-500/10 rounded-md transition-all"
+                                    title="Reports Library"
+                                >
+                                    <Library size={18} />
+                                </button>
+                                <button
                                     className="p-1.5 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all"
                                     title="Collaborate"
                                 >
@@ -469,6 +478,16 @@ function WorkspaceContent() {
                         projectId={id}
                         sourceTech={sourceTech}
                         targetTech={targetTech}
+                    />
+
+                    {/* Reports Library Modal */}
+                    <ReportsLibraryModal
+                        isOpen={showReportsLibrary}
+                        onClose={() => setShowReportsLibrary(false)}
+                        projectId={id}
+                        projectName={projectName || 'Project'}
+                        currentStage={projectStage}
+                        activeTenantId={ghostTenantId || undefined}
                     />
                 </main >
             </div >

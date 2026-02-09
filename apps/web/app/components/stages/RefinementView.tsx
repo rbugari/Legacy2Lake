@@ -1,11 +1,10 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, FileText, Database, GitBranch, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react';
+import { Play, FileText, Database, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react';
 import StageHeader from "../StageHeader";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchWithAuth } from '../../lib/auth-client';
-import CodeDiffViewer from '../CodeDiffViewer';
 import PromptsExplorer from '../PromptsExplorer';
 import DesignRegistryPanel from './DesignRegistryPanel';
 import TechnologyMixer from './TechnologyMixer';
@@ -30,7 +29,6 @@ interface FileNode {
 
 const TABS = [
     { id: 'orchestrator', label: 'Orchestration', icon: <Layers size={18} /> },
-    { id: 'workbench', label: 'Workbench (Diff)', icon: <GitBranch size={18} /> },
     { id: 'artifacts', label: 'Artifacts', icon: <Database size={18} /> },
 ];
 
@@ -168,7 +166,7 @@ export default function RefinementView({
     };
 
     useEffect(() => {
-        if (activeTab === 'workbench' || activeTab === 'artifacts') {
+        if (activeTab === 'artifacts') {
             fetchWithAuth(`projects/${projectId}/files`)
                 .then(res => res.json())
                 .then(data => setFileTree(data.children || []))
@@ -215,7 +213,7 @@ export default function RefinementView({
             const data = await res.json();
             setFileContent(data.content || "");
 
-            if (activeTab === 'workbench') {
+            if (activeTab === 'artifacts') {
                 const origPath = resolveOriginalPath(path);
                 if (origPath) {
                     const resOrig = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(origPath)}`);
@@ -298,8 +296,8 @@ export default function RefinementView({
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
                 title="Stage 4: Intelligent Refinement"
-                subtitle="Agent F: Quality enforcement and pattern optimization"
-                icon={<GitBranch className="text-purple-500" />}
+                subtitle="Compliance Auditor: Quality enforcement and pattern optimization"
+                icon={<Layers className="text-purple-500" />}
                 helpText="Final code refinement ensuring adherence to established architectural patterns."
                 onApprove={handleApprove}
                 approveLabel="Approve & Governance"
@@ -379,11 +377,11 @@ export default function RefinementView({
                     </div>
                 )}
 
-                {(activeTab === 'workbench' || activeTab === 'artifacts') && (
+                {activeTab === 'artifacts' && (
                     <div className="flex h-full gap-4">
                         <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                             <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
-                                <h3 className="font-bold text-sm uppercase text-gray-400">{activeTab === 'workbench' ? 'Files to Review' : 'Artifacts Explorer'}</h3>
+                                <h3 className="font-bold text-sm uppercase text-gray-400">Artifacts Explorer</h3>
                                 <button className="text-gray-400 hover:text-primary"><Search size={14} /></button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2">
@@ -425,19 +423,8 @@ export default function RefinementView({
                                 {isLoadingFile ? (
                                     <div className="flex items-center justify-center h-full text-gray-500">Loading content...</div>
                                 ) : selectedFile ? (
-                                    activeTab === 'workbench' ? (
-                                        <div className="flex flex-col h-full">
-                                            <div className="flex justify-between px-4 py-2 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 text-xs font-bold text-gray-500 uppercase">
-                                                <span>Original (Legacy Source)</span>
-                                                <span>Refined (Generated Code)</span>
-                                            </div>
-                                            <div className="flex-1 min-h-0">
-                                                <CodeDiffViewer originalCode={originalContent} modifiedCode={fileContent} />
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
-                                            <SyntaxHighlighter
+                                    <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+                                        <SyntaxHighlighter
                                                 language={selectedFile.endsWith('.py') ? 'python' : selectedFile.endsWith('.sql') ? 'sql' : selectedFile.endsWith('.json') ? 'json' : selectedFile.endsWith('.md') ? 'markdown' : 'text'}
                                                 style={vscDarkPlus}
                                                 customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
@@ -447,7 +434,6 @@ export default function RefinementView({
                                                 {fileContent}
                                             </SyntaxHighlighter>
                                         </div>
-                                    )
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4">
                                         <Layers size={48} className="text-gray-700" />

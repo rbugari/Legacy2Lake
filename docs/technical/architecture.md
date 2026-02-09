@@ -25,7 +25,7 @@ To ensure enterprise scalability and tenant isolation, Legacy2Lake implements a 
 - **Components**: `GovernanceService`, `PackagingService`.
 - **Performance**: Direct-to-client streaming via **Signed URLs** and memory-buffered zipping.
 
-## 2. Multi-Agent System (MAS v3.5)
+## 2. Multi-Agent System (MAS v3.8)
 
 The system operates via specialized AI agents interacting through the metadata store and the cloud storage:
 
@@ -46,9 +46,12 @@ The system operates via specialized AI agents interacting through the metadata s
 5. **Parallel Synthesis**: `Agent C` and `Agent F` generate code in parallel, reading/writing to the R2 `Refinement` stages.
 6. **Certified Packaging**: `Agent G` gathers code and logs from R2, generates an AI certification, and streams a ZIP bundle directly to the user.
 
-## 4. Multi-Tenant Guardrails (v3.6)
+## 4. Multi-Tenant Guardrails (v3.8)
 
 - **Zero-Trust Access**: The backend now strictly enforces tenant-scoped access via the `SupabasePersistence` service. Ad-hoc connections are prohibited to prevent data leakage.
+- **Process Locking**: The `utm_process_locks` table prevents concurrent execution of the same process on a project, eliminating data corruption risks from simultaneous operations (triage, drafting, refinement, etc.).
+- **Lock Management**: Admin interface allows viewing all active locks and force-releasing stuck processes. Smart timeouts ensure stale locks automatically expire.
+- **Role-Based API Routing**: The refined System Router (`/system/*`) isolates administrative functions (Agent Management, Vault) from project execution logic, ensuring cleaner separation of concerns.
 - **Header Enforcement**: Every request must include `X-Tenant-ID`, which is sanitized and validated by the `get_identity` middleware.
 - **Process Robustness**: Long-running orchestrators (Triage, Drafting, Refinement) check the `cancellation_requested` flag at granular steps, ensuring projects can be stopped immediately and safely.
 - **Storage Isolation**: R2 keys follow the pattern `{tenant_id}/{project_name}/...` with signed URLs used for secure, performant delivery.

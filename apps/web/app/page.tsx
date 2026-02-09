@@ -150,8 +150,8 @@ export default function LandingPage() {
             {[
               { stage: "1. Discovery", icon: Database, desc: "Upload your legacy repository. Agent S scans and catalogs all assets." },
               { stage: "2. Triage", icon: Code, desc: "Classify objects as CORE, SUPPORT, or IGNORED. Define load strategies and PII flags." },
-              { stage: "3. Drafting", icon: Cpu, desc: "Agent C generates cloud-native code with technology-specific best practices." },
-              { stage: "4. Refinement", icon: Zap, desc: "Agent F applies cartridges for self-correction and optimization." },
+              { stage: "3. Drafting", icon: Cpu, desc: "Code Generator produces cloud-native code with technology-specific best practices." },
+              { stage: "4. Refinement", icon: Zap, desc: "Compliance Auditor applies cartridges for self-correction and optimization." },
               { stage: "5. Certification", icon: Shield, desc: "Compliance scoring (COP) and validation against quality gates." },
               { stage: "6. Handover", icon: Cloud, desc: "Download production-ready artifacts with deployment guides." },
             ].map((item, idx) => (

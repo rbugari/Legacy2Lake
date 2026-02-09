@@ -12,12 +12,11 @@ import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, FileUp, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { fetchWithAuth } from '../../lib/auth-client';
 
 import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
-import DownloadReportButton from '../DownloadReportButton';
 
 // Tab Definitions
 const TABS = [
@@ -696,15 +695,6 @@ export default function TriageView({
                                 Cancel
                             </button>
                         )}
-
-                        <DownloadReportButton
-                            projectId={projectId}
-                            reportType="triage"
-                            variant="secondary"
-                            className="bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-xl px-4 py-2"
-                            icon={<FileText size={16} className="text-cyan-400" />}
-                            label="Download Report"
-                        />
 
                         <button
                             onClick={() => saveLayout(nodes, edges)}

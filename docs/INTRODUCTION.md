@@ -1,8 +1,8 @@
 # Welcome to Legacy2Lake 🚀
 
-**Legacy2Lake** (v3.6) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
+**Legacy2Lake** (v3.8) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
 
-> **v3.6 Latest**: Adds UI refinements (resizable drafting explorer), pipeline stability (cartridge sync fix), and compliance improvements (dynamic rules from database).
+> **v3.8 Latest**: Adds **Process Locking System**, **Professional UI Components** (ProcessLockModal, ProcessExecutionModal, ReportsLibraryModal), **Governance Framework**, and **Centralized Reports Library**.
 
 ## 1. The Vision: "Shift the T" 🧬
 
@@ -45,11 +45,18 @@ To solve the complexity of $N$ source technologies and $M$ target platforms, Leg
   - **File Inventory**: `utm_file_inventory` table provides fast listing without S3 API calls
   - **Signed URLs**: Secure, time-limited download links for artifact delivery
 
-### F. Multi-Tenancy & Security (v3.6)
+### F. Multi-Tenancy & Security (v3.6+)
 - **Zero-Trust Architecture**: Row-Level Security (RLS) policies enforce tenant isolation
 - **Provider Vault**: Encrypted API keys stored in `utm_provider_vault` per tenant
 - **Agent Matrix**: Each tenant configures their own LLM model assignments
 - **Audit Trail**: Complete execution logs in `utm_execution_logs` per project
+
+### G. Process Locking & Data Integrity (v3.8)
+- **Concurrent Execution Prevention**: Process locks prevent data corruption from simultaneous operations
+- **Lock Management**: Database table (`utm_process_locks`) tracks active locks with timeouts
+- **Smart Expiration**: Process-specific timeouts (triage: 60min, drafting: 30min, refinement: 120min)
+- **Admin Controls**: Force-release capabilities for stuck processes
+- **Professional UI**: ProcessLockModal displays user-friendly lock errors with guidance
 
 ---
 
@@ -59,16 +66,16 @@ The platform operates via specialized agents that interact through the Metadata 
 
 | Agent | Role | Responsibility |
 | :--- | :--- | :--- |
-| **Scout (Agent S)** | **Technology Detection** | Analyzes repositories during triage to detect source technology (SQL Server, Oracle, SSIS, etc.). |
-| **Detective (Agent A)** | **Discovery** | Scans repositories and identifies technology footprints and complexity. |
-| **Cartographer (Agent B)** | **Mesh & Lineage** | Builds the execution graph and precedence constraints. |
-| **Interpreter (Agent C)** | **Transpiler** | The main execution engine. Writes code using target-specific patterns. |
-| **Critic (Agent F)** | **QA & Refinement** | Senior architect that optimizes code for performance and security. |
-| **Governor (Agent G)** | **Governance** | Generates modernization certificates and column-level lineage. |
+| **Technology Scout** | **Technology Detection** | Analyzes repositories during triage to detect source technology (SQL Server, Oracle, SSIS, etc.). |
+| **Discovery Agent** | **Discovery & Analysis** | Scans repositories and identifies technology footprints and complexity. |
+| **Context Builder** | **Mesh & Lineage** | Builds the execution graph and precedence constraints. |
+| **Code Generator** | **Transpiler** | The main execution engine. Writes code using target-specific patterns. |
+| **Compliance Auditor** | **QA & Refinement** | Senior architect that optimizes code for performance and security. |
+| **Governance Agent** | **Governance** | Generates modernization certificates and column-level lineage. |
 
-### Prompt Laboratory (v3.6)
+### Prompt Laboratory (v3.8)
 
-Legacy2Lake v3.6 continues the **dynamic prompt management system** introduced in v3.5, with enhanced compliance rule management:
+Legacy2Lake v3.8 continues the **dynamic prompt management system** with enhanced governance controls and formalized ownership model:
 
 - **Core Agents**: 7 system prompts for A, B, C, D, F, G, S
 - **Origin Knowledge**: 9 source technology prompts (SSIS, SQL Server, Oracle, DataStage, Informatica, SAP BODS, Talend, Pentaho, MySQL)
