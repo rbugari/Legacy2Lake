@@ -1,16 +1,147 @@
 # Release Notes
 
-## Version 3.6 (Quality & Stability Enhancement) - 2026-02-03 ⭐ LATEST
+## Version 3.8 (The Governance & Architecture Clarity Release) - 2026-02-09 ⭐ LATEST
 
-This release focuses on improving code quality enforcement, UI polish, and system stability through compliance rule externalization and critical bug fixes.
+This release formalizes the governance model, implements process locking to prevent data corruption, and introduces professional UI components for system administration and process visualization.
+
+### 🌟 Major Features
+
+#### Process Locking System (CRITICAL)
+*   **Data Corruption Prevention**: Implemented comprehensive process locking to prevent concurrent execution of processes on the same project
+*   **Database Table**: New `utm_process_locks` table tracks active locks with timeout management
+*   **Lock Service**: Backend service with acquire, release, extend, and force-release capabilities
+*   **Smart Timeouts**: Process-specific timeouts (triage: 60min, drafting: 30min, refinement: 120min)
+*   **Professional Error UI**: `ProcessLockModal` component shows friendly lock errors with user information
+*   **Admin Management**: Complete admin interface to view all active locks and force-release stuck processes
+*   **Auto-Expiration**: Stale locks automatically expire after timeout (RPC function in Supabase)
+
+#### Process Visualization & UX
+*   **ProcessExecutionModal**: Professional modal component for real-time process monitoring
+*   **Visual Agent Pipeline**: Interactive display of agent execution stages with status indicators
+*   **Live Logs**: Real-time log streaming with color-coded messages (errors, warnings, success)
+*   **Progress Tracking**: Visual progress bars and elapsed time counters
+*   **Stage Status**: Each agent stage shows: pending, running, completed, or error states
+*   **Professional Design**: Replaced basic alerts with polished modal interfaces
+
+#### Admin Tools Enhancement
+*   **Process Locks Tab**: New admin section for system-wide lock management
+*   **Active Lock Viewer**: Table showing all locks with project, user, process type, and expiration
+*   **Force Release**: One-click admin override to release stuck locks
+*   **Auto-Refresh**: Lock list automatically updates every 30 seconds
+*   **Expired Lock Detection**: Visual warnings for locks past their expiration time
+
+#### Governance Rules Documentation (Phase 19)
+*   **Ownership Matrix Formalized**: Comprehensive documentation of who owns what in the system (Admins vs Tenants vs Users)
+*   **3-Layer Prompt System**: Clarified the hierarchical prompt architecture:
+    *   **Layer 1 (Agent)**: System-level, ADMIN-owned, immutable
+    *   **Layer 2 (Cartridge)**: Technology-level, ADMIN-owned, immutable
+    *   **Layer 3 (Custom)**: Solution-level, USER-owned, additive modifiers
+*   **Technology Catalog Enforcement**: Strict validation that projects can only use origins/destinations that exist in `utm_system_catalog`
+*   **Cost Ownership Model**: Formalized tenant responsibility for provider selection and model assignment costs
+*   **Data Consistency Rules**: SQL validation queries to detect architectural inconsistencies
+
+### 🎨 UI/UX Improvements
+*   **ProcessLockModal**: Amber-themed modal with lock details and user guidance
+*   **ProcessExecutionModal**: Gradient-themed with stage visualization and progress tracking
+*   **ReportsLibraryModal**: Unified modal component for centralized report access with status badges
+*   **Admin Interface**: Clean table layout with status badges and action buttons
+*   **Toolbar Cleanup**: Removed duplicate report buttons from stage views for cleaner interface
+*   **Consistent Dark Mode**: All new components support dark theme seamlessly
+*   **Accessibility**: Proper disabled states and loading indicators
+
+### 📚 Documentation Updates
+*   **New**: [`docs/technical/GOVERNANCE_RULES.md`](docs/technical/GOVERNANCE_RULES.md) - Complete governance framework
+*   **Updated**: System architecture diagrams with ownership boundaries
+*   **Added**: Validation checklist for deployment integrity
+*   **Updated**: BACKLOG_v3.8.md with implementation status
+
+### 🔧 Backend Enhancements
+*   **LockService**: Async service with database integration
+*   **Lock Endpoints**: RESTful API at `/locks/*`:
+    *   `POST /locks/acquire` - Acquire lock with session tracking
+    *   `POST /locks/release` - Release lock by ID or project+process
+    *   `POST /locks/check` - Check lock status
+    *   `POST /locks/force-release` - Admin force-release
+    *   `GET /locks/all` - List all active locks (admin only)
+    *   `POST /locks/{lock_id}/force-release` - Force-release by ID
+    *   `GET /locks/project/{project_id}` - Project lock history
+*   **Error Handling**: HTTP 423 Locked status with detailed error messages
+*   **Session Tracking**: User agent and IP logging for audit trail
+
+### 🐛 Bug Fixes
+*   **Fixed**: Lock service async/await errors (Supabase Python client is synchronous)
+*   **Fixed**: Duplicate NavBar in profile page
+*   **Fixed**: Code viewer expansion beyond viewport
+*   **Fixed**: Error display showing `[object Object]` instead of formatted messages
+*   **Fixed**: Workbench (Diff) tab removed from Refinement view (UI simplification)
+*   **Fixed**: GitBranch icon reference error in RefinementView
+
+### ⚡ Performance
+*   **Lock Expiration**: Database-level RPC function for efficient stale lock cleanup
+*   **Optimized Queries**: Indexed lock queries on project_id and process_type
+*   **Threadpool Execution**: Reports run in threadpool for non-blocking generation
+
+### 🎯 Architectural Principles
+*   **Separation of Concerns**: Clear boundaries between ADMIN (infrastructure), TENANT (providers/cost), and USER (customization)
+*   **Catalog Coherence**: Zero-tolerance for technology references outside the system catalog
+*   **Multi-Tenant Cost Control**: Each tenant owns and controls their AI provider costs
+*   **Data Integrity**: Process locking prevents race conditions and data corruption
+
+### 📦 Report System
+*   ✅ **Triage PDF Report**: Discovery analysis with asset statistics, PII detection, complexity assessment
+*   ✅ **Final PDF Report**: Migration delivery report with outputs, timeline, and metadata
+*   ✅ **Professional Templates**: Jinja2 templates with branding, watermarks, headers/footers
+*   ✅ **Playwright Integration**: Headless Chrome for high-quality PDF generation
+*   ✅ **Reports Library Modal**: Unified interface for all project reports with stage-aware availability
+*   ✅ **Centralized Access**: Library icon (📚) in workspace header opens modal with all available reports
+*   ✅ **Version-Agnostic Templates**: Report templates no longer include version numbers for maintenance-free updates
+*   ✅ **Clean Stage Toolbars**: Report download buttons removed from stage views, centralized in Reports Library
+
+### 🔐 Security
+*   **Admin-Only Endpoints**: Force-release and list-all-locks require ADMIN role
+*   **Session Validation**: Lock acquisition validates user session and tenant context
+*   **Audit Trail**: All lock operations logged with user, timestamp, and IP address
+
+### 🚀 Deployment Notes
+*   **Database Migration**: Run `supabase_migrations/add_process_locks.sql` to create lock table
+*   **RPC Function**: Deploy `expire_stale_locks()` function to Supabase
+*   **Environment**: No new environment variables required
+*   **Dependencies**: Existing Playwright and Jinja2 dependencies support reports
+
+---
+
+## Version 3.7 (The System & Identity Release) - 2026-02-06
+
+This release solidifies the platform's multi-tenant architecture with a complete refactor of the System API, introducing dynamic agent management and strict identity controls.
+
+### 🌟 Major Features
+
+#### System Router Refactor (Phase 17)
+*   **Centralized Configuration**: Moved all system-level endpoints to a dedicated `SystemRouter` (`/system/*`), separating administrative logic from core execution.
+*   **Dynamic Agent Loading**: Agents are now loaded dynamically from the `utm_agent_catalog` database table, removing hardcoded references and allowing for runtime updates to the agent fleet.
+*   **Strict Provider Vault**: The Provider Vault now strictly filters and displays only *configured and active* providers for the current tenant, effectively hiding irrelevant options.
+
+#### Identity & Governance (Phase 18)
+*   **Identity Management UI**: Full administrative control over Tenants, Users, and Clients directly from the `Platform Admin` > `Identity` tab.
+*   **Environment Synchronization**: Introduced tooling (`sync_config.py`) to synchronize critical configuration data (Providers, Models, Matrix) between DEV and PROD environments.
+*   **Enhanced Diagnostics**: New suite of diagnostic scripts (`check_providers_diag.py`, `check_users_diag.py`) to verify environment health and data persistence.
+
+### 🐛 Bug Fixes
+*   **Fixed**: 404 Errors on `/system` endpoints caused by missing router registration.
+*   **Fixed**: "No prompt found" error in Strategy Canvas for newer agents.
+*   **Fixed**: Discrepancy in Admin Page UI between DEV and PROD environments.
+
+---
+
+## Version 3.6 (Quality & Stability Enhancement) - 2026-02-03
 
 ### 🌟 Major Features
 
 #### Compliance Rule Externalization (Phase 4)
 *   **Database-Driven Compliance**: Moved hardcoded cartridge rules from Python code to `utm_system_catalog.config` for centralized management.
 *   **Technology-Specific Rules**: Each target technology (Oracle, SSIS, Fabric, etc.) now stores its unique compliance guidelines in the database.
-*   **Agent F Synchronization**: Updated compliance auditor to fetch rules dynamically, ensuring knowledge parity with code generators.
-*   **Migration Bitácora**: Introduced auto-generated markdown logbooks that document Agent F critiques, scores, and reasoning for each migration file.
+*   **Compliance Auditor Synchronization**: Updated compliance auditor to fetch rules dynamically, ensuring knowledge parity with code generators.
+*   **Migration Bitácora**: Introduced auto-generated markdown logbooks that document Compliance Auditor critiques, scores, and reasoning for each migration file.
 
 #### UI/UX Refinements (Phase 5)
 *   **Resizable Drafting Explorer**: Output Explorer in Stage 3 now features a draggable split pane, allowing users to adjust the file tree and preview panel widths.
@@ -73,7 +204,7 @@ This foundational release completes the transition to a fully cloud-native, mult
 
 #### Phase 16: Performance Optimized Governance
 *   **Parallelization 2.0**: The Governance Export process now utilizes `asyncio.gather` for parallel R2 file reading and database querying, reducing bundle generation time by over 60%.
-*   **Fault-Tolerant Exports**: AI-driven certification (Agent G) now runs with robust timeouts. If a report fails, the system delivers a technical package with placeholders instead of timing out the entire request.
+*   **Fault-Tolerant Exports**: AI-driven certification (Governance Agent) now runs with robust timeouts. If a report fails, the system delivers a technical package with placeholders instead of timing out the entire request.
 *   **Memory-Safe Packaging**: Artifact ZIP bundles are now built entirely in memory buffers before streaming to the client, eliminating server-side disk bloat.
 
 ### 🐛 Bug Fixes
@@ -133,7 +264,7 @@ This transformational release elevates Legacy2Lake from a code generator into a 
 
 #### Phase 5: Architect v2.0 & Discovery Heatmaps
 *   **Automated Metadata Inference**:
-    *   **Agent A (The Architect)** now automatically infers operational metadata from source schemas:
+    *   **Discovery Agent (The Architect)** now automatically infers operational metadata from source schemas:
         - **Data Volume**: LOW/MED/HIGH classification for cluster sizing.
         - **PII Detection**: Column-level analysis (`email`, `ssn`, `phone`).
         - **Partition Key Suggestion**: Identifies high-cardinality date columns.
@@ -145,7 +276,7 @@ This transformational release elevates Legacy2Lake from a code generator into a 
 
 #### Phase 6: Intelligent Code Generation
 *   **Context-Aware Transpilation**:
-    *   **Agent C (The Interpreter)** now generates **optimized PySpark** based on Architect v2.0 metadata.
+    *   **Code Generator (The Interpreter)** now generates **optimized PySpark** based on Architect v2.0 metadata.
     *   **Auto-Partitioning**: If `partition_key` is detected, generates `.partitionBy(col)` automatically.
     *   **PII Masking**: Automatically applies `SHA2()` hashing for flagged columns.
     *   **Volume Optimization**: High-volume assets get shuffle-optimized joins.
@@ -156,7 +287,7 @@ This transformational release elevates Legacy2Lake from a code generator into a 
     *   Read-only preview of generated structure before transpilation runs.
 
 #### Phase 7: AI-Driven Governance & SaaS Delivery
-*   **Compliance Certification (Agent G)**:
+*   **Compliance Certification (Governance Agent)**:
     *   **Automated Audit**: Verifies Architect v2.0 recommendations were followed.
     *   **0-100 Scoring**: Numeric compliance score with detailed check results.
     *   **Certification Badge**: Visual indicator in Governance UI.
@@ -177,7 +308,7 @@ This transformational release elevates Legacy2Lake from a code generator into a 
     *   New **Variable Editor** in Project Settings.
     *   Define key-value pairs (e.g., `S3_ROOT`, `ENV`, `DB_SCHEMA`).
 *   **Dynamic Code Generation**:
-    *   Agent C replaces hardcoded paths with placeholders: `f"{S3_ROOT}/bronze/data"`.
+    *   Code Generator replaces hardcoded paths with placeholders: `f"{S3_ROOT}/bronze/data"`.
 *   **Handover Manifest**:
     *   Export includes `variables_manifest.json` for deployment teams.
 *   **Optionality**: If no variables defined, standard code generation proceeds.

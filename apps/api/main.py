@@ -27,12 +27,13 @@ from apps.api.routers.transpile import router as transpile_router
 from apps.api.routers.governance import router as governance_router
 from apps.api.routers.lab import router as lab_router
 from apps.api.routers.reports import router as reports_router
+from apps.api.routers.locks import router as locks_router
 from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
     title="Legacy2Lake API", 
-    version="3.7.0",
-    description="Refactored Core API for Cloud-Native Multi-Tenant Architecture"
+    version="3.8.0",
+    description="Refactored Core API for Cloud-Native Multi-Tenant Architecture with Formalized Governance"
 )
 
 # --- MIDDLEWARES ---
@@ -104,6 +105,7 @@ app.include_router(governance_router)
 app.include_router(agents_router)
 app.include_router(lab_router)
 app.include_router(reports_router)
+app.include_router(locks_router)
 app.include_router(config.router)
 app.include_router(system.router, prefix="/system")
 

@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { fetchWithAuth } from "../lib/auth-client";
 import Link from "next/link";
-import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key } from "lucide-react";
+import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key, Code2, FileText, Edit3 } from "lucide-react";
 import CartridgeList from "../components/admin/CartridgeList";
 import { getAgentDisplayName } from "../lib/constants";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface Prompt {
     id: string;
@@ -18,13 +20,16 @@ export default function SystemPage() {
     const { user } = useAuth();
     const isAdmin = user?.role === "ADMIN";
 
-    const [activeTab, setActiveTab] = useState<"prompts" | "origins" | "destinations" | "identity">("identity");
+    const [activeTab, setActiveTab] = useState<"prompts" | "origins" | "destinations" | "identity" | "agents" | "locks">("identity");
 
     // Data State
     const [prompts, setPrompts] = useState<Prompt[]>([]);
     const [origins, setOrigins] = useState([]);
     const [destinations, setDestinations] = useState([]);
     const [tenants, setTenants] = useState<any[]>([]);
+    const [agents, setAgents] = useState<any[]>([]);
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [editingAgent, setEditingAgent] = useState<any>(null);
 
     const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -39,6 +44,12 @@ export default function SystemPage() {
     const [labPath, setLabPath] = useState("./prompt_lab_export");
     const [promptVersions, setPromptVersions] = useState<any[]>([]);
     const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [viewMode, setViewMode] = useState<'source' | 'elegant'>('source');
+    const [editedContent, setEditedContent] = useState("");
+
+    // Process Locks State
+    const [processLocks, setProcessLocks] = useState<any[]>([]);
+    const [isLoadingLocks, setIsLoadingLocks] = useState(false);
 
     const [API_BASE_URL, setApiBaseUrl] = useState("http://localhost:8085"); // Fallback
 
@@ -99,14 +110,17 @@ export default function SystemPage() {
             fetchWithAuth("system/prompts").then(res => res.json()),
             fetchWithAuth("system/origins").then(res => res.json()),
             fetchWithAuth("system/destinations").then(res => res.json()),
-            fetchWithAuth("auth/tenants").then(res => res.json())
-        ]).then(([promptsData, originsData, destData, tenantsData]) => {
+            fetchWithAuth("auth/tenants").then(res => res.json()),
+            fetchWithAuth("system/agents").then(res => res.json())
+        ]).then(([promptsData, originsData, destData, tenantsData, agentsData]) => {
             setPrompts(promptsData.prompts || []);
             if (!selectedPromptId && promptsData.prompts?.length > 0) setSelectedPromptId(promptsData.prompts[0].id);
 
             setOrigins(originsData.origins || []);
             setDestinations(destData.destinations || []);
             setTenants(Array.isArray(tenantsData) ? tenantsData : []);
+            setAgents(agentsData.agents || []);
+            if (!selectedAgentId && agentsData.agents?.length > 0) setSelectedAgentId(agentsData.agents[0].agent_id);
 
             fetchWithAuth("auth/clients").then(res => res.json()).then(data => {
                 setClients(Array.isArray(data) ? data : []);
@@ -127,9 +141,18 @@ export default function SystemPage() {
         if (selectedPromptId && activeTab === "prompts") {
             fetchWithAuth(`lab/versions/${selectedPromptId}`).then(res => res.json()).then(data => {
                 setPromptVersions(data.versions || []);
+            }).catch(err => {
+                console.error("Error fetching versions:", err);
+                setPromptVersions([]);
             });
+            
+            // Initialize edited content with selected prompt
+            const prompt = prompts.find(p => p.id === selectedPromptId);
+            if (prompt) {
+                setEditedContent(prompt.content);
+            }
         }
-    }, [selectedPromptId, activeTab]);
+    }, [selectedPromptId, activeTab, prompts]);
 
     const handleExportLab = async () => {
         setIsExporting(true);
@@ -298,6 +321,75 @@ export default function SystemPage() {
         }
     };
 
+    const handleUpdateAgent = async (agentId: string, updates: {display_name?: string, description?: string}) => {
+        try {
+            const res = await fetchWithAuth(`system/agents/${agentId}`, {
+                method: "PUT",
+                body: JSON.stringify(updates)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert("Agent updated successfully!");
+                setEditingAgent(null);
+                fetchData();
+            } else {
+                alert(`Error: ${data.detail || "Failed to update agent"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        }
+    };
+
+    // Process Locks Functions
+    const fetchProcessLocks = async () => {
+        setIsLoadingLocks(true);
+        try {
+            const res = await fetchWithAuth("locks/all");
+            const data = await res.json();
+            if (res.ok && data.locks) {
+                setProcessLocks(data.locks);
+            } else {
+                setProcessLocks([]);
+            }
+        } catch (err) {
+            console.error("Failed to fetch locks:", err);
+            setProcessLocks([]);
+        } finally {
+            setIsLoadingLocks(false);
+        }
+    };
+
+    const handleForceReleaseLock = async (lockId: string, projectId: string, processType: string) => {
+        if (!confirm(`Are you sure you want to force-release this ${processType} lock?\n\nThis will allow other users to execute this process on the project.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetchWithAuth(`locks/${lockId}/force-release`, {
+                method: "POST"
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alert("Lock released successfully!");
+                fetchProcessLocks(); // Refresh
+            } else {
+                alert(`Error: ${data.error || "Failed to release lock"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        }
+    };
+
+    // Load locks when tab is active
+    useEffect(() => {
+        if (activeTab === "locks" && isAdmin) {
+            fetchProcessLocks();
+            // Auto-refresh every 30 seconds
+            const interval = setInterval(fetchProcessLocks, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [activeTab, isAdmin]);
+
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] relative transition-colors duration-300 flex flex-col">
 
@@ -322,6 +414,18 @@ export default function SystemPage() {
                         className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "identity" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
                     >
                         <span className="flex items-center gap-2"><Users size={14} /> Identity</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("agents")}
+                        className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "agents" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
+                    >
+                        <span className="flex items-center gap-2"><Activity size={14} /> Agents</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("locks")}
+                        className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "locks" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
+                    >
+                        <span className="flex items-center gap-2"><Lock size={14} /> Process Locks</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("prompts")}
@@ -391,9 +495,33 @@ export default function SystemPage() {
                         {selectedPrompt ? (
                             <>
                                 <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-[var(--surface)]/50">
-                                    <div>
-                                        <h2 className="text-xl font-bold">{getAgentDisplayName(selectedPrompt.id)}</h2>
-                                        <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">ID: {selectedPrompt.id}</p>
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-bold">{getAgentDisplayName(selectedPrompt.id)}</h2>
+                                            <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">ID: {selectedPrompt.id}</p>
+                                        </div>
+                                        <div className="flex bg-[var(--surface-elevated)] p-1 rounded-lg border border-[var(--border)] gap-1">
+                                            <button
+                                                onClick={() => setViewMode('source')}
+                                                className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1 ${viewMode === 'source'
+                                                    ? "bg-cyan-600 text-white shadow-lg"
+                                                    : "text-[var(--text-tertiary)] hover:text-cyan-400"
+                                                    }`}
+                                            >
+                                                <Code2 size={12} />
+                                                Source
+                                            </button>
+                                            <button
+                                                onClick={() => setViewMode('elegant')}
+                                                className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1 ${viewMode === 'elegant'
+                                                    ? "bg-purple-600 text-white shadow-lg"
+                                                    : "text-[var(--text-tertiary)] hover:text-purple-400"
+                                                    }`}
+                                            >
+                                                <Edit3 size={12} />
+                                                Edit
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="flex gap-2">
                                         <div className="relative group mr-4">
@@ -452,18 +580,40 @@ export default function SystemPage() {
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-6">
-                                    <div className="max-w-4xl mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm p-8 min-h-[500px]">
-                                        {isAdmin ? (
-                                            <textarea
-                                                key={selectedPrompt.id}
-                                                className="w-full h-full min-h-[500px] bg-transparent outline-none resize-none font-mono text-sm leading-relaxed"
-                                                defaultValue={selectedPrompt.content}
-                                                spellCheck={false}
-                                            />
+                                    <div className="max-w-4xl mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm min-h-[500px]">
+                                        {viewMode === 'source' ? (
+                                            <div className="p-8">
+                                                <SyntaxHighlighter 
+                                                    language="markdown" 
+                                                    style={vscDarkPlus}
+                                                    customStyle={{
+                                                        background: 'transparent',
+                                                        padding: 0,
+                                                        margin: 0,
+                                                        fontSize: '13px',
+                                                        lineHeight: '1.8'
+                                                    }}
+                                                    wrapLongLines={true}
+                                                >
+                                                    {selectedPrompt.content}
+                                                </SyntaxHighlighter>
+                                            </div>
                                         ) : (
-                                            <pre key={selectedPrompt.id} className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--text-secondary)]">
-                                                {selectedPrompt.content}
-                                            </pre>
+                                            <div className="p-8">
+                                                {isAdmin ? (
+                                                    <textarea
+                                                        key={selectedPrompt.id}
+                                                        className="w-full h-full min-h-[500px] bg-transparent outline-none resize-none font-mono text-sm leading-relaxed text-[var(--text-primary)]"
+                                                        value={editedContent}
+                                                        onChange={e => setEditedContent(e.target.value)}
+                                                        spellCheck={false}
+                                                    />
+                                                ) : (
+                                                    <pre key={selectedPrompt.id} className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-[var(--text-secondary)]">
+                                                        {selectedPrompt.content}
+                                                    </pre>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -504,6 +654,123 @@ export default function SystemPage() {
                             </div>
                         )}
                     </main>
+                </div>
+            )}
+
+            {/* AGENTS TAB */}
+            {activeTab === "agents" && (
+                <div className="flex-1 bg-[var(--background)] p-8 overflow-y-auto">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="mb-8">
+                            <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">Agent Management</h4>
+                            <h2 className="text-2xl font-bold mb-2">Agent Catalog</h2>
+                            <p className="text-[var(--text-secondary)]">Manage agent display names and descriptions. Changes will reflect in the entire platform.</p>
+                        </div>
+
+                        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+                            <table className="w-full text-left">
+                                <thead className="bg-[var(--background)]/50 text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] border-b border-[var(--border)]">
+                                    <tr>
+                                        <th className="px-6 py-4">Agent ID</th>
+                                        <th className="px-6 py-4">Display Name</th>
+                                        <th className="px-6 py-4">Description</th>
+                                        <th className="px-6 py-4">Phases</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        {isAdmin && <th className="px-6 py-4 text-right">Actions</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border)]">
+                                    {agents.map((agent: any) => (
+                                        <tr key={agent.agent_id} className="hover:bg-cyan-500/5 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <code className="text-xs font-mono text-[var(--text-secondary)] bg-[var(--background)] px-2 py-1 rounded border border-[var(--border)]">
+                                                    {agent.agent_id}
+                                                </code>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {editingAgent?.agent_id === agent.agent_id ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editingAgent.display_name}
+                                                        onChange={e => setEditingAgent({...editingAgent, display_name: e.target.value})}
+                                                        className="w-full px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background-secondary)] outline-none focus:ring-2 focus:ring-cyan-500/50"
+                                                    />
+                                                ) : (
+                                                    <span className="text-sm font-bold">{agent.display_name}</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {editingAgent?.agent_id === agent.agent_id ? (
+                                                    <textarea
+                                                        value={editingAgent.description}
+                                                        onChange={e => setEditingAgent({...editingAgent, description: e.target.value})}
+                                                        rows={2}
+                                                        className="w-full px-3 py-2 text-xs border border-[var(--border)] rounded-lg bg-[var(--background-secondary)] outline-none focus:ring-2 focus:ring-cyan-500/50 resize-none"
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs text-[var(--text-secondary)]">{agent.description}</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {(agent.phases || []).map((phase: string) => (
+                                                        <span key={phase} className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+                                                            {phase}
+                                                        </span>
+                                                    ))}
+                                                    {(!agent.phases || agent.phases.length === 0) && (
+                                                        <span className="text-[9px] text-[var(--text-tertiary)] italic">No phases</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${agent.is_active ? 'bg-green-500/10 text-green-500' : 'bg-gray-500/10 text-gray-500'}`}>
+                                                    {agent.is_active ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            {isAdmin && (
+                                                <td className="px-6 py-4 text-right">
+                                                    {editingAgent?.agent_id === agent.agent_id ? (
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={() => handleUpdateAgent(agent.agent_id, {
+                                                                    display_name: editingAgent.display_name,
+                                                                    description: editingAgent.description
+                                                                })}
+                                                                className="px-4 py-1.5 bg-cyan-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg hover:bg-cyan-500 transition-all"
+                                                            >
+                                                                <Save size={12} className="inline mr-1" /> Save
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingAgent(null)}
+                                                                className="px-4 py-1.5 bg-[var(--border)] text-[var(--text-secondary)] text-[9px] font-black uppercase tracking-wider rounded-lg hover:bg-[var(--border)]/50 transition-all"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setEditingAgent({...agent})}
+                                                            className="text-xs text-cyan-500 hover:underline font-bold uppercase tracking-wider"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {agents.length === 0 && !loading && (
+                            <div className="text-center py-12 text-[var(--text-tertiary)]">
+                                <Activity size={48} className="mx-auto mb-4 opacity-30" />
+                                <p>No agents found in catalog</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -602,6 +869,129 @@ export default function SystemPage() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PROCESS LOCKS TAB */}
+            {activeTab === "locks" && (
+                <div className="flex-1 bg-[var(--background)] p-8 overflow-y-auto">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="mb-6">
+                            <div className="flex justify-between items-end mb-4">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">System Administration</h4>
+                                    <h2 className="text-2xl font-bold mb-2">Process Lock Management</h2>
+                                    <p className="text-[var(--text-secondary)]">
+                                        View and manage active process locks across all projects. Force-release stuck locks when needed.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={fetchProcessLocks}
+                                    disabled={isLoadingLocks}
+                                    className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
+                                >
+                                    <RefreshCw size={16} className={isLoadingLocks ? "animate-spin" : ""} /> Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        {isLoadingLocks ? (
+                            <div className="text-center p-12 text-[var(--text-secondary)]">
+                                <Lock size={48} className="mx-auto opacity-10 mb-4 animate-pulse" />
+                                <p className="font-bold uppercase text-[10px] tracking-widest">Loading locks...</p>
+                            </div>
+                        ) : processLocks.length === 0 ? (
+                            <div className="text-center p-12 flex flex-col items-center gap-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)]">
+                                <div className="p-4 bg-green-500/10 rounded-full">
+                                    <Lock size={48} className="text-green-500" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-lg mb-1">No Active Locks</p>
+                                    <p className="text-[var(--text-secondary)] text-sm">All processes are currently free. This is a healthy state.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="bg-gradient-to-r from-cyan-500/10 to-transparent border-b border-[var(--border)]">
+                                            <th className="px-6 py-4 text-left text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Process</th>
+                                            <th className="px-6 py-4 text-left text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Project ID</th>
+                                            <th className="px-6 py-4 text-left text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Locked By</th>
+                                            <th className="px-6 py-4 text-left text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Expires At</th>
+                                            <th className="px-6 py-4 text-left text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Status</th>
+                                            <th className="px-6 py-4 text-center text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[var(--border)]">
+                                        {processLocks.map((lock) => {
+                                            const isExpired = new Date(lock.expires_at) < new Date();
+                                            const processNames: Record<string, string> = {
+                                                'triage': 'Triage',
+                                                'drafting': 'Drafting',
+                                                'refinement': 'Refinement',
+                                                'certification': 'Certification',
+                                                'governance': 'Governance'
+                                            };
+                                            return (
+                                                <tr key={lock.lock_id} className="hover:bg-[var(--text-primary)]/5 transition-colors">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Terminal size={16} className="text-cyan-500" />
+                                                            <span className="font-semibold">{processNames[lock.process_type] || lock.process_type}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono">
+                                                            {lock.project_id.substring(0, 8)}...
+                                                        </code>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Users size={14} className="text-gray-400" />
+                                                            <span className="font-medium">{lock.locked_by_username}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="text-sm">
+                                                            <div className={isExpired ? "text-red-500 font-semibold" : "text-[var(--text-secondary)]"}>
+                                                                {new Date(lock.expires_at).toLocaleString()}
+                                                            </div>
+                                                            {isExpired && (
+                                                                <div className="text-[10px] text-red-400 uppercase tracking-wider mt-1">
+                                                                    ⚠️ Expired
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                                            lock.status === 'active' 
+                                                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' 
+                                                                : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
+                                                        }`}>
+                                                            {lock.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        {lock.status === 'active' && (
+                                                            <button
+                                                                onClick={() => handleForceReleaseLock(lock.lock_id, lock.project_id, lock.process_type)}
+                                                                className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 mx-auto"
+                                                            >
+                                                                <X size={12} />
+                                                                Force Release
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

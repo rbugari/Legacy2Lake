@@ -283,6 +283,62 @@ async def delete_cartridge(cartridge_id: str, db: SupabasePersistence = Depends(
     db.client.table("utm_system_catalog").delete().eq("tech_id", cartridge_id).execute()
     return {"success": True}
 
+@router.get("/cartridges/{cartridge_id}/knowledge")
+async def get_cartridge_knowledge(cartridge_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Get expert knowledge (improvements.md) for a cartridge."""
+    try:
+        # Get cartridge type (origin or destination)
+        res = db.client.table("utm_system_catalog").select("type").eq("tech_id", cartridge_id).limit(1).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Cartridge not found")
+        
+        cartridge_type = res.data[0].get("type")
+        category_dir = "origins" if cartridge_type == "origin" else "destinations"
+        
+        # Build path to improvements.md
+        lab_path = os.path.join(os.getcwd(), "prompt_lab_export", category_dir, cartridge_id, "improvements.md")
+        
+        if os.path.exists(lab_path):
+            with open(lab_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return {"knowledge": content, "has_knowledge": True}
+        else:
+            # Return empty template if file doesn't exist
+            template = f"# Expert Knowledge: {cartridge_id.upper()}\n\n## Best Practices\n\n- Add your expert knowledge here...\n\n## Common Patterns\n\n- Document common patterns...\n"
+            return {"knowledge": template, "has_knowledge": False}
+    except Exception as e:
+        logger.error(f"Error loading knowledge for {cartridge_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/cartridges/{cartridge_id}/knowledge")
+async def update_cartridge_knowledge(cartridge_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Update expert knowledge (improvements.md) for a cartridge."""
+    try:
+        knowledge = payload.get("knowledge", "")
+        
+        # Get cartridge type (origin or destination)
+        res = db.client.table("utm_system_catalog").select("type").eq("tech_id", cartridge_id).limit(1).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Cartridge not found")
+        
+        cartridge_type = res.data[0].get("type")
+        category_dir = "origins" if cartridge_type == "origin" else "destinations"
+        
+        # Build path to improvements.md
+        lab_dir = os.path.join(os.getcwd(), "prompt_lab_export", category_dir, cartridge_id)
+        os.makedirs(lab_dir, exist_ok=True)
+        
+        improvements_path = os.path.join(lab_dir, "improvements.md")
+        
+        with open(improvements_path, "w", encoding="utf-8") as f:
+            f.write(knowledge)
+        
+        logger.info(f"Knowledge updated for cartridge {cartridge_id}")
+        return {"success": True, "message": f"Knowledge saved to {improvements_path}"}
+    except Exception as e:
+        logger.error(f"Error updating knowledge for {cartridge_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/origins")
 async def list_origins(db: SupabasePersistence = Depends(get_db)):
     """Backward compatibility for origins."""
@@ -292,10 +348,12 @@ async def list_origins(db: SupabasePersistence = Depends(get_db)):
     for item in res.data:
         origins.append({
             "id": str(item.get("id") or item.get("tech_id")),
+            "tech_id": item.get("tech_id"),
             "name": item.get("name") or item.get("label"),
             "desc": item.get("description"),
             "icon": item.get("logo_url"),
-            "enabled": True
+            "enabled": True,
+            "config": item.get("config") or {}
         })
     return {"origins": origins}
 
@@ -308,9 +366,57 @@ async def list_destinations(db: SupabasePersistence = Depends(get_db)):
     for item in res.data:
         destinations.append({
             "id": str(item.get("id") or item.get("tech_id")),
+            "tech_id": item.get("tech_id"),
             "name": item.get("name") or item.get("label"),
             "desc": item.get("description"),
             "icon": item.get("logo_url"),
-            "enabled": True
+            "enabled": True,
+            "config": item.get("config") or {}
         })
     return {"destinations": destinations}
+
+# --- Agents Catalog ---
+
+@router.get("/agents")
+async def list_agents(db: SupabasePersistence = Depends(get_db)):
+    """Returns all active agents with their display names and descriptions."""
+    try:
+        res = db.client.table("utm_agent_catalog").select("*").eq("is_active", True).order("agent_id").execute()
+        agents = []
+        for agent in res.data:
+            agents.append({
+                "agent_id": agent.get("agent_id"),
+                "name": agent.get("name"),  # Original internal name
+                "display_name": agent.get("display_name") or agent.get("name"),
+                "description": agent.get("description") or agent.get("role_description"),
+                "role_description": agent.get("role_description"),
+                "is_active": agent.get("is_active", True),
+                "phases": agent.get("phases") or []
+            })
+        return {"agents": agents}
+    except Exception as e:
+        logger.error(f"Error listing agents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load agents catalog")
+
+@router.put("/agents/{agent_id}")
+async def update_agent(agent_id: str, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """Updates an agent's display name, description and phases. Admin only."""
+    try:
+        data = {}
+        if "display_name" in payload:
+            data["display_name"] = payload["display_name"]
+        if "description" in payload:
+            data["description"] = payload["description"]
+        if "is_active" in payload:
+            data["is_active"] = payload["is_active"]
+        if "phases" in payload:
+            data["phases"] = payload["phases"]
+        
+        if not data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        db.client.table("utm_agent_catalog").update(data).eq("agent_id", agent_id).execute()
+        return {"success": True, "message": f"Agent {agent_id} updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

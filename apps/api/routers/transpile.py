@@ -3,16 +3,18 @@ Transpile & Orchestration Router
 Handles code generation, transpilation, and migration orchestration.
 Migrated from main.py for better modularity.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import os
+import uuid
 
-from routers.dependencies import get_db
+from routers.dependencies import get_db, get_identity
 from services.persistence_service import SupabasePersistence, PersistenceService
 from services.agent_c_service import AgentCService
 from services.agent_f_service import AgentFService
 from services.migration_orchestrator import MigrationOrchestrator
+from services.lock_service import LockService, ProcessLockError
 
 router = APIRouter(prefix="/transpile", tags=["Transpilation & Orchestration"])
 
@@ -178,7 +180,12 @@ async def optimize_task_code(payload: OptimizeRequest, db: SupabasePersistence =
 # --- Full Migration Orchestration ---
 
 @router.post("/orchestrate")
-async def trigger_orchestration(payload: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
+async def trigger_orchestration(
+    payload: Dict[str, Any], 
+    request: Request,
+    identity: dict = Depends(get_identity),
+    db: SupabasePersistence = Depends(get_db)
+):
     """Triggers the full Migration Orchestrator (Agents C -> F -> G)."""
     print(f"DEBUG: Entering trigger_orchestration with payload: {payload}")
     project_id = payload.get("project_id")
@@ -186,25 +193,95 @@ async def trigger_orchestration(payload: Dict[str, Any], db: SupabasePersistence
     
     if not project_id:
         return {"error": "project_id is required"}
+    
+    # === PROCESS LOCKING ===
+    lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
+    
+    # Get username for lock
+    tenant_id = identity.get("tenant_id")
+    username = identity.get("username", "Unknown User")
+    if not username or username == "Unknown User":
+        try:
+            tenant = await db.get_tenant_by_id(tenant_id)
+            username = tenant.get("username", "Unknown User") if tenant else "Unknown User"
+        except:
+            username = "Unknown User"
+    
+    # Generate or get session ID
+    session_id = request.headers.get("X-Session-ID")
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
+    # Try to acquire lock for all 3 processes (drafting, certification, governance)
+    lock_ids = {}
+    try:
+        for process_type in ["drafting", "certification", "governance"]:
+            lock = await lock_service.acquire_lock(
+                project_id=project_id,
+                process_type=process_type,
+                user_id=tenant_id,
+                username=username,
+                session_id=session_id,
+                user_agent=request.headers.get("user-agent"),
+                ip_address=request.headers.get("x-forwarded-for") or "unknown"
+            )
+            lock_ids[process_type] = lock['lock_id']
         
-    # 1. Resolve Project Name
-    project_name = project_id
-    if "-" in project_id:
-        print(f"DEBUG: Resolving project name for ID: {project_id}")
-        n = await db.get_project_name_by_id(project_id)
-        print(f"DEBUG: Resolved project name: {n}")
-        if n: 
-            project_name = n
+    except ProcessLockError as e:
+        # Release any acquired locks before failing
+        for lock_id in lock_ids.values():
+            try:
+                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            except:
+                pass
+        
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "error": "Process already running",
+                "message": e.message,
+                "locked_by": e.locked_by
+            }
+        )
+    
+    # === MAIN ORCHESTRATION LOGIC ===
+    try:    
+        # 1. Resolve Project Name
+        project_name = project_id
+        if "-" in project_id:
+            print(f"DEBUG: Resolving project name for ID: {project_id}")
+            n = await db.get_project_name_by_id(project_id)
+            print(f"DEBUG: Resolved project name: {n}")
+            if n: 
+                project_name = n
 
-    print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
-    orchestrator = MigrationOrchestrator(
-        project_name, 
-        project_uuid=project_id, 
-        tenant_id=db.tenant_id, 
-        client_id=db.client_id
-    )
+        print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
+        orchestrator = MigrationOrchestrator(
+            project_name, 
+            project_uuid=project_id, 
+            tenant_id=db.tenant_id, 
+            client_id=db.client_id
+        )
 
-    print("DEBUG: Running full migration...")
-    result = await orchestrator.run_full_migration(limit=limit)
-    print("DEBUG: Migration complete.")
-    return result
+        print("DEBUG: Running full migration...")
+        result = await orchestrator.run_full_migration(limit=limit)
+        print("DEBUG: Migration complete.")
+        
+        # === SUCCESS: Release all locks ===
+        for process_type, lock_id in lock_ids.items():
+            try:
+                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            except Exception as e:
+                print(f"WARNING: Failed to release {process_type} lock {lock_id}: {e}")
+        
+        return result
+        
+    except Exception as e:
+        # === ERROR: Release all locks before re-raising ===
+        for lock_id in lock_ids.values():
+            try:
+                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            except:
+                pass
+        raise e
+

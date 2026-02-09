@@ -73,7 +73,7 @@ export default function FileUpload({ onSuccess }: UploadProps) {
 
             <div>
                 <h3 className="font-black text-xs uppercase tracking-[0.2em] text-white">
-                    {isUploading ? (status === 'uploading' ? 'Uploading Asset...' : 'Agent A Analyzing...') : 'Ingest Source Asset'}
+                    {isUploading ? (status === 'uploading' ? 'Uploading Asset...' : 'Discovery Agent Analyzing...') : 'Ingest Source Asset'}
                 </h3>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-2 max-w-[200px] leading-relaxed">
                     {isUploading ? 'The Detective is mapping technical lineage' : 'Upload your source package to start the discovery mesh.'}

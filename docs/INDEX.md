@@ -1,7 +1,7 @@
-# Documentation Index - Legacy2Lake v3.6
+# Documentation Index - Legacy2Lake v3.8
 
-> Last Updated: 2026-02-01  
-> Architecture Version: 3.6 (Cloud-Native, Multi-Tenant)
+> Last Updated: 2026-02-09  
+> Architecture Version: 3.8 (Governance & Architecture Clarity)
 
 ## Quick Start
 
@@ -20,7 +20,7 @@
 ### Migration Workflow (6 Stages)
 
 1. **[Stage 1: Discovery](stages/STAGE_1_DISCOVERY.md)** - File upload, R2 storage, inventory
-2. **[Stage 2: Triage](stages/STAGE_2_TRIAGE.md)** - Tech detection (Agent S), forensics
+2. **[Stage 2: Triage](stages/STAGE_2_TRIAGE.md)** - Tech detection (Technology Scout), forensics
 3. **[Stage 3: Drafting](stages/STAGE_3_DRAFTING.md)** - IR normalization, knowledge injection
 4. **[Stage 4: Refinement](stages/STAGE_4_REFINEMENT.md)** - Code generation, cartridges
 5. **[Stage 5: Certification](stages/STAGE_5_CERTIFICATION.md)** - Compliance, scoring, COP
@@ -31,7 +31,7 @@
 ### Architecture & Design
 - **[Architecture Overview](technical/architecture.md)** - System design and components
 - **[AI Infrastructure](technical/ai_infrastructure.md)** - Agent mesh and LLM integration
-- **[System Prompts & Agents](technical/system_prompts_and_agents.md)** - Prompt Lab, Agent S, knowledge injection
+- **[System Prompts & Agents](technical/system_prompts_and_agents.md)** - Prompt Lab, Technology Scout, knowledge injection
 - **[Data Model](technical/data_model.md)** - Database schema and relationships
 - **[Database Structure](technical/database_structure.md)** - Supabase tables and RLS
 
@@ -50,7 +50,31 @@
 - **[Comprehensive Review](COMPREHENSIVE_REVIEW.md)** - Detailed system analysis
 - **[Specification](SPECIFICATION.md)** - Functional and technical requirements
 
-## v3.6 Key Features
+## v3.8 Key Features
+
+### Process Locking & Data Integrity (NEW)
+- **Process Locks**: Prevents concurrent execution on same project (data corruption prevention)
+- **Lock Management**: Admin interface with force-release capabilities
+- **Smart Timeouts**: Process-specific lock durations (triage: 60min, drafting: 30min, etc.)
+- **Auto-Expiration**: Stale locks automatically expire via database RPC function
+
+### Professional UI Components (NEW)
+- **ProcessLockModal**: Amber-themed modal showing lock details and user guidance
+- **ProcessExecutionModal**: Real-time agent pipeline visualization with progress tracking
+- **ReportsLibraryModal**: Unified interface for all project reports with stage-aware availability
+- **Admin Tools**: Process lock viewer with force-release and auto-refresh
+
+### Governance & Architecture (NEW)
+- **3-Layer Ownership Model**: Clear boundaries (Admin/Tenant/User)
+- **Technology Catalog Enforcement**: Strict validation against system catalog
+- **Cost Ownership**: Formalized tenant responsibility for provider costs
+- **Governance Documentation**: Comprehensive rules in GOVERNANCE_RULES.md
+
+### Reports & Documentation (ENHANCED)
+- **PDF Reports**: Triage (Discovery) and Final (Delivery) reports with Playwright generation
+- **Reports Library**: Centralized modal access from workspace header (📚 icon)
+- **Version-Agnostic Templates**: No hardcoded version numbers for maintenance-free updates
+- **Professional Branding**: Jinja2 templates with logos, watermarks, headers/footers
 
 ### Cloud-Native Storage
 - **Cloudflare R2**: S3-compatible object storage
@@ -89,12 +113,13 @@
 - **Variable Injection**: CI/CD-ready placeholders
 - **Deployment Options**: Manual, CI/CD, or Direct cloud
 
-## Obsolete Documentation (Pre-v3.6)
+## Obsolete Documentation (Pre-v3.8)
 
 The following files may contain outdated information and should be reviewed:
-- Files referencing local file storage (pre-R2 migration)
-- Single-tenant architecture documentation
-- Hardcoded provider configurations
+- Files referencing local file storage (pre-R2 migration, before v3.5)
+- Single-tenant architecture documentation (before v3.6)
+- Hardcoded provider configurations (before v3.6)
+- Individual report download buttons (consolidated in v3.8 Reports Library)
 
 ## Contributing
 

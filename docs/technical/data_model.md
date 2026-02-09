@@ -1,13 +1,19 @@
-# Metadata Store: Data Model Specification (v3.5)
+# Metadata Store: Data Model Specification (v3.8)
 
-The **Metadata Store** is the central repository where the "intelligence" of Legacy2Lake resides. In v3.5, it has been modernized to support full **Cloud-Native Storage (R2)** and **Isolated Multi-Tenancy**.
+The **Metadata Store** is the central repository where the "intelligence" of Legacy2Lake resides. In v3.8, it adds **Process Locking** for data integrity, building on the Cloud-Native Storage (R2) and Isolated Multi-Tenancy introduced in v3.5.
 
-## v3.5 Updates (Cloud-Native & Multi-Tenant)
+## Recent Updates
 
-### Core Changes:
+### v3.8 (Process Locking & Governance):
+- **`utm_process_locks`**: New table for concurrent execution prevention with smart timeouts
+- **Lock Management**: Admin force-release capabilities and auto-expiration via RPC function
+- **Governance Rules**: Formalized 3-layer ownership model (Admin/Tenant/User) documented
+- **Reports Enhancement**: Version-agnostic templates and centralized Reports Library modal
+
+### v3.5 (Cloud-Native & Multi-Tenant):
 - **`tenant_id` Enforcement**: All project-related tables now transition to a mandatory `tenant_id` (UUID) for strict isolation via Supabase RLS.
 - **R2 Storage Inventory**: The new `utm_file_inventory` table provides a metadata cache of objects stored in Cloudflare R2, enabling high-performance listing without constant S3-API calls.
-- **Project Settings v2**: `utm_projects.settings` now includes environment variables, source/target tech, and tenant-specific configuration in 
+- **Project Settings v2**: `utm_projects.settings` now includes environment variables, source/target tech, and tenant-specific configuration
 - **Audit Persistence**: `utm_execution_logs` now stores structured phase-specific trace data (Phase 1-10).
 
 ---

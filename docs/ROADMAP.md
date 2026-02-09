@@ -17,22 +17,38 @@
 - [ ] **Informatica/DataStage**: XML exports support.
 - [ ] **PL/SQL Modernization**: Oracle package conversion.
 
-## 📦 Delivered Scope (v3.2)
-The **Enterprise Modernization Suite** is feature complete for the core artifact generation use case. Focus is on high-fidelity PySpark, Governance, and Parameterized Delivery.
+## 📦 Delivered Scope (v3.8)
+The **Enterprise Modernization Suite** is feature complete with production-grade process locking, professional UI components, and comprehensive governance framework. Focus on system stability, multi-tenant security, and UX polish.
 
 ## 📅 Release History
 
-### v3.6 (Quality & Stability Enhancement) - LATEST ⭐
-- **UI Refinements**: Resizable split pane in Drafting explorer with persistent user preferences.
-- **Compliance Externalization**: Dynamic rule fetching from `utm_system_catalog` for Agent F compliance checks.
-- **Pipeline Stability**: Fixed critical cartridge factory synchronization bug in Architect service.
-- **Migration Bitácora**: Auto-generated markdown logbook documenting Agent F critiques and reasoning.
-- **Documentation Update**: Full alignment across all docs with v3.6 changes.
+### v3.8 (The Governance & Architecture Clarity Release) - LATEST ⭐ - Feb 9, 2026
+- **Process Locking**: Complete system to prevent concurrent execution and data corruption
+- **Admin Tools**: Process lock management interface with force-release capabilities
+- **Professional Modals**: ProcessLockModal, ProcessExecutionModal, and ReportsLibraryModal for enhanced UX
+- **Governance Rules**: Formalized 3-layer ownership model (Admin/Tenant/User)
+- **Reports Library**: Unified modal for centralized report access with stage-aware availability
+- **Version-Agnostic Templates**: PDF reports no longer include version numbers
+- **Bug Fixes**: Lock service async issues, duplicate navbar, code viewer expansion
+- **UI Cleanup**: Removed Workbench (Diff) tab, cleaned stage toolbars, consistent dark mode
+
+### v3.7 (The System & Identity Release) - Feb 6, 2026
+- **System Router Refactor**: Centralized `/system/*` endpoints for admin operations
+- **Dynamic Agent Loading**: Agents loaded from database, not hardcoded
+- **Identity Management**: Full admin UI for Tenants, Users, and Clients
+- **Provider Vault**: Strict filtering of configured providers per tenant
+
+### v3.6 (Quality & Stability Enhancement) - Feb 3, 2026
+- **UI Refinements**: Resizable split pane in Drafting explorer with persistent user preferences
+- **Compliance Externalization**: Dynamic rule fetching from `utm_system_catalog` for Agent F compliance checks
+- **Pipeline Stability**: Fixed critical cartridge factory synchronization bug in Architect service
+- **Migration Bitácora**: Auto-generated markdown logbook documenting Agent F critiques and reasoning
+- **Documentation Update**: Full alignment across all docs with v3.6 changes
 
 ### v3.5 (The Cloud-Native & Multi-Tenant Reset)
-- **Cloudflare R2 Storage**: Complete migration to object storage with tenant isolation.
-- **Prompt Laboratory**: Dynamic prompt management system with 22 knowledge modules.
-- **Agent S (Scout)**: Technology detection for automatic source platform identification.
+- **Cloudflare R2 Storage**: Complete migration to object storage with tenant isolation
+- **Prompt Laboratory**: Dynamic prompt management system with 22 knowledge modules
+- **Agent S (Scout)**: Technology detection for automatic source platform identification
 
 ### v3.2 (The Enterprise Modernization Suite)
 - **Architect v2.0**: Automated inference of partitioning, volume, and latency.
