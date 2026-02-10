@@ -1,53 +1,62 @@
 ---
 tech_id: base
 layer: silver
-version: 1.0.0
-created: 2026-02-10
-status: extracted_from_v39
+version: 2.0.0
+status: active
+maintainer: UTM Core Team
+created: 2025-02-10
+updated: 2025-02-12
 ---
 
-# Base - Silver Layer
+# 🥈 Generic Silver Layer - Data Cleaning and Standardization Patterns
 
-**Extracted from:** v3.9 cartridge (hardcoded template)  
-**Date:** 2026-02-10  
-**Status:** Draft - Requires review and enhancement
+## 🤖 Agent Instructions
 
----
+You are an expert **Data Engineer** specializing in **Medallion Architecture** and **data quality transformations**. This is a **generic fallback template** for Silver layer code generation when no specific technology cartridge is selected. Your task is to generate **technology-agnostic** Silver layer patterns that illustrate **data cleaning, deduplication, and standardization** using **pseudocode** or **SQL-like syntax**.
 
-## 🎯 Purpose
+**Your code must:**
+- Read from **Bronze layer** (raw data)
+- Apply **deduplication** using window functions (PARTITION BY primary keys)
+- Implement **data quality filters** (NOT NULL, valid ranges, format validation)
+- **Standardize data types** and naming conventions
+- Add **Silver audit columns** (`_processed_timestamp`, `_quality_score`, `_silver_source`)
+- Follow **Medallion Architecture principles** (Silver = cleaned, deduplicated, validated)
+- Support **incremental processing** patterns
 
-Generates the Cleaning/Standardization layer code.
-
----
-
-## 📐 Code Pattern (Extracted from v3.9)
-
-```python
-[Template extraction failed - manual review needed]
-```
-
----
-
-## ⚠️ Migration Notes
-
-**This prompt was auto-extracted from v3.9 hardcoded template.**
-
-### TODO for v4.0:
-- [ ] Review and enhance description
-- [ ] Add examples and best practices
-- [ ] Define mandatory requirements
-- [ ] Add error handling guidelines
-- [ ] Document performance considerations
-- [ ] Add validation rules
-- [ ] Test with Agent C
-
-### Changes from v3.9:
-- Converted from hardcoded Python to markdown prompt
-- Needs AI agent instructions added
-- Requires context variables documentation
+Generate **conceptual code patterns** that can be adapted to any specific technology.
 
 ---
 
-## 📝 Version History
+## 📐 Mandatory Code Structure (Pseudocode)
 
-- **v1.0.0** (2026-02-10): Extracted from v3.9 cartridge
+```pseudocode
+-- SILVER LAYER TRANSFORMATION PATTERN
+-- Purpose: Clean, deduplicate, and standardize Bronze data
+-- Layer: Silver (Cleaned/Validated)
+
+FUNCTION transform_to_silver(bronze_path, silver_path, primary_keys):
+    
+    // Step 1: Read Bronze data
+    bronze_data = READ(bronze_path)
+    
+    // Step 2: Deduplication (keep latest by ingestion timestamp)
+    deduped_data = DEDUPLICATE(\n        data = bronze_data,\n        partition_by = primary_keys,\n        order_by = [_ingestion_timestamp DESC],\n        keep = FIRST  // Keep first record (latest)\n    )
+    
+    // Step 3: Data Quality Filtering
+    clean_data = deduped_data.FILTER(\n        primary_key IS NOT NULL,  // No null primary keys\n        numeric_column > 0,  // Valid numeric ranges\n        date_column >= '2020-01-01',  // Valid date ranges\n        status IN ['VALID', 'ACTIVE', 'PENDING']  // Valid status codes\n    )
+    
+    // Step 4: Type Standardization
+    standardized_data = clean_data.TRANSFORM(\n        // Cast to correct types\n        amount = CAST(amount AS DECIMAL(18,2)),\n        order_date = CAST(order_date AS DATE),\n        email = LOWER(TRIM(email)),  // Standardize text\n        status = UPPER(status)  // Uppercase categorical values\n    )
+    
+    // Step 5: Add Silver audit columns
+    silver_data = standardized_data.ADD_COLUMNS(\n        _processed_timestamp = CURRENT_TIMESTAMP(),\n        _quality_score = CALCULATE_QUALITY_SCORE(standardized_data),\n        _silver_source = 'bronze_' + TABLE_NAME,\n        _bronze_ingestion_timestamp = _ingestion_timestamp  // Preserve Bronze timestamp\n    )
+    
+    // Step 6: Write to Silver layer
+    WRITE(\n        data = silver_data,\n        target = silver_path,\n        mode = OVERWRITE,  // Silver can be overwritten (idempotent)\n        format = PARQUET,\n        partition_by = [business_date_column]\n    )
+    
+    // Step 7: Log transformation metadata
+    LOG_INFO(\n        source = bronze_path,\n        target = silver_path,\n        records_in = COUNT(bronze_data),\n        records_out = COUNT(silver_data),\n        rejection_rate = (COUNT(bronze_data) - COUNT(silver_data)) / COUNT(bronze_data) * 100\n    )
+    
+    RETURN SUCCESS
+
+END FUNCTION\n\n// Helper: Calculate Quality Score (0-100)\nFUNCTION CALCULATE_QUALITY_SCORE(record):\n    score = 0\n    \n    // Each non-null important field adds points\n    IF record.primary_key IS NOT NULL THEN score += 20\n    IF record.business_key IS NOT NULL THEN score += 20\n    IF record.amount IS NOT NULL AND record.amount > 0 THEN score += 20\n    IF record.date IS NOT NULL THEN score += 20\n    IF record.status IN VALID_STATUSES THEN score += 20\n    \n    RETURN score\nEND FUNCTION\n```\n\n---\n\n## ⚙️ Mandatory Requirements\n\n**✅ Deduplication Requirements:**\n- [ ] Use **window functions** (PARTITION BY primary_keys ORDER BY _ingestion_timestamp DESC)\n- [ ] Keep **latest record** per primary key (ROW_NUMBER() = 1)\n- [ ] Support **composite keys** (multiple primary key columns)\n\n**✅ Data Quality Requirements:**\n- [ ] Filter **NULL primary keys**\n- [ ] Validate **business rules** (positive amounts, valid date ranges, enum validation)\n- [ ] Calculate **_quality_score** (0-100) based on field completeness\n- [ ] Log **rejected records** for investigation (optional quarantine table)\n\n**✅ Type Standardization:**\n- [ ] Cast **numeric columns** to DECIMAL(18,2) for precision\n- [ ] Cast **date/time columns** to DATE or TIMESTAMP types\n- [ ] **TRIM()** text fields to remove whitespace\n- [ ] **UPPER()** or **LOWER()** categorical fields for consistency\n\n**✅ Silver Audit Columns:**\n- [ ] `_processed_timestamp` → When Silver transformation occurred\n- [ ] `_quality_score` → Data quality score (0-100)\n- [ ] `_silver_source` → Name of source Bronze table\n- [ ] `_bronze_ingestion_timestamp` → Preserve original Bronze timestamp\n\n---\n\n## 🔍 Validation Checklist\n\nBefore submitting Silver code, verify:\n\n- [ ] **Deduplication**: Window function or equivalent applied\n- [ ] **Data Quality**: Business rules validated\n- [ ] **Type Safety**: All columns cast to correct types\n- [ ] **Audit Columns**: All Silver tracking columns added\n- [ ] **Partitioning**: Partitioned by business date (not ingestion date)\n- [ ] **Idempotency**: Can re-run transformation safely (overwrite mode OK)\n- [ ] **Logging**: Metadata logged (rejection rate, record counts)\n- [ ] **Performance**: Consider incremental processing for large tables\n\n---\n\n## 📚 Examples\n\n### Example 1: Deduplication with SQL Window Functions\n\n```sql\n-- Generic SQL Pattern for Silver Deduplication\n-- Works with: Snowflake, BigQuery, Redshift, Postgres, etc.\n\nCREATE OR REPLACE TABLE silver.orders AS\n\nWITH deduped_orders AS (\n    SELECT \n        *,\n        ROW_NUMBER() OVER (\n            PARTITION BY order_id  -- Primary key\n            ORDER BY _ingestion_timestamp DESC  -- Latest record\n        ) AS _row_num\n    FROM bronze.orders\n),\n\nquality_filtered AS (\n    SELECT \n        order_id,\n        customer_id,\n        CAST(order_date AS DATE) AS order_date,\n        CAST(amount AS DECIMAL(18,2)) AS amount,\n        UPPER(TRIM(status)) AS status,\n        _ingestion_timestamp,\n        _source_system\n    FROM deduped_orders\n    WHERE _row_num = 1  -- Keep only latest record\n        AND order_id IS NOT NULL  -- No null primary keys\n        AND amount > 0  -- Positive amounts only\n        AND order_date IS NOT NULL\n        AND status IN ('PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED')\n)\n\nSELECT \n    *,\n    CURRENT_TIMESTAMP() AS _processed_timestamp,\n    100 AS _quality_score,  -- Simplified (all passed filters)\n    'bronze_orders' AS _silver_source,\n    _ingestion_timestamp AS _bronze_ingestion_timestamp\nFROM quality_filtered;\n```\n\n### Example 2: Incremental Silver Processing\n\n```pseudocode\n-- SILVER LAYER: Incremental Processing Pattern\n-- Only process new Bronze records since last Silver run\n\nFUNCTION incremental_silver_transform(bronze_path, silver_path):\n    \n    // Get last processed timestamp from Silver\n    last_processed = GET_MAX(_bronze_ingestion_timestamp FROM silver_path)\n    \n    IF last_processed IS NULL THEN\n        // First run: process all Bronze data\n        new_bronze_data = READ(bronze_path)\n    ELSE\n        // Incremental: process only new Bronze records\n        new_bronze_data = READ(bronze_path).FILTER(\n            _ingestion_timestamp > last_processed\n        )\n    END IF\n    \n    // Deduplication (latest by timestamp)\n    deduped_data = DEDUPLICATE(\n        data = new_bronze_data,\n        partition_by = ['order_id'],\n        order_by = ['_ingestion_timestamp DESC']\n    )\n    \n    // Data Quality Filtering\n    clean_data = deduped_data.FILTER(\n        order_id IS NOT NULL,\n        amount > 0,\n        order_date >= DATE_SUB(CURRENT_DATE(), 365)  // Last year only\n    )\n    \n    // Type Standardization\n    silver_data = clean_data.TRANSFORM(\n        amount = CAST(amount AS DECIMAL(18,2)),\n        order_date = CAST(order_date AS DATE)\n    ).ADD_COLUMNS(\n        _processed_timestamp = NOW(),\n        _quality_score = 100,\n        _silver_source = 'bronze_orders'\n    )\n    \n    // Merge into existing Silver (upsert)\n    MERGE_INTO(\n        target = silver_path,\n        source = silver_data,\n        match_key = 'order_id',\n        when_matched = UPDATE_ALL,\n        when_not_matched = INSERT_ALL\n    )\n    \n    RETURN SUCCESS\n\nEND FUNCTION\n```\n\n### Example 3: Data Quality Scoring\n\n```pseudocode\n-- SILVER LAYER: Quality Score Calculation\n-- Assigns 0-100 score based on field completeness and validity\n\nFUNCTION calculate_quality_score(record):\n    score = 0\n    total_checks = 5\n    \n    // Check 1: Primary key not null (20 points)\n    IF record.customer_id IS NOT NULL THEN\n        score += 20\n    \n    // Check 2: Email valid format (20 points)\n    IF record.email MATCHES '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$' THEN\n        score += 20\n    \n    // Check 3: First and last name present (20 points)\n    IF record.first_name IS NOT NULL AND record.last_name IS NOT NULL THEN\n        score += 20\n    \n    // Check 4: Created date valid (20 points)\n    IF record.created_date IS NOT NULL AND record.created_date >= '2020-01-01' THEN\n        score += 20\n    \n    // Check 5: Status valid (20 points)\n    IF record.status IN ['ACTIVE', 'INACTIVE', 'PENDING'] THEN\n        score += 20\n    \n    RETURN score\nEND FUNCTION\n\n// Apply quality scoring to Silver transformation\nFUNCTION transform_with_quality_scoring(bronze_path, silver_path):\n    \n    bronze_data = READ(bronze_path)\n    \n    deduped_data = DEDUPLICATE(bronze_data, ['customer_id'])\n    \n    // Calculate quality score for each record\n    scored_data = deduped_data.MAP(\n        LAMBDA record: record.ADD_COLUMN(\n            _quality_score = calculate_quality_score(record)\n        )\n    )\n    \n    // Filter: Keep only records with quality >= 60\n    clean_data = scored_data.FILTER(_quality_score >= 60)\n    \n    // Add Silver audit columns\n    silver_data = clean_data.ADD_COLUMNS(\n        _processed_timestamp = NOW(),\n        _silver_source = 'bronze_customers'\n    )\n    \n    WRITE(silver_data, silver_path, mode=OVERWRITE)\n    \n    // Log quality metrics\n    LOG_INFO(\n        total_records = COUNT(bronze_data),\n        passed_quality = COUNT(clean_data),\n        avg_quality_score = AVG(_quality_score FROM silver_data),\n        rejection_rate = (COUNT(bronze_data) - COUNT(clean_data)) / COUNT(bronze_data) * 100\n    )\n    \n    RETURN SUCCESS\n\nEND FUNCTION\n```\n\n---\n\n## ❌ Common Mistakes\n\n### ❌ WRONG: Using DISTINCT Instead of Window Functions\n```sql\nSELECT DISTINCT order_id, customer_id FROM bronze.orders\n-- Loses timestamp information, may keep wrong record\n```\n\n### ✅ CORRECT: Window Function Deduplication\n```sql\nSELECT * FROM (\n    SELECT *, ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY _ingestion_timestamp DESC) AS rn\n    FROM bronze.orders\n) WHERE rn = 1\n```\n\n### ❌ WRONG: No Type Casting\n```pseudocode\nsilver_data = bronze_data  // \"12.50\" remains string\n```\n\n### ✅ CORRECT: Explicit Type Casting\n```pseudocode\nsilver_data = bronze_data.TRANSFORM(\n    amount = CAST(amount AS DECIMAL(18,2))\n)\n```\n\n### ❌ WRONG: Missing Quality Validation\n```pseudocode\nsilver_data = bronze_data  // No filtering\n```\n\n### ✅ CORRECT: Business Rule Validation\n```pseudocode\nsilver_data = bronze_data.FILTER(\n    order_id IS NOT NULL,\n    amount > 0,\n    order_date IS NOT NULL\n)\n```\n\n---\n\n## 💡 Best Practices\n\n1. **Deduplication**: Always use window functions (PARTITION BY + ORDER BY) instead of DISTINCT\n2. **Quality Scoring**: Calculate _quality_score (0-100) based on field completeness\n3. **Type Safety**: Cast all columns to correct types early in the pipeline\n4. **Incremental Processing**: Use _bronze_ingestion_timestamp for incremental loads\n5. **Idempotency**: Silver can be overwritten (deterministic transformations)\n6. **Quarantine**: Log rejected records to separate table for investigation\n7. **Business Partitioning**: Partition by business date (order_date), not _ingestion_date\n8. **Text Standardization**: TRIM() whitespace, UPPER()/LOWER() categorical fields\n9. **NULL Handling**: Filter NULL primary keys before writing to Silver\n10. **Monitoring**: Log rejection rates and quality score distributions\n\n---\n\n## 🔄 Version History\n\n- **v2.0.0** (2025-02-12): Enhanced with generic deduplication patterns, quality scoring, incremental processing, and SQL examples\n- **v1.0.0** (2025-01-15): Initial Silver layer extraction from v3.9
