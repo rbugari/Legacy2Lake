@@ -3,7 +3,93 @@
 > [!NOTE]
 > **Product Strategy**: Legacy2Lake operates as a high-fidelity **Artifact Generator**. Our roadmap focuses on generating production-ready code, IaC, and Orchestration manifests while maintaining a zero-access security posture relative to client infrastructure.
 
-## � Future Backlog (Post-v3.2)
+---
+
+## 🎯 Current Focus: AI Revolution (v4.0)
+
+**Vision**: v3.9 Multi-User COMPLETE ✅ → Now focusing on autonomous AI (v4.0).
+
+**Philosophy**: **Keep it simple. Ship fast. Don't over-engineer.**
+
+**Timeline**: February 2026 - Q3 2026 (8-10 weeks remaining)
+
+### Strategic Releases (SIMPLIFIED)
+1. **v3.9** - Multi-User Simplificado ✅ **COMPLETED** (Feb 10, 2026)
+2. ~~v3.10~~ ❌ **ELIMINADO** (YAGNI - permisos granulares no necesarios)
+3. ~~v3.11~~ ❌ **ELIMINADO** (YAGNI - comentarios/notifications no necesarios)
+4. **v4.0** - AI Revolution (Q3 2026, 8-10 semanas) 🔴 **NEXT**
+
+See [Simple Release Plan](planning/RELEASE_PLAN_SIMPLE_v3.9.md) for v3.9 details.
+
+---
+
+## 🚀 Next Release (Committed)
+
+### v4.0 - AI Revolution (Q3 2026) 🔴 CRITICAL
+**Theme**: "Zero-Hardcode, Prompt-Driven Everything"
+
+**Core Transformation**:
+- ❌ Remove ALL hardcoded generation templates
+- ✅ Everything driven by prompts in database  
+- ✅ Self-learning agents
+- ✅ Multi-model orchestration
+- ✅ Deep forensic triage (field-level analysis)
+- ✅ Real-time validation
+
+**Duration**: 8-10 weeks  
+**Business Impact**: Premium AI features, market leadership
+
+---
+
+## ✅ Recently Completed
+
+### v3.9 - Multi-User Simplificado (Feb 10, 2026) ✅ RELEASED
+**Theme**: "Equipos Pequeños, Control Simple"
+
+**Delivered Features**:
+- ✅ Multiple users per tenant with role-based access
+- ✅ **4 roles**: ADMIN, MANAGER, COLLABORATOR, VIEWER
+- ✅ Separated `utm_users` from `utm_tenants` (organization model)
+- ✅ User Management UI in Tenant Console (`/settings`)
+- ✅ Project-level access control
+- ✅ Platform Admin Dashboard with All Users view
+- ✅ Password reset and Ghost Mode impersonation
+- ✅ Simplified data model (removed client_id, org_name)
+
+**Database Changes Delivered**:
+- ✅ `utm_users` table (separate user identities)
+- ✅ `utm_user_invitations` table
+- ✅ `utm_project_members` table (project-level access)
+- ✅ `utm_tenants` simplified (tenant_id + display_name + tier)
+- ✅ Migrations 020-025 executed
+
+**Business Impact**: Enterprise multi-user support with minimal complexity
+
+---
+
+## 💼 Post-v4.0: Pricing Tiers (S/M/L)
+
+**Models de Consumo** (Q4 2026 o después):
+
+```
+STARTER (S)      STANDARD (M)     PREMIUM (L)
+$49/mes          $149/mes         $499/mes
+1 usuario        3 usuarios       10 usuarios
+5 proyectos      20 proyectos     Unlimited
+GPT-4o-mini      GPT-4o           Claude Opus
+```
+
+**Implementation**:
+- Field `tier` already exists in `utm_tenants` (v3.9)
+- Enforce limits in API
+- Stripe integration
+- Usage dashboard
+
+**Priority**: Medium (after v4.0 is stable)
+
+---
+
+## 📦 Long-Term Backlog (Post-v4.0)
 
 ### Phase E: Infrastructure as Code (IaC) - **DEFERRED**
 - [ ] **Terraform/Bicep Generation**: Auto-generate IaC for Cloud Storage, Databricks Clusters, and Secrets Managers.
@@ -17,12 +103,21 @@
 - [ ] **Informatica/DataStage**: XML exports support.
 - [ ] **PL/SQL Modernization**: Oracle package conversion.
 
-## 📦 Delivered Scope (v3.8)
-The **Enterprise Modernization Suite** is feature complete with production-grade process locking, professional UI components, and comprehensive governance framework. Focus on system stability, multi-tenant security, and UX polish.
+## 📦 Delivered Scope (v3.9)
+The **Enterprise Multi-User Suite** is feature complete with role-based access control, user management UI, project-level permissions, and platform administration dashboard. Ready for team collaboration in enterprise environments.
 
 ## 📅 Release History
 
-### v3.8 (The Governance & Architecture Clarity Release) - LATEST ⭐ - Feb 9, 2026
+### v3.9 (The Multi-User Simplificado Release) - LATEST ⭐ - Feb 10, 2026
+- **Multi-User Support**: Multiple users per tenant with role-based access (ADMIN/MANAGER/COLLABORATOR/VIEWER)
+- **User Management**: Complete UI in Tenant Console for creating, editing, and managing users
+- **Project Access Control**: Granular project-level permissions via `utm_project_members`
+- **Platform Admin Dashboard**: All Users view with filters, password reset, and Ghost Mode impersonation
+- **Simplified Data Model**: Removed `client_id` and `org_name`, kept only `tenant_id` + `display_name`
+- **Database Separation**: `utm_users` separated from `utm_tenants` (organization model)
+- **Migrations**: 020-025 (users table, invitations, project members, simplified tenants)
+
+### v3.8 (The Governance & Architecture Clarity Release) - Feb 9, 2026
 - **Process Locking**: Complete system to prevent concurrent execution and data corruption
 - **Admin Tools**: Process lock management interface with force-release capabilities
 - **Professional Modals**: ProcessLockModal, ProcessExecutionModal, and ReportsLibraryModal for enhanced UX

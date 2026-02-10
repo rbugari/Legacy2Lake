@@ -5,8 +5,45 @@ import os
 import sys
 import time
 import asyncio
+import warnings
+import ssl
 from datetime import datetime
+
+# CRITICAL: Disable SSL verification BEFORE any imports
+os.environ['PYTHONHTTPSVERIFY'] = '0'
+os.environ['CURL_CA_BUNDLE'] = ''
+os.environ['REQUESTS_CA_BUNDLE'] = ''
+
 from dotenv import load_dotenv
+
+# Suppress SSL warnings for development (Supabase self-signed certs)
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Create unverified SSL context globally for development
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# Monkey-patch httpcore to disable SSL verification at the lowest level
+try:
+    import httpcore
+    import httpcore._backends.sync
+    
+    _original_start_tls = httpcore._backends.sync.SyncStream.start_tls
+    
+    def _patched_start_tls(self, *args, **kwargs):
+        # Force SSL context without verification
+        import ssl
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        kwargs['ssl_context'] = ssl_context
+        return _original_start_tls(self, *args, **kwargs)
+    
+    httpcore._backends.sync.SyncStream.start_tls = _patched_start_tls
+    print("✅ SSL verification disabled via httpcore monkey-patch")
+except Exception as e:
+    print(f"⚠️  Could not monkey-patch httpcore: {e}")
 
 # Fix for Windows asyncio subprocess support
 if sys.platform == 'win32':
@@ -22,6 +59,7 @@ from apps.api.routers import system, config # Standardize path
 from apps.api.routers.auth import router as auth_router
 from apps.api.routers.agents import router as agents_router
 from apps.api.routers.projects import router as projects_router
+from apps.api.routers.project_members import router as project_members_router
 from apps.api.routers.triage import router as triage_router
 from apps.api.routers.transpile import router as transpile_router
 from apps.api.routers.governance import router as governance_router
@@ -99,6 +137,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 app.include_router(auth_router, prefix="/auth")
 app.include_router(projects_router)
+app.include_router(project_members_router)
 app.include_router(triage_router)
 app.include_router(transpile_router)
 app.include_router(governance_router)

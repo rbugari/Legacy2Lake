@@ -76,7 +76,7 @@ export default function ProfilePage() {
                         <div className="space-y-6">
                             <ProfileItem label="Username" value={user.username} icon={<User size={16} />} />
                             <ProfileItem label="Tenant ID" value={user.tenant_id} icon={<Tag size={16} />} />
-                            <ProfileItem label="Client Affinity" value={user.client_id} icon={<Briefcase size={16} />} />
+                            <ProfileItem label="Organization" value={user.display_name} icon={<Briefcase size={16} />} />
                             <ProfileItem
                                 label="System Role"
                                 value={user.role}

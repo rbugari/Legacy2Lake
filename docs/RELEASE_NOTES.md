@@ -1,6 +1,115 @@
 # Release Notes
 
-## Version 3.8 (The Governance & Architecture Clarity Release) - 2026-02-09 ⭐ LATEST
+## Version 3.9 (The Multi-User Simplificado Release) - 2026-02-10 ⭐ LATEST
+
+This release delivers complete multi-user support with role-based access control, enabling teams to collaborate on migration projects with proper permission management.
+
+### 🌟 Major Features
+
+#### Multi-User Architecture
+*   **Separated User Identity**: New `utm_users` table separates user accounts from `utm_tenants` (organizations)
+*   **Role-Based Access**: Four roles with distinct permissions:
+    *   **ADMIN**: Platform-level administration (Platform owner only)
+    *   **MANAGER**: Tenant administration, user management, all project access
+    *   **COLLABORATOR**: Create/edit projects, execute stages
+    *   **VIEWER**: Read-only access, download reports
+*   **Organization Model**: `utm_tenants` now represents organizations with `display_name` and `tier`
+*   **Simplified Schema**: Removed redundant `client_id` and `org_name` columns
+
+#### User Management (Tenant Console)
+*   **User Management Tab**: Complete UI at `/settings` for MANAGER to manage team
+*   **Create Users**: Direct user creation with automatic temporary password generation
+*   **Edit Users**: Update roles, display names, and active status
+*   **Reset Password**: MANAGER can reset passwords for team members
+*   **Search & Filter**: Find users by username or email
+*   **Role Badges**: Visual indicators for user roles (color-coded)
+
+#### Project-Level Access Control
+*   **Project Access Tab**: MANAGER can control who accesses which projects
+*   **Member Management**: Add/remove users from specific projects
+*   **Granular Permissions**: Different roles per project possible
+*   **`utm_project_members` Table**: Tracks project-level assignments
+
+#### Platform Admin Dashboard
+*   **All Users Tab**: Cross-tenant view of all users in the system
+*   **Advanced Filters**: Filter by tenant, role, or search by username/email
+*   **Password Reset**: Platform ADMIN can reset any user's password
+*   **Ghost Mode**: Impersonate users for troubleshooting (see system as that user)
+*   **Tenant Management**: Create, edit, delete tenants with tier management
+
+### 📊 Database Changes
+
+#### New Tables
+*   `utm_users`: User identities with email, username, password_hash, role
+*   `utm_user_invitations`: Invitation tokens for email-based onboarding
+*   `utm_project_members`: Project-level access assignments
+
+#### Schema Modifications
+*   `utm_tenants`: Simplified to `tenant_id`, `display_name`, `tier`, `is_active`
+*   Removed: `client_id` column (Migration 024)
+*   Removed: `org_name` column (Migration 025)
+
+#### Migrations Executed
+*   020: Project-level invitations
+*   021: Project members table
+*   022: Global system catalog
+*   023: Admin role support
+*   024: Remove client_id simplification
+*   025: Remove org_name simplification
+
+### 🔧 Backend Enhancements
+
+#### New Endpoints
+*   `GET /auth/users` - List tenant users (MANAGER)
+*   `POST /auth/users` - Create user with temp password
+*   `PATCH /auth/users/{user_id}` - Update user
+*   `POST /auth/users/{user_id}/reset-password` - Reset password (MANAGER)
+*   `PATCH /auth/auth/users/{user_id}/reset-password` - Platform ADMIN reset
+*   `GET /auth/admin/users` - List all users (Platform ADMIN)
+*   `POST /auth/admin/impersonate` - Ghost Mode
+
+#### Authentication Updates
+*   Login returns `user_id` in addition to `tenant_id`
+*   Password verification uses bcrypt exclusively
+*   Last login timestamp tracking
+*   Session validation with user context
+
+### 🎨 UI/UX Improvements
+
+#### Tenant Console (`/settings`)
+*   **User Management Tab**: Full CRUD interface for team members
+*   **Project Access Tab**: Project-level permission management
+*   **Role Selector**: Dropdown with COLLABORATOR/VIEWER options for new users
+*   **Status Indicators**: Active/Inactive badges for users
+
+#### Platform Admin (`/admin`)
+*   **All Users Dashboard**: New tab with cross-tenant user view
+*   **Filter Controls**: Three-column filter grid (tenant, role, search)
+*   **Reset Password Modal**: Professional modal with password validation
+*   **Impersonate Button**: Eye icon to start Ghost Mode
+*   **Simplified Tenant Table**: Shows display_name with tenant_id subtitle
+
+### 🔐 Security
+*   **Role Validation**: All endpoints validate user role before access
+*   **Tenant Isolation**: Users can only see/manage their own tenant
+*   **Platform ADMIN**: Special role for cross-tenant operations
+*   **Password Hashing**: bcrypt-only with secure salting
+*   **Session Headers**: X-Tenant-ID, X-User-ID, X-Role validation
+
+### 📚 Documentation Updates
+*   Updated ROADMAP.md with v3.9 completion status
+*   Updated RELEASE_PLAN_SIMPLE_v3.9.md with implementation checklist
+*   Verified ROLES_AND_ONBOARDING.md alignment
+
+### 🚀 Deployment Notes
+*   **Database Migrations**: Execute migrations 020-025 in Supabase Dashboard
+*   **Platform Admin**: User with role='ADMIN' in PLATFORM tenant
+*   **Default Credentials**: admin / Admin123! (change in production)
+*   **No New Environment Variables**: Uses existing configuration
+
+---
+
+## Version 3.8 (The Governance & Architecture Clarity Release) - 2026-02-09
 
 This release formalizes the governance model, implements process locking to prevent data corruption, and introduces professional UI components for system administration and process visualization.
 

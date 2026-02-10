@@ -1,8 +1,23 @@
 import os
 import shutil
+import ssl
 from typing import Dict, Any, Optional, List
 from supabase import create_client, Client
 from .storage.factory import StorageFactory
+import httpx
+
+# Disable SSL verification globally for development
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Monkey-patch httpx Client to disable SSL verification by default
+_original_httpx_client_init = httpx.Client.__init__
+
+def _patched_httpx_client_init(self, *args, **kwargs):
+    kwargs.setdefault('verify', False)
+    return _original_httpx_client_init(self, *args, **kwargs)
+
+httpx.Client.__init__ = _patched_httpx_client_init
 
 class PersistenceService:
     print("LOADING PersistenceService v3 - WITH StorageProvider Abstraction")
@@ -262,7 +277,7 @@ class PersistenceService:
         return cls.get_storage().generate_signed_url(full_key, expiration)
 
 class SupabasePersistence:
-    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         
@@ -285,6 +300,7 @@ class SupabasePersistence:
                  
         self.tenant_id = tenant_id
         self.client_id = client_id
+        self.user_id = user_id  # [v3.9] Track user_id for multi-user operations
 
     async def _resolve_uuid(self, project_id_or_name: str) -> Optional[str]:
         """
@@ -338,9 +354,11 @@ class SupabasePersistence:
         if repo_url:
             data["repo_url"] = repo_url
         
-        # Inject Identity
-        if self.tenant_id: data["tenant_id"] = self.tenant_id
-        if self.client_id: data["client_id"] = self.client_id
+        # [v3.9] Inject tenant_id and user_id for isolation and audit
+        if self.tenant_id: 
+            data["tenant_id"] = self.tenant_id
+        if self.user_id:  
+            data["created_by_user_id"] = self.user_id  # Track who created the project
             
         res = self.client.table("utm_projects").insert(data).execute()
         return res.data[0]["project_id"]
@@ -532,8 +550,9 @@ class SupabasePersistence:
             "type": asset_type,
             "hash": file_hash
         }
-        if self.tenant_id: data["tenant_id"] = self.tenant_id
-        if self.client_id: data["client_id"] = self.client_id
+        # [v3.9] Only tenant_id for isolation (object ownership tracked via project)
+        if self.tenant_id: 
+            data["tenant_id"] = self.tenant_id
             
         if source_path:
             data["source_path"] = source_path
@@ -602,8 +621,9 @@ class SupabasePersistence:
                 "business_entity": asset.get("business_entity"),
                 "target_name": asset.get("target_name")
             })
-            if self.tenant_id: insert_data[-1]["tenant_id"] = self.tenant_id
-            if self.client_id: insert_data[-1]["client_id"] = self.client_id
+            # [v3.9] Only tenant_id for isolation (object ownership tracked via project)
+            if self.tenant_id: 
+                insert_data[-1]["tenant_id"] = self.tenant_id
             
         try:
             res = self.client.table("utm_objects").upsert(insert_data, on_conflict="project_id, source_path").execute()

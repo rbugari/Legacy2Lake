@@ -19,7 +19,7 @@ def main():
     env_file = os.path.join(root_dir, ".env")
     if os.path.exists(env_file):
         print("Loading .env file...")
-        with open(env_file, "r") as f:
+        with open(env_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:

@@ -1,7 +1,7 @@
-# Documentation Index - Legacy2Lake v3.8
+# Documentation Index - Legacy2Lake v3.9
 
-> Last Updated: 2026-02-09  
-> Architecture Version: 3.8 (Governance & Architecture Clarity)
+> Last Updated: 2026-02-10  
+> Architecture Version: 3.9 (Multi-User Simplificado)
 
 ## Quick Start
 
@@ -16,6 +16,7 @@
 - **[Installation](INSTALL.md)** - Environment setup, R2 config, provider setup
 - **[Release Notes](RELEASE_NOTES.md)** - Version history and changes
 - **[Roadmap](ROADMAP.md)** - Future plans and features
+- **[Roles & Onboarding](ROLES_AND_ONBOARDING.md)** - User roles and onboarding flow
 
 ### Migration Workflow (6 Stages)
 
@@ -48,7 +49,37 @@
 ## Business & Planning
 - **[Business Review](BUSINESS_REVIEW.md)** - Market analysis and value proposition
 - **[Comprehensive Review](COMPREHENSIVE_REVIEW.md)** - Detailed system analysis
+- **[Roadmap](ROADMAP.md)** - Strategic direction and future releases
+
+### Release Planning
+- **[Release Plan v3.9 Simplified](planning/RELEASE_PLAN_SIMPLE_v3.9.md)** - Multi-user simplified roadmap (COMPLETED)
+- **[Future v4.0 Vision](planning/future_v4.0.md)** - Long-term AI-driven architecture
 - **[Specification](SPECIFICATION.md)** - Functional and technical requirements
+
+## v3.9 Key Features (NEW)
+
+### Multi-User Support
+- **Separated User Identity**: `utm_users` table separates user accounts from `utm_tenants`
+- **Role-Based Access**: ADMIN, MANAGER, COLLABORATOR, VIEWER roles with distinct permissions
+- **User Management UI**: Complete UI at `/settings` for MANAGER to manage team
+- **Project Access Control**: Granular project-level permissions via `utm_project_members`
+
+### Platform Admin Dashboard
+- **All Users View**: Cross-tenant view of all users in the system
+- **Advanced Filters**: Filter by tenant, role, or search by username/email
+- **Password Reset**: Platform ADMIN can reset any user's password
+- **Ghost Mode**: Impersonate users for troubleshooting (see system as that user)
+
+### Simplified Data Model
+- **Removed Redundancy**: Eliminated `client_id` and `org_name` columns
+- **Organization Model**: `utm_tenants` represents organizations with `display_name` and `tier`
+- **User Separation**: Users stored in dedicated `utm_users` table
+
+### Tenant Console (`/settings`)
+- **User Management Tab**: Create, edit, and manage team members
+- **Project Access Tab**: Control who accesses which projects
+- **Role Selector**: Assign COLLABORATOR or VIEWER roles
+- **Status Management**: Activate/deactivate users
 
 ## v3.8 Key Features
 

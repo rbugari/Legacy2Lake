@@ -101,6 +101,15 @@ async def run_triage(
 ):
     """Re-runs the triage (discovery) process using agentic reasoning."""
     
+    # === PERMISSION CHECK ===
+    # Only COLLABORATOR, MANAGER, and ADMIN can execute phases
+    role = identity.get("role", "VIEWER")
+    if role == "VIEWER":
+        raise HTTPException(
+            status_code=403,
+            detail="VIEWER users have read-only access. Only COLLABORATOR, MANAGER, and ADMIN can execute project phases."
+        )
+    
     # === PROCESS LOCKING ===
     lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
     

@@ -11,17 +11,27 @@ function IdentityBadge() {
 
   if (!user) return null;
 
-  const isAdmin = user.role === "ADMIN";
-  const badgeColor = isAdmin
-    ? "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800"
-    : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+  const displayName = user.display_name || user.username;
+  const role = user.role;
+
+  // Color coding by role
+  const roleColors = {
+    ADMIN: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800",
+    MANAGER: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+    COLLABORATOR: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800",
+    VIEWER: "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800"
+  };
+
+  const badgeColor = roleColors[role as keyof typeof roleColors] || roleColors.VIEWER;
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${badgeColor} text-xs font-medium transition-colors`}>
-      {isAdmin ? <Shield className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
-      <span className="hidden sm:inline opacity-75">|</span>
-      <span>{user.username}</span>
-      {isAdmin && <span className="opacity-50 text-[10px] uppercase ml-1 tracking-wider">ADMIN</span>}
+      {role === "ADMIN" ? <Shield className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
+      <div className="hidden sm:flex flex-col leading-tight">
+        <span className="font-semibold">{displayName}</span>
+        <span className="text-[10px] opacity-60 uppercase tracking-wide">{role}</span>
+      </div>
+      <span className="sm:hidden font-semibold">{displayName}</span>
     </div>
   );
 }

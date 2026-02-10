@@ -1,11 +1,35 @@
-# Legacy2Lake Documentation Index (v3.8)
+# Legacy2Lake Documentation Index (v3.9)
 
 Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures using advanced AI synthesis.
 
 ## 🚀 Getting Started
 - **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
-- **[Release Notes](docs/RELEASE_NOTES.md)**: Latest v3.8 featuring **Governance Rules**, **Ownership Model**, and **Cost Control Framework**.
+- **[Release Notes](docs/RELEASE_NOTES.md)**: Latest updates and features.
 - **[Introduction to Legacy2Lake](docs/INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
+- **⚠️ [Environment Variables vs Database](docs/ENV_VS_DATABASE.md)**: **IMPORTANTE v3.9** - Configuración de .env vs credenciales en DB.
+
+## ⚙️ Configuration (v3.9 Multi-User)
+
+### 🔑 Roles & Responsibilities
+- **[Roles and Onboarding](docs/ROLES_AND_ONBOARDING.md)**: Complete role hierarchy, onboarding flow, and impersonation guide.
+  - **ADMIN**: Platform-level (manages global catalogs, creates tenants, can impersonate users)
+  - **MANAGER**: Tenant-level (configures LLM providers, manages spending, invites users)
+  - **COLLABORATOR**: Project-level (creates and edits projects)
+  - **VIEWER**: Project-level (read-only access)
+
+### 📦 Catalogs Architecture
+
+**Global Catalogs (ADMIN manages)**:
+- **utm_agent_catalog**: AI Agents (Agent S, Agent A, Agent B, etc.)
+- **utm_system_catalog**: Technology Cartridges (SQL Server, Oracle, Snowflake, Databricks)
+
+**Tenant-Level Catalogs (MANAGER configures)**:
+- **utm_provider_vault**: LLM Provider API Keys (OpenAI, Groq, Azure) - Each tenant pays for their own
+- **utm_model_catalog**: Enabled LLM Models (gpt-4o, claude-3-5, etc.) - Private per tenant
+
+⚠️ **IMPORTANTE**: LLM credentials (API keys) are NO LONGER in `.env` - they're in the database per tenant.
+
+See: **[ENV_VS_DATABASE.md](docs/ENV_VS_DATABASE.md)** for migration guide.
 
 ## 🔄 Project Lifecycle (The 6 Stages)
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { fetchWithAuth } from "../lib/auth-client";
 import Link from "next/link";
-import { ArrowLeft, Shield, Lock, Eye, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key, Code2, FileText, Edit3 } from "lucide-react";
+import { ArrowLeft, Shield, Lock, Eye, EyeOff, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key, Code2, FileText, Edit3, Edit2, Briefcase, RefreshCw } from "lucide-react";
 import CartridgeList from "../components/admin/CartridgeList";
 import { getAgentDisplayName } from "../lib/constants";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -50,6 +50,17 @@ export default function SystemPage() {
     // Process Locks State
     const [processLocks, setProcessLocks] = useState<any[]>([]);
     const [isLoadingLocks, setIsLoadingLocks] = useState(false);
+
+    // Users Dashboard State
+    const [allUsers, setAllUsers] = useState<any[]>([]);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [filterTenant, setFilterTenant] = useState<string>("");
+    const [filterRole, setFilterRole] = useState<string>("");
+    const [filterSearch, setFilterSearch] = useState<string>("");
+    const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+    const [resetPasswordUser, setResetPasswordUser] = useState<any>(null);
+    const [newPassword, setNewPassword] = useState("");
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
 
     const [API_BASE_URL, setApiBaseUrl] = useState("http://localhost:8085"); // Fallback
 
@@ -104,6 +115,23 @@ export default function SystemPage() {
     });
     const [clients, setClients] = useState<any[]>([]);
 
+    // Client/Tenant Creation State
+    const [showCreateTenantModal, setShowCreateTenantModal] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [newTenantData, setNewTenantData] = useState({
+        username: "",
+        email: "",
+        password: "",
+        display_name: "",
+        tier: "STANDARD"
+    });
+
+    // Edit Tenant State
+    const [showEditTenantModal, setShowEditTenantModal] = useState(false);
+    const [editingTenant, setEditingTenant] = useState<any>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+
     const fetchData = () => {
         // Parallel Fetch
         Promise.all([
@@ -121,10 +149,6 @@ export default function SystemPage() {
             setTenants(Array.isArray(tenantsData) ? tenantsData : []);
             setAgents(agentsData.agents || []);
             if (!selectedAgentId && agentsData.agents?.length > 0) setSelectedAgentId(agentsData.agents[0].agent_id);
-
-            fetchWithAuth("auth/clients").then(res => res.json()).then(data => {
-                setClients(Array.isArray(data) ? data : []);
-            });
 
             setLoading(false);
         }).catch(err => {
@@ -296,31 +320,6 @@ export default function SystemPage() {
         }
     };
 
-    const handleResetPassword = async (tenantId: string, username: string) => {
-        if (!confirm(`Are you sure you want to reset password for ${username}? A new temporary password will be generated and sent via email.`)) {
-            return;
-        }
-
-        try {
-            const res = await fetchWithAuth("auth/reset-password", {
-                method: "POST",
-                body: JSON.stringify({ tenant_id: tenantId })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                if (data.temp_password) {
-                    alert(`Password reset successfully! Email failed to send. New temporary password: ${data.temp_password}`);
-                } else {
-                    alert(data.message || "Password reset successfully! Email sent.");
-                }
-            } else {
-                alert(data.detail || "Failed to reset password");
-            }
-        } catch (err) {
-            alert("Network error");
-        }
-    };
-
     const handleUpdateAgent = async (agentId: string, updates: {display_name?: string, description?: string}) => {
         try {
             const res = await fetchWithAuth(`system/agents/${agentId}`, {
@@ -337,6 +336,64 @@ export default function SystemPage() {
             }
         } catch (err) {
             alert("Network error");
+        }
+    };
+
+    const handleCreateTenant = async () => {
+        if (!newTenantData.display_name || !newTenantData.username || !newTenantData.email || !newTenantData.password) {
+            alert("Please fill all required fields");
+            return;
+        }
+        setIsCreating(true);
+        try {
+            const res = await fetchWithAuth("auth/tenants", {
+                method: "POST",
+                body: JSON.stringify(newTenantData)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`Tenant created successfully! Tenant ID: ${data.tenant_id}`);
+                setShowCreateTenantModal(false);
+                setNewTenantData({ username: "", email: "", password: "", display_name: "", tier: "STANDARD" });
+                setShowPassword(false);
+                fetchData();
+            } else {
+                alert(`Error: ${data.detail || "Failed to create tenant"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
+    const handleUpdateTenant = async () => {
+        if (!editingTenant?.display_name) {
+            alert("Display name cannot be empty");
+            return;
+        }
+        setIsUpdating(true);
+        try {
+            const res = await fetchWithAuth(`auth/tenants/${editingTenant.tenant_id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ 
+                    display_name: editingTenant.display_name,
+                    tier: editingTenant.tier 
+                })
+            });
+            if (res.ok) {
+                alert("Tenant updated successfully!");
+                setShowEditTenantModal(false);
+                setEditingTenant(null);
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(`Error: ${data.detail || "Failed to update tenant"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -390,6 +447,108 @@ export default function SystemPage() {
         }
     }, [activeTab, isAdmin]);
 
+    // Users Dashboard Functions
+    const fetchAllUsers = async () => {
+        setIsLoadingUsers(true);
+        try {
+            const res = await fetchWithAuth("auth/admin/users");
+            const data = await res.json();
+            if (res.ok && data.users) {
+                setAllUsers(data.users);
+            } else {
+                setAllUsers([]);
+            }
+        } catch (err) {
+            console.error("Failed to fetch users:", err);
+            setAllUsers([]);
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+
+    const handleResetPassword = async () => {
+        if (!resetPasswordUser || !newPassword) {
+            alert("Please enter a new password");
+            return;
+        }
+        if (newPassword.length < 8) {
+            alert("Password must be at least 8 characters");
+            return;
+        }
+        setIsResettingPassword(true);
+        try {
+            const res = await fetchWithAuth(`auth/users/${resetPasswordUser.user_id}/reset-password`, {
+                method: "PATCH",
+                body: JSON.stringify({ new_password: newPassword })
+            });
+            if (res.ok) {
+                alert(`Password reset successfully for ${resetPasswordUser.username}`);
+                setShowResetPasswordModal(false);
+                setResetPasswordUser(null);
+                setNewPassword("");
+            } else {
+                const data = await res.json();
+                alert(`Error: ${data.detail || "Failed to reset password"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        } finally {
+            setIsResettingPassword(false);
+        }
+    };
+
+    const handleImpersonate = async (targetUserId: string, username: string) => {
+        if (!confirm(`Start Ghost Mode as ${username}?\\n\\nYou will impersonate this user and see their tenant/projects.`)) {
+            return;
+        }
+        try {
+            const res = await fetchWithAuth("auth/admin/impersonate", {
+                method: "POST",
+                body: JSON.stringify({ target_user_id: targetUserId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alert(`Ghost Mode activated!\\n\\nYou are now: ${data.impersonate.username} (${data.impersonate.role})`);
+                // Store impersonate info
+                localStorage.setItem("x_impersonate_user_id", targetUserId);
+                // Redirect to dashboard to see as that user
+                window.location.href = "/dashboard";
+            } else {
+                alert(`Error: ${data.detail || "Failed to impersonate"}`);
+            }
+        } catch (err) {
+            alert("Network error");
+        }
+    };
+
+    // Load users when tab is active
+    useEffect(() => {
+        if (activeTab === "users" && isAdmin) {
+            fetchAllUsers();
+        }
+    }, [activeTab, isAdmin]);
+
+    // Filtered users
+    const filteredUsers = allUsers.filter(u => {
+        if (filterTenant && !u.tenant_display_name?.toLowerCase().includes(filterTenant.toLowerCase())) return false;
+        if (filterRole && u.role !== filterRole) return false;
+        if (filterSearch && !(
+            u.username?.toLowerCase().includes(filterSearch.toLowerCase()) ||
+            u.email?.toLowerCase().includes(filterSearch.toLowerCase())
+        )) return false;
+        return true;
+    });
+
+    // Load locks when tab is active (old code kept for reference)
+    useEffect(() => {
+        if (activeTab === "locks" && isAdmin) {
+            fetchProcessLocks();
+            // Auto-refresh every 30 seconds
+            const interval = setInterval(fetchProcessLocks, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [activeTab, isAdmin]);
+
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] relative transition-colors duration-300 flex flex-col">
 
@@ -414,6 +573,12 @@ export default function SystemPage() {
                         className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "identity" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
                     >
                         <span className="flex items-center gap-2"><Users size={14} /> Identity</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("users")}
+                        className={`px-4 py-1.5 rounded-md transition-all ${activeTab === "users" ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "text-[var(--text-secondary)] hover:text-cyan-500"}`}
+                    >
+                        <span className="flex items-center gap-2"><Users size={14} /> All Users</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("agents")}
@@ -780,74 +945,66 @@ export default function SystemPage() {
                     <div className="max-w-6xl mx-auto">
                         <div className="flex justify-between items-end mb-8">
                             <div>
-                                <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">Enterprise Identity</h4>
-                                <h2 className="text-2xl font-bold mb-2">Identity & Tenant Management</h2>
-                                <p className="text-[var(--text-secondary)]">Manage user access, roles, and administrative impersonation (Ghost Mode).</p>
+                                <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">Platform Administration</h4>
+                                <h2 className="text-2xl font-bold mb-2">Tenants & Organizations</h2>
+                                <p className="text-[var(--text-secondary)]">Create and manage tenants (organizations) with their first MANAGER users.</p>
                             </div>
                             {isAdmin && (
                                 <button
                                     className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 active:scale-95"
-                                    onClick={() => setShowInviteModal(true)}
+                                    onClick={() => setShowCreateTenantModal(true)}
                                 >
-                                    <Plus size={16} /> Invite User
+                                    <Plus size={16} /> Create Tenant
                                 </button>
                             )}
                         </div>
 
+                        {/* TENANTS VIEW */}
                         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
                             <table className="w-full text-left">
                                 <thead className="bg-[var(--background)]/50 text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] border-b border-[var(--border)]">
                                     <tr>
-                                        <th className="px-6 py-4">Username</th>
-                                        <th className="px-6 py-4">Role</th>
-                                        <th className="px-6 py-4">Client ID</th>
-                                        <th className="px-6 py-4">Tenant ID</th>
+                                        <th className="px-6 py-4">Organization Name</th>
+                                        <th className="px-6 py-4">Tier</th>
                                         <th className="px-6 py-4 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border)]">
                                     {tenants.map((t: any) => (
                                         <tr key={t.tenant_id} className="hover:bg-cyan-500/5 transition-colors group">
-                                            <td className="px-6 py-4 text-sm font-bold">{t.username}</td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${t.role === 'ADMIN' ? 'bg-amber-500/10 text-amber-500' : 'bg-cyan-500/10 text-cyan-500'
-                                                    }`}>
-                                                    {t.role}
+                                                <div className="font-bold text-sm">{t.display_name || 'Unknown'}</div>
+                                                <div className="text-[10px] font-mono opacity-50 mt-0.5">ID: {t.tenant_id}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                    t.tier === 'ENTERPRISE' ? 'bg-purple-500/10 text-purple-500' :
+                                                    t.tier === 'PREMIUM' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                    'bg-gray-500/10 text-gray-500'
+                                                }`}>
+                                                    {t.tier || 'STANDARD'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-mono opacity-50">{t.client_id}</td>
-                                            <td className="px-6 py-4 text-xs font-mono opacity-50">{t.tenant_id}</td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-2">
-                                                    <button
-                                                        onClick={() => {
-                                                            if (confirm(`Activate Ghost Mode for ${t.username}? You will be redirected to the workspace.`)) {
-                                                                localStorage.setItem("x_tenant_id", t.tenant_id);
-                                                                localStorage.setItem("x_client_id", t.client_id);
-                                                                localStorage.setItem("x_username", t.username);
-                                                                window.location.href = "/dashboard";
-                                                            }
-                                                        }}
-                                                        className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
-                                                        title="Ghost Mode (Impersonate)"
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
                                                     {isAdmin && (
                                                         <button
-                                                            onClick={() => handleResetPassword(t.tenant_id, t.username)}
-                                                            className="p-2 text-[var(--text-tertiary)] hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
-                                                            title="Reset Password"
+                                                            className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
+                                                            title="Edit Display Name"
+                                                            onClick={() => {
+                                                                setEditingTenant(t);
+                                                                setShowEditTenantModal(true);
+                                                            }}
                                                         >
-                                                            <Key size={16} />
+                                                            <Edit2 size={16} />
                                                         </button>
                                                     )}
                                                     {isAdmin && t.tenant_id !== user?.tenant_id && (
                                                         <button
                                                             className="p-2 text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                                            title="Delete"
+                                                            title="Delete Tenant"
                                                             onClick={async () => {
-                                                                if (confirm(`Permanently remove ${t.username}?`)) {
+                                                                if (confirm(`Permanently remove tenant ${t.display_name}?`)) {
                                                                     await fetchWithAuth(`auth/tenants/${t.tenant_id}`, { method: 'DELETE' });
                                                                     fetchData();
                                                                 }
@@ -864,11 +1021,162 @@ export default function SystemPage() {
                             </table>
                             {tenants.length === 0 && (
                                 <div className="p-12 text-center text-[var(--text-tertiary)] flex flex-col items-center gap-4">
-                                    <Users size={48} className="opacity-10" />
-                                    <p className="font-bold uppercase text-[10px] tracking-widest">No tenants found or access denied</p>
+                                    <Database size={48} className="opacity-10" />
+                                    <p className="font-bold uppercase text-[10px] tracking-widest">No tenants created yet</p>
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ALL USERS TAB */}
+            {activeTab === "users" && (
+                <div className="flex-1 bg-[var(--background)] p-8 overflow-y-auto">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="mb-6">
+                            <div className="flex justify-between items-end mb-4">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-2">System Administration</h4>
+                                    <h2 className="text-2xl font-bold mb-2">All Users Dashboard</h2>
+                                    <p className="text-[var(--text-secondary)]">
+                                        View and manage all users across all tenants. Reset passwords and impersonate users for troubleshooting.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={fetchAllUsers}
+                                    disabled={isLoadingUsers}
+                                    className="bg-cyan-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
+                                >
+                                    <RefreshCw size={16} className={isLoadingUsers ? "animate-spin" : ""} /> Refresh
+                                </button>
+                            </div>
+
+                            {/* Filters */}
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Filter by Tenant</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                        placeholder="Search tenant..."
+                                        value={filterTenant}
+                                        onChange={e => setFilterTenant(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Filter by Role</label>
+                                    <select
+                                        className="w-full px-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                        value={filterRole}
+                                        onChange={e => setFilterRole(e.target.value)}
+                                    >
+                                        <option value="">All Roles</option>
+                                        <option value="ADMIN">ADMIN</option>
+                                        <option value="MANAGER">MANAGER</option>
+                                        <option value="COLLABORATOR">COLLABORATOR</option>
+                                        <option value="VIEWER">VIEWER</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Search User</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                        placeholder="Username or email..."
+                                        value={filterSearch}
+                                        onChange={e => setFilterSearch(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {isLoadingUsers ? (
+                            <div className="text-center p-12 text-[var(--text-secondary)]">
+                                <Users size={48} className="mx-auto opacity-10 mb-4 animate-pulse" />
+                                <p className="font-bold uppercase text-[10px] tracking-widest">Loading users...</p>
+                            </div>
+                        ) : filteredUsers.length === 0 ? (
+                            <div className="text-center p-12 flex flex-col items-center gap-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)]">
+                                <Users size={48} className="opacity-10" />
+                                <p className="font-bold uppercase text-[10px] tracking-widest text-[var(--text-tertiary)]">No users found</p>
+                            </div>
+                        ) : (
+                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-[var(--background)]/50 text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] border-b border-[var(--border)]">
+                                            <tr>
+                                                <th className="px-6 py-4">Username</th>
+                                                <th className="px-6 py-4">Email</th>
+                                                <th className="px-6 py-4">Organization</th>
+                                                <th className="px-6 py-4">Role</th>
+                                                <th className="px-6 py-4">Status</th>
+                                                <th className="px-6 py-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border)]">
+                                            {filteredUsers.map((u: any) => (
+                                                <tr key={u.user_id} className="hover:bg-cyan-500/5 transition-colors group">
+                                                    <td className="px-6 py-4">
+                                                        <div className="font-bold text-sm">{u.username}</div>
+                                                        <div className="text-[10px] font-mono opacity-50 mt-0.5">{u.user_id.substring(0, 8)}...</div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm">{u.email}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="text-sm">{u.tenant_display_name || "Unknown"}</div>
+                                                        <div className="text-[10px] font-mono opacity-50 mt-0.5">{u.tenant_id.substring(0, 8)}...</div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                            u.role === 'ADMIN' ? 'bg-purple-500/10 text-purple-500' :
+                                                            u.role === 'MANAGER' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                            u.role === 'COLLABORATOR' ? 'bg-blue-500/10 text-blue-500' :
+                                                            'bg-gray-500/10 text-gray-500'
+                                                        }`}>
+                                                            {u.role}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                            u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                                                        }`}>
+                                                            {u.is_active ? 'ACTIVE' : 'INACTIVE'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            <button
+                                                                className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
+                                                                title="Reset Password"
+                                                                onClick={() => {
+                                                                    setResetPasswordUser(u);
+                                                                    setShowResetPasswordModal(true);
+                                                                }}
+                                                            >
+                                                                <Key size={16} />
+                                                            </button>
+                                                            {u.role !== 'ADMIN' && (
+                                                                <button
+                                                                    className="p-2 text-[var(--text-tertiary)] hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+                                                                    title="Impersonate (Ghost Mode)"
+                                                                    onClick={() => handleImpersonate(u.user_id, u.username)}
+                                                                >
+                                                                    <Eye size={16} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="p-4 bg-[var(--background)]/50 border-t border-[var(--border)] text-center text-[10px] text-[var(--text-tertiary)] uppercase font-black tracking-widest">
+                                    Showing {filteredUsers.length} of {allUsers.length} users
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -1179,6 +1487,178 @@ export default function SystemPage() {
                 </div>
             )}
 
+            {/* CREATE TENANT MODAL */}
+            {showCreateTenantModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)] animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-cyan-500/10 to-transparent">
+                            <div>
+                                <h3 className="text-xl font-bold">Create New Tenant</h3>
+                                <p className="text-xs text-[var(--text-tertiary)] mt-1">Create organization with first MANAGER user</p>
+                            </div>
+                            <button onClick={() => setShowCreateTenantModal(false)} className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Organization Name *</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-bold"
+                                    placeholder="e.g. Acme Corporation"
+                                    value={newTenantData.display_name}
+                                    onChange={e => setNewTenantData({ ...newTenantData, display_name: e.target.value })}
+                                />
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Friendly display name for the organization</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Tier</label>
+                                <select
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-bold"
+                                    value={newTenantData.tier}
+                                    onChange={e => setNewTenantData({ ...newTenantData, tier: e.target.value })}
+                                >
+                                    <option value="STANDARD">STANDARD</option>
+                                    <option value="PREMIUM">PREMIUM</option>
+                                    <option value="ENTERPRISE">ENTERPRISE</option>
+                                </select>
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Subscription tier for this organization</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Manager Username *</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-bold"
+                                    placeholder="e.g. jsmith"
+                                    value={newTenantData.username}
+                                    onChange={e => setNewTenantData({ ...newTenantData, username: e.target.value })}
+                                />
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Login username for the first manager</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Manager Email *</label>
+                                <input
+                                    type="email"
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                                    placeholder="manager@company.com"
+                                    value={newTenantData.email}
+                                    onChange={e => setNewTenantData({ ...newTenantData, email: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Manager Password *</label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        className="w-full px-4 py-3 pr-12 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono"
+                                        placeholder="Strong password"
+                                        value={newTenantData.password}
+                                        onChange={e => setNewTenantData({ ...newTenantData, password: e.target.value })}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                                        title={showPassword ? "Hide password" : "Show password"}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="p-4 bg-cyan-500/5 rounded-2xl border border-cyan-500/10">
+                                <p className="text-[10px] text-cyan-500 font-bold uppercase tracking-tight">
+                                    ℹ️ First user will have MANAGER role with full tenant access
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowCreateTenantModal(false)}
+                                className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateTenant}
+                                className="px-8 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-xl shadow-cyan-600/20 active:scale-95 disabled:opacity-50"
+                                disabled={isCreating || !newTenantData.display_name || !newTenantData.username || !newTenantData.email || !newTenantData.password}
+                            >
+                                {isCreating ? "Creating..." : "Create Tenant"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT TENANT MODAL */}
+            {showEditTenantModal && editingTenant && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)] animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-indigo-500/10 to-transparent">
+                            <div>
+                                <h3 className="text-xl font-bold">Edit Tenant</h3>
+                                <p className="text-xs text-[var(--text-tertiary)] mt-1">Update organization display name</p>
+                            </div>
+                            <button onClick={() => { setShowEditTenantModal(false); setEditingTenant(null); }} className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Tenant ID</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)]/50 text-sm outline-none font-mono text-[var(--text-tertiary)] cursor-not-allowed"
+                                    value={editingTenant.tenant_id}
+                                    disabled
+                                />
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Unique identifier (UUID)</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Display Name *</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+                                    placeholder="e.g. Acme Corporation"
+                                    value={editingTenant.display_name}
+                                    onChange={e => setEditingTenant({ ...editingTenant, display_name: e.target.value })}
+                                />
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Friendly name shown in admin panel</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Tier *</label>
+                                <select
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+                                    value={editingTenant.tier}
+                                    onChange={e => setEditingTenant({ ...editingTenant, tier: e.target.value })}
+                                >
+                                    <option value="STANDARD">STANDARD</option>
+                                    <option value="PREMIUM">PREMIUM</option>
+                                    <option value="ENTERPRISE">ENTERPRISE</option>
+                                </select>
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">Subscription tier for this organization</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
+                            <button
+                                onClick={() => { setShowEditTenantModal(false); setEditingTenant(null); }}
+                                className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleUpdateTenant}
+                                className="px-8 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                disabled={isUpdating || !editingTenant.display_name}
+                            >
+                                {isUpdating ? "Updating..." : "Update Tenant"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* INVITE MODAL */}
             {showInviteModal && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
@@ -1235,6 +1715,90 @@ export default function SystemPage() {
                                 disabled={isInviting || !inviteData.username || !inviteData.email}
                             >
                                 {isInviting ? "Sending..." : "Send Invitation"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* RESET PASSWORD MODAL */}
+            {showResetPasswordModal && resetPasswordUser && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-[var(--surface)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)] animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center bg-gradient-to-r from-orange-500/10 to-transparent">
+                            <div>
+                                <h3 className="text-xl font-bold">Reset Password</h3>
+                                <p className="text-xs text-[var(--text-tertiary)] mt-1">Set new password for {resetPasswordUser.username}</p>
+                            </div>
+                            <button 
+                                onClick={() => { 
+                                    setShowResetPasswordModal(false); 
+                                    setResetPasswordUser(null); 
+                                    setNewPassword("");
+                                }} 
+                                className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">User</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)]/50 text-sm outline-none font-bold text-[var(--text-tertiary)] cursor-not-allowed"
+                                    value={`${resetPasswordUser.username} (${resetPasswordUser.email})`}
+                                    disabled
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">Organization</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-2xl border border-[var(--border)] bg-[var(--background)]/50 text-sm outline-none font-mono text-[var(--text-tertiary)] cursor-not-allowed"
+                                    value={resetPasswordUser.tenant_display_name || "Unknown"}
+                                    disabled
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)] mb-2">New Password *</label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        className="w-full px-4 py-3 pr-12 rounded-2xl border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+                                        placeholder="Minimum 8 characters"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                                        title={showPassword ? "Hide password" : "Show password"}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-[var(--text-tertiary)] mt-1 ml-1">User will be able to login with this new password immediately</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
+                            <button
+                                onClick={() => { 
+                                    setShowResetPasswordModal(false); 
+                                    setResetPasswordUser(null); 
+                                    setNewPassword("");
+                                }}
+                                className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleResetPassword}
+                                className="px-8 py-2.5 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-xl shadow-orange-600/20 active:scale-95 disabled:opacity-50"
+                                disabled={isResettingPassword || !newPassword || newPassword.length < 8}
+                            >
+                                {isResettingPassword ? "Resetting..." : "Reset Password"}
                             </button>
                         </div>
                     </div>

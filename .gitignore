@@ -68,3 +68,5 @@ apps/web/test_encoding.js
 import_payload.json
 phase4_r2_verify.zip
 prompt_lab_export.zip
+
+prod_*_export.json

@@ -6,12 +6,16 @@ import { useAuth } from "../context/AuthContext";
 import VaultEditor from "../components/settings/VaultEditor";
 import ModelCatalog from "../components/settings/ModelCatalog";
 import StrategicIntelligenceHub from "../components/settings/StrategicIntelligenceHub";
+import UserManagement from "../components/settings/UserManagement";
+import ProjectAccess from "../components/settings/ProjectAccess";
 import Link from "next/link";
-import { ArrowLeft, Building, Database, Sparkles, FileKey } from "lucide-react";
+import { ArrowLeft, Building, Database, Sparkles, FileKey, Users, FolderOpen } from "lucide-react";
 
 export default function SettingsPage() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<"vault" | "models" | "matrix">("vault");
+    const [activeTab, setActiveTab] = useState<"vault" | "models" | "matrix" | "users" | "projects">("vault");
+    
+    const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
 
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] relative transition-colors duration-300">
@@ -48,6 +52,22 @@ export default function SettingsPage() {
                         icon={<Sparkles size={18} />}
                         label="Intelligence Hub & Matrix"
                     />
+                    {isManager && (
+                        <TabButton
+                            active={activeTab === "users"}
+                            onClick={() => setActiveTab("users")}
+                            icon={<Users size={18} />}
+                            label="User Management"
+                        />
+                    )}
+                    {isManager && (
+                        <TabButton
+                            active={activeTab === "projects"}
+                            onClick={() => setActiveTab("projects")}
+                            icon={<FolderOpen size={18} />}
+                            label="Project Access"
+                        />
+                    )}
                 </div>
 
                 {/* Tab Content */}
@@ -93,6 +113,18 @@ export default function SettingsPage() {
                                 </div>
                             </div>
                             <StrategicIntelligenceHub />
+                        </section>
+                    )}
+                    
+                    {activeTab === "users" && isManager && (
+                        <section className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
+                            <UserManagement />
+                        </section>
+                    )}
+                    
+                    {activeTab === "projects" && isManager && (
+                        <section className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
+                            <ProjectAccess />
                         </section>
                     )}
                 </div>

@@ -1,50 +1,138 @@
 # Estructura de la Base de Datos (Supabase / PostgreSQL)
 
+**Version:** v3.9 (Multi-User Architecture)  
+**Last Updated:** 2026-02-10
+
 Este documento detalla la estructura física actual de la base de datos, incluyendo todas las tablas, columnas y tipos de datos. Esta referencia es ideal para generar Diagramas Entidad-Relación (ER).
 
-## 1. Core Project & Tenants
+---
 
-### `utm_clients`
-Representa la organización o cliente dueño de los datos.
-| Columna | Tipo | Nullable | Descripción |
-| :--- | :--- | :--- | :--- |
-| `client_id` | `uuid` | NO | PK. Identificador único del cliente. |
-| `name` | `text` | NO | Nombre de la organización. |
-| `created_at` | `timestamptz` | YES | Fecha de creación. |
+## ⚠️ v3.9 Breaking Changes Summary
+
+**Architectural Shift**: Separación completa de identidad de usuario de organización (tenant).
+
+### Removed Tables:
+- ❌ **`utm_clients`**: Eliminado en migración 024. Concepto consolidado en `utm_tenants`.
+
+### Modified Tables:
+- 🔄 **`utm_tenants`**: Ahora representa SOLO organizaciones. Eliminadas columnas: `client_id`, `org_name`, `username`, `password_hash`, `password_hash_bcrypt`, `role`.
+- 🔄 **`utm_projects`**: Agregada `created_by_user_id` (FK -> utm_users). Eliminada `client_id`.
+- 🔄 **`utm_process_locks`**: Agregada `locked_by_user_email` para auditoría.
+
+### New Tables (Multi-User Support):
+- ✅ **`utm_users`**: Identidad de usuarios con email, username, password, role.
+- ✅ **`utm_user_invitations`**: Onboarding basado en email con tokens de invitación.
+- ✅ **`utm_project_members`**: Control de acceso granular a nivel proyecto.
+
+### Migration Path:
+- **Migration 020**: Project-level invitations foundation
+- **Migration 021**: Project members table (+ 021b RLS fix)
+- **Migration 022**: Global system catalog (tech_id simplification)
+- **Migration 023**: Admin role + deployment fields
+- **Migration 024**: Remove client_id simplification
+- **Migration 025**: Remove org_name simplification
+
+---
+
+## 1. Multi-User & Organization Core (v3.9)
 
 ### `utm_tenants`
-Usuarios individuales asociados a un cliente.
+Representa organizaciones o empresas clientes. **Simplificado en v3.9** para representar solo entidades organizacionales.
 | Columna | Tipo | Nullable | Descripción |
 | :--- | :--- | :--- | :--- |
-| `tenant_id` | `uuid` | NO | PK. Identificador único del usuario. |
-| `client_id` | `uuid` | YES | FK -> `utm_clients.client_id`. |
+| `tenant_id` | `uuid` | NO | PK. Identificador único de la organización. |
+| `display_name` | `text` | NO | Nombre visible de la organización. |
+| `tier` | `text` | YES | Plan de suscripción (ej. `FREE`, `PRO`, `ENTERPRISE`). |
+| `is_active` | `boolean` | YES | Estado activo de la organización. |
+| `created_at` | `timestamptz` | YES | Fecha de creación. |
+| `updated_at` | `timestamptz` | YES | Última actualización. |
+
+> **v3.9 Breaking Change**: Se eliminaron las columnas `client_id`, `org_name`, `username`, `password_hash`, `password_hash_bcrypt`, y `role`. Los datos de usuario ahora residen en `utm_users`.
+
+### `utm_users` (NEW in v3.9)
+Identidad de usuarios individuales, separada de la organización.
+| Columna | Tipo | Nullable | Descripción |
+| :--- | :--- | :--- | :--- |
+| `user_id` | `uuid` | NO | PK. Identificador único del usuario. |
+| `tenant_id` | `uuid` | NO | FK -> `utm_tenants.tenant_id`. Organización a la que pertenece. |
+| `email` | `text` | NO | Email único del usuario (UNIQUE). |
 | `username` | `text` | NO | Nombre de usuario para login. |
-| `password_hash` | `text` | NO | Hash de contraseña (Legacy). |
-| `password_hash_bcrypt` | `text` | YES | Hash seguro (Bcrypt) para autenticación nueva. |
-| `role` | `text` | NO | Rol RBAC (ej. `ADMIN`, `USER`). |
+| `password_hash_bcrypt` | `text` | NO | Hash Bcrypt de contraseña. |
+| `role` | `text` | NO | Rol RBAC: `ADMIN`, `MANAGER`, `COLLABORATOR`, `VIEWER`. |
 | `is_active` | `boolean` | YES | Estado de la cuenta. |
+| `display_name` | `text` | YES | Nombre completo del usuario. |
+| `last_login` | `timestamptz` | YES | Última sesión. |
 | `created_at` | `timestamptz` | YES | Fecha de registro. |
+| `updated_at` | `timestamptz` | YES | Última modificación. |
+
+> **Role Hierarchy**: `ADMIN` (platform-level), `MANAGER` (tenant-level), `COLLABORATOR` (project-level editor), `VIEWER` (project-level read-only).
+
+### `utm_user_invitations` (NEW in v3.9)
+Gestión de invitaciones por email para onboarding de usuarios.
+| Columna | Tipo | Nullable | Descripción |
+| :--- | :--- | :--- | :--- |
+| `invitation_id` | `uuid` | NO | PK. Identificador único de la invitación. |
+| `tenant_id` | `uuid` | NO | FK -> `utm_tenants.tenant_id`. |
+| `email` | `text` | NO | Email del usuario invitado. |
+| `role` | `text` | NO | Rol asignado al aceptar. |
+| `token` | `text` | NO | Token único para validación (UNIQUE). |
+| `expires_at` | `timestamptz` | NO | Fecha de expiración del token. |
+| `status` | `text` | NO | Estado: `PENDING`, `ACCEPTED`, `EXPIRED`, `CANCELLED`. |
+| `invited_by` | `uuid` | YES | FK -> `utm_users.user_id`. Usuario que envió invitación. |
+| `invited_at` | `timestamptz` | YES | Fecha de envío. |
+| `accepted_at` | `timestamptz` | YES | Fecha de aceptación. |
+
+### `utm_project_members` (NEW in v3.9)
+Control de acceso granular a nivel de proyecto.
+| Columna | Tipo | Nullable | Descripción |
+| :--- | :--- | :--- | :--- |
+| `member_id` | `uuid` | NO | PK. Identificador único del miembro. |
+| `project_id` | `uuid` | NO | FK -> `utm_projects.project_id`. |
+| `user_id` | `uuid` | NO | FK -> `utm_users.user_id`. |
+| `role` | `text` | NO | Rol específico en el proyecto: `COLLABORATOR`, `VIEWER`. |
+| `added_by` | `uuid` | YES | FK -> `utm_users.user_id`. Usuario que asignó acceso. |
+| `added_at` | `timestamptz` | YES | Fecha de asignación. |
+
+> **UNIQUE Constraint**: `(project_id, user_id)` - Un usuario solo puede tener un rol por proyecto.
+
+## 2. Projects & Process Governance
 
 ### `utm_projects`
 Entidad central que agrupa todo el proceso de modernización.
 | Columna | Tipo | Nullable | Descripción |
 | :--- | :--- | :--- | :--- |
 | `project_id` | `uuid` | NO | PK. Identificador único del proyecto. |
-| `tenant_id` | `uuid` | YES | FK -> `utm_tenants.tenant_id`. Dueño del proyecto. |
-| `client_id` | `uuid` | YES | FK -> `utm_clients.client_id`. Contexto organizacional. |
+| `tenant_id` | `uuid` | NO | FK -> `utm_tenants.tenant_id`. Organización propietaria. |
 | `name` | `varchar` | NO | Nombre del proyecto. |
 | `description` | `text` | YES | Descripción opcional. |
-| `status` | `varchar` | YES | Estado (ej. `TRIAGE`, `DRAFTING`). |
+| `status` | `varchar` | YES | Estado (ej. `TRIAGE`, `DRAFTING`, `COMPLETED`). |
 | `stage` | `text` | YES | Etapa numérica (ej. "1", "2"). |
 | `settings` | `jsonb` | YES | Configuración global (Source/Target Tech). |
 | `config` | `jsonb` | YES | Variables de entorno y rutas. |
 | `repo_url` | `text` | YES | URL del repo git. |
 | `prompt` | `text` | YES | Prompt de sistema customizado. |
 | `triage_approved_at` | `timestamptz` | YES | Fecha de aprobación de triage. |
+| `created_by_user_id` | `uuid` | YES | FK -> `utm_users.user_id`. Usuario creador (v3.9). |
 | `is_active` | `boolean` | YES | Soft delete flag. |
 | `created_at` | `timestamptz` | YES | Fecha de creación. |
+| `updated_at` | `timestamptz` | YES | Última actualización. |
 
-## 2. Asset Management & Intelligence
+> **v3.9 Changes**: Agregada columna `created_by_user_id` para rastrear autoría. Eliminada referencia `client_id` (migración 024).
+
+### `utm_process_locks` (v3.8)
+Bloqueo de ejecución concurrente para proyectos.
+| Columna | Tipo | Nullable | Descripción |
+| :--- | :--- | :--- | :--- |
+| `lock_id` | `uuid` | NO | PK. Identificador único del bloqueo. |
+| `project_id` | `uuid` | NO | FK -> `utm_projects.project_id` (UNIQUE). |
+| `phase` | `text` | NO | Fase en ejecución (ej. `DRAFTING`, `MIGRATION`). |
+| `locked_by_user_email` | `text` | YES | Email del usuario ejecutando (v3.9). |
+| `locked_at` | `timestamptz` | NO | Timestamp del bloqueo. |
+| `expires_at` | `timestamptz` | NO | Expiración automática (30 min default). |
+
+> **Governance**: Solo un proceso puede ejecutarse por proyecto. Admin puede liberar bloqueos vía RPC `force_expire_lock(project_id)`.
+
+## 3. Asset Management & Intelligence
 
 ### `utm_objects`
 (Antiguo `assets`) Almacena cada archivo o artefacto descubierto.
@@ -102,7 +190,7 @@ Código final generado.
 | `status` | `text` | YES | Estado de generación. |
 | `created_at` | `timestamptz` | YES | Fecha de generación. |
 
-## 3. Configuration & Governance
+## 4. Configuration & Governance
 
 ### `utm_agent_matrix`
 Asignación estratégica de Agentes a Modelos LLM.
@@ -175,7 +263,7 @@ Configuraciones y patrones de diseño (Knowledge Base).
 | `value` | `jsonb` | YES | Valor o estructura JSON. |
 | `updated_at` | `timestamptz` | YES | Última actualización. |
 
-## 4. System & Audit
+## 5. System & Audit
 
 ### `utm_execution_logs`
 Logs de auditoría detallados.
