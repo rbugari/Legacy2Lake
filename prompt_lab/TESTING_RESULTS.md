@@ -4,6 +4,12 @@
 **Prompts Version:** v2.0.0  
 **Total Tests:** 24 (16 P0, 6 P1, 2 P2)
 
+**Test Environment:**
+- Tenant: demo3 (daac0ee6-3b28-412d-8acd-43ec51149188)
+- Project: **ttt** (Microsoft SQL Server → Databricks PySpark)
+- Provider: Azure OpenAI (gpt-4.1 deployment)
+- Agent C Model: azure-gpt-4o
+
 ---
 
 ## 📊 Summary Dashboard
