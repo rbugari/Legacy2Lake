@@ -271,24 +271,47 @@
 
 ---
 
-## 4. Feature Comparison Matrix
+## 4. Feature Comparison Matrix (Post-v4.0 Projection)
 
-| Feature | L2L | Next Pathway | LeapLogic | Prophecy | dbt | Fivetran |
-|---------|-----|--------------|-----------|----------|-----|----------|
-| Legacy ETL Migration | ✅ | ✅ | ✅ | ⚠️ | ❌ | ❌ |
-| Multi-source Support | ✅ | ✅ | ⚠️ | ❌ | ❌ | ✅ |
-| Multi-target Support | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ |
-| AI-driven Analysis | ✅ | ⚠️ | ⚠️ | ✅ | ❌ | ❌ |
-| Visual Development | ⚠️ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Medallion Auto-gen | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Built-in Governance | ✅ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ |
-| Multi-tenant SaaS | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Git Integration | 🔲 | ❌ | ❌ | ✅ | ✅ | ❌ |
-| Data Quality Gen | ✅ | ❌ | ⚠️ | ⚠️ | ✅ | ❌ |
-| Runbook Generation | ✅ | ⚠️ | ❌ | ❌ | ❌ | ❌ |
-| 300+ Connectors | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+> **Note**: This matrix assumes L2L v4.0 is FULLY IMPLEMENTED with all features described in the v4.0 vision document.
 
-**Legend**: ✅ Full | ⚠️ Partial | ❌ None | 🔲 Planned
+| Feature | L2L v4.0 | Next Pathway | LeapLogic | Prophecy | dbt | Fivetran | Monte Carlo |
+|---------|----------|--------------|-----------|----------|-----|----------|-------------|
+| **Core Migration** |
+| Legacy ETL Migration | ✅ | ✅ | ✅ | ⚠️ | ❌ | ❌ | ❌ |
+| Multi-source Support | ✅ | ✅ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ |
+| Multi-target Support | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ❌ |
+| **AI Capabilities** |
+| AI-driven Analysis | ✅✅ | ⚠️ | ⚠️ | ✅ | ❌ | ❌ | ✅ |
+| Deep Column Profiling | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Prompt-driven Generation | ✅ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ |
+| Real-time Validation | ✅ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ | ❌ |
+| Multi-model Orchestration | ✅ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ |
+| **Architecture** |
+| Medallion Auto-gen | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Vault Support | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ |
+| Adaptive Patterns | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Governance** |
+| Built-in Compliance | ✅ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ | ⚠️ |
+| Security Scanning | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
+| Runbook Generation | ✅ | ⚠️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Quality Gen | ✅ | ❌ | ⚠️ | ⚠️ | ✅ | ❌ | ✅ |
+| **Platform** |
+| Multi-tenant SaaS | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Improvement Advisor | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
+| **GAPS (Post-v4.0)** |
+| Git Integration | 🔲 | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Visual Pipeline Builder | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| 300+ Connectors | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Column-level Lineage UI | ❌ | ❌ | ❌ | ⚠️ | ✅ | ❌ | ✅ |
+| Orchestration Native | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Self-service Onboarding | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ⚠️ |
+| Slack/Teams Integration | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Real-time/Streaming | ❌ | ❌ | ❌ | ⚠️ | ❌ | ⚠️ | ⚠️ |
+| Public API/SDK | ❌ | ⚠️ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Marketplace/Templates | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
+
+**Legend**: ✅ Full | ✅✅ Best-in-class | ⚠️ Partial | ❌ None | 🔲 Planned
 
 ---
 
@@ -643,34 +666,227 @@ SAVINGS: ~70%
 
 ## 9. SWOT Analysis
 
-### Strengths
+### Strengths (Post-v4.0)
 - Unique 6-stage compiler flow
-- AI agent architecture
-- Built-in governance/compliance
-- Multi-tenant SaaS
-- Medallion auto-generation
+- **Best-in-class AI agent architecture** (v4.0 prompt-driven)
+- **Deep forensic triage** (column-level profiling)
+- Built-in governance/compliance with security scanning
+- Multi-tenant SaaS with enterprise multi-user
+- Medallion + Data Vault auto-generation
+- **Real-time code validation** (unique)
+- **Improvement Advisor** for continuous enhancement
 - Strong technical foundation
 
-### Weaknesses
+### Weaknesses (Post-v4.0)
+- ❌ Missing Git integration (CRITICAL gap)
+- ❌ No visual pipeline builder
+- ❌ Limited connector library
+- ❌ No orchestration/scheduling native
+- ❌ No public API/SDK
 - Smaller market presence than established players
-- Missing Git integration
-- Limited connector library
-- No visual pipeline builder
 - Smaller team/resources
 
 ### Opportunities
 - Microsoft Fabric first-mover
-- Regulated industry focus
+- Regulated industry focus (compliance advantage)
 - Modern-to-modern migration gap
 - AI differentiation vs pattern-matching competitors
 - Partnership with cloud vendors
+- **v4.0 unique capabilities** (no competitor has prompt-driven + deep triage)
 
 ### Threats
 - Cloud vendor native tools improving
-- Prophecy expanding to migration
+- Prophecy expanding to migration space
 - Economic downturn reducing budgets
 - Open source alternatives
 - Established competitor relationships with enterprises
+
+---
+
+## 10. POST-v4.0 GAP ANALYSIS: Features Missing & Competitive Criticality
+
+> **Purpose**: After v4.0 is complete, THESE are the remaining gaps that competitors have and we don't.
+> Ordered by **competitive criticality** - how much we lose deals because of this gap.
+
+---
+
+### 🔴 CRITICAL (Losing Deals NOW - Do in v4.1)
+
+#### 1. Git Integration
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🔴🔴🔴 CRITICAL |
+| **Competitors Who Have It** | Prophecy ✅, dbt ✅, Matillion ✅, Coalesce ✅ |
+| **Why We Lose Deals** | Enterprise teams require GitOps workflows. No Git = "not enterprise-ready" |
+| **Customer Quote** | "We can't adopt any tool that doesn't integrate with our CI/CD pipeline" |
+| **Scope** | Commit generated code to repo, PR workflows, branch per project |
+| **Effort Estimate** | 4-6 weeks |
+| **Impact if Not Done** | -30% enterprise deal conversion |
+
+#### 2. Self-Service Onboarding
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🔴🔴🔴 CRITICAL |
+| **Competitors Who Have It** | Prophecy ✅, dbt ✅, Fivetran ✅, all modern SaaS |
+| **Why We Lose Deals** | SMB/Mid-market won't wait for demos. They try competitors first |
+| **Customer Quote** | "I signed up but couldn't figure out how to start a project" |
+| **Scope** | Signup → First project in <10 min, interactive tutorial, templates |
+| **Effort Estimate** | 3-4 weeks |
+| **Impact if Not Done** | -50% SMB conversion, high trial abandonment |
+
+#### 3. Public API & SDK
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🔴🔴 HIGH-CRITICAL |
+| **Competitors Who Have It** | dbt ✅, Fivetran ✅, Prophecy ✅, Monte Carlo ✅ |
+| **Why We Lose Deals** | Enterprise needs to integrate with existing tooling |
+| **Customer Quote** | "We need to trigger migrations from our CI/CD system" |
+| **Scope** | REST API docs, Python SDK, webhook events |
+| **Effort Estimate** | 4-5 weeks |
+| **Impact if Not Done** | -20% enterprise deals, blocks automation use cases |
+
+---
+
+### 🟡 HIGH (Competitive Disadvantage - Do in v4.2)
+
+#### 4. Slack/Teams Integration
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟡🟡 HIGH |
+| **Competitors Who Have It** | Monte Carlo ✅, dbt ✅, Fivetran ✅, Prophecy ✅ |
+| **Why It Matters** | Table stakes for modern SaaS. Teams expect notifications in chat |
+| **Scope** | Notifications (job done, errors), simple commands (/l2l status) |
+| **Effort Estimate** | 2-3 weeks |
+| **Impact if Not Done** | Perceived as "not modern", -10% mid-market |
+
+#### 5. Column-Level Lineage UI
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟡🟡 HIGH |
+| **Competitors Who Have It** | Monte Carlo ✅, dbt ✅, Atlan ✅, Collibra ✅ |
+| **Why It Matters** | Governance teams need visual lineage for compliance audits |
+| **Note** | v4.0 HAS the data (deep triage). Just needs UI visualization |
+| **Scope** | Interactive graph showing source → transform → target for each column |
+| **Effort Estimate** | 3-4 weeks |
+| **Impact if Not Done** | Weaker in governance RFPs vs Monte Carlo |
+
+#### 6. Orchestration/Scheduling
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟡 HIGH |
+| **Competitors Who Have It** | Prophecy ✅ (Airflow), Matillion ✅, Dagster |
+| **Why It Matters** | Generated code needs to run somewhere |
+| **Options** | A) Native simple scheduler, B) Airflow DAG export, C) Integration with Dagster |
+| **Recommendation** | Start with Airflow DAG export (lowest effort) |
+| **Effort Estimate** | 2-3 weeks (export), 6-8 weeks (native) |
+| **Impact if Not Done** | "L2L generates code but then what?" friction |
+
+---
+
+### 🟢 MEDIUM (Nice to Have - Do in v5.0+)
+
+#### 7. Visual Pipeline Builder
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟢 MEDIUM |
+| **Competitors Who Have It** | Prophecy ✅✅, Matillion ✅, Fivetran ✅ |
+| **Why Lower Priority** | L2L is migration-focused, not greenfield pipeline building |
+| **Note** | Prophecy's strength; competing here is expensive |
+| **Scope** | Drag-drop pipeline designer (significant effort) |
+| **Effort Estimate** | 12-16 weeks |
+| **Recommendation** | DEFER - focus on migration excellence, not compete with Prophecy |
+
+#### 8. 300+ Connectors
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟢 MEDIUM |
+| **Competitors Who Have It** | Fivetran ✅, Airbyte ✅ |
+| **Why Lower Priority** | L2L is about transformation, not data movement |
+| **Note** | Complementary to Fivetran/Airbyte, not competitive |
+| **Scope** | Build connector library (massive effort) |
+| **Effort Estimate** | 6+ months |
+| **Recommendation** | Partner with Airbyte/Fivetran instead of building |
+
+#### 9. Real-time/Streaming Support
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟢 MEDIUM |
+| **Competitors Who Have It** | Prophecy ⚠️, Fivetran ⚠️ |
+| **Why Lower Priority** | Most legacy migrations are batch-to-batch |
+| **Future Need** | CDC patterns increasing; may become HIGH in 2027 |
+| **Scope** | Spark Streaming templates, Kafka integration |
+| **Effort Estimate** | 8-10 weeks |
+| **Recommendation** | v4.0 has CDC detection; streaming gen is v5.0+ |
+
+#### 10. Marketplace/Template Library
+| Aspect | Details |
+|--------|---------|
+| **Criticality** | 🟢 LOW-MEDIUM |
+| **Competitors Who Have It** | Prophecy ✅, dbt ✅ (packages) |
+| **Why It Matters** | Community engagement, faster starts |
+| **Scope** | Pre-built prompts, transformation templates, compliance packs |
+| **Effort Estimate** | 4-6 weeks (infrastructure), ongoing (content) |
+| **Recommendation** | Start simple with "blessed templates" in v4.2 |
+
+---
+
+## 11. PRIORITIZED ROADMAP: Post-v4.0
+
+### v4.1 - "Enterprise Ready" (6-8 weeks)
+Focus: **Fix critical gaps that lose us deals**
+
+| Feature | Effort | Impact |
+|---------|--------|--------|
+| Git Integration | 4-6w | +30% enterprise conversion |
+| Self-Service Onboarding | 3-4w | +50% SMB conversion |
+| Public API v1 | 4-5w | Unblocks 20% automation deals |
+
+### v4.2 - "Platform Polish" (6-8 weeks)
+Focus: **Match modern SaaS expectations**
+
+| Feature | Effort | Impact |
+|---------|--------|--------|
+| Slack/Teams Integration | 2-3w | Modern perception |
+| Column-level Lineage UI | 3-4w | Win governance RFPs |
+| Airflow DAG Export | 2-3w | Answer "then what?" |
+| Template Library v1 | 2-3w | Faster starts |
+
+### v5.0+ - "Platform Expansion" (Future)
+Focus: **Growth and differentiation**
+
+| Feature | Effort | Priority |
+|---------|--------|----------|
+| Visual Pipeline Builder | 12-16w | Low - don't compete with Prophecy |
+| Streaming/Real-time | 8-10w | Medium - watch market |
+| Connector Library | 6mo+ | Low - partner instead |
+
+---
+
+## 12. Competitive Position Summary (Post-v4.0)
+
+### Where We WIN (Unique Advantages):
+1. ✅ **AI-Driven Migration** - No competitor has prompt-driven + deep triage combo
+2. ✅ **Compliance Native** - Agent F + Security Scanner built-in (others bolt-on)
+3. ✅ **Architecture Flexibility** - Medallion + Data Vault, adaptive patterns
+4. ✅ **Real-time Validation** - Catch errors before deployment
+5. ✅ **Improvement Advisor** - Unique manual-controlled learning system
+6. ✅ **Cost Efficiency** - 50-70% cheaper than Next Pathway
+
+### Where We're COMPETITIVE (Parity):
+1. ⚠️ Multi-source parsing - Comparable to Next Pathway
+2. ⚠️ AI capabilities - Comparable to Prophecy (different focus)
+3. ⚠️ Multi-tenant - Standard SaaS (same as others)
+
+### Where We LOSE (Must Fix):
+1. ❌ **Git Integration** - Table stakes, must fix in v4.1
+2. ❌ **Self-Service** - Losing SMB, must fix in v4.1
+3. ❌ **API/SDK** - Blocking enterprise automation, must fix in v4.1
+4. ❌ **Notifications** - Not modern perception, fix in v4.2
+
+### Where We DON'T COMPETE (Strategic Choice):
+1. 🚫 **Visual Builder** - Prophecy's domain, not our fight
+2. 🚫 **Connectors** - Fivetran/Airbyte's domain, partner instead
+3. 🚫 **Orchestration** - Airflow/Dagster's domain, export/integrate
 
 ---
 

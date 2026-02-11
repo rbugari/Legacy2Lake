@@ -1,0 +1,49 @@
+{
+  "total_tests": 7,
+  "passed": 3,
+  "failed": 4,
+  "details": [
+    {
+      "test": "Prompt creation per tenant",
+      "status": "\u274c FAIL",
+      "message": "Some tenants missing prompts",
+      "severity": "critical"
+    },
+    {
+      "test": "Prompt cross-tenant leakage",
+      "status": "\u274c FAIL",
+      "message": "Found 9 prompts shared across tenants: ['agent_a_discovery', 'agent_b_cartographer', 'agent_c_interpreter', 'agent_f_critic', 'agent_g_governance', 'agent_s_scout', 'coding_standards', 'agent_c_interpreter', 'agent_c_interpreter']",
+      "severity": "critical"
+    },
+    {
+      "test": "Project creation per tenant",
+      "status": "\u274c FAIL",
+      "message": "Some tenants missing projects",
+      "severity": "high"
+    },
+    {
+      "test": "Project ID uniqueness",
+      "status": "\u2705 PASS",
+      "message": "All project IDs are unique",
+      "severity": "info"
+    },
+    {
+      "test": "User creation per tenant",
+      "status": "\u274c FAIL",
+      "message": "Some tenants missing users",
+      "severity": "high"
+    },
+    {
+      "test": "User cross-tenant membership",
+      "status": "\u2705 PASS",
+      "message": "No users belong to multiple tenants",
+      "severity": "info"
+    },
+    {
+      "test": "Storage tenant segregation",
+      "status": "\u2705 PASS",
+      "message": "Storage layer uses tenant_id in paths (verified by code inspection)",
+      "severity": "info"
+    }
+  ]
+}

@@ -53,8 +53,8 @@ Generate PySpark code that:
 # 1. IMPORTS
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, lit, sum as _sum, avg, count, 
-    current_timestamp, when, coalesce
+    col, lit, sum as _sum, avg, count, max as _max, min as _min,
+    current_timestamp, current_date, when, coalesce
 )
 import logging
 
@@ -81,9 +81,10 @@ try:
     
     # 5. APPLY BUSINESS LOGIC
     if TABLE_TYPE == "DIMENSION":
-        # Dimension: Clean projection with business attributes
+        # Dimension: Clean projection with business attributes + SCD2 columns
+        # Grain: One row per unique customer
         df_gold = df_silver.select(
-            col("customer_id"),
+            col("customer_id").alias("customer_key"),  # Use _key suffix for dimensions
             col("customer_name"),
             col("email"),
             col("country"),
@@ -93,31 +94,41 @@ try:
             # Add flags
             when(col("status") == "A", lit("Active")) \
                 .otherwise(lit("Inactive")).alias("status_label"),
+            # SCD Type 2 columns (MANDATORY for dimensions)
+            current_date().alias("effective_date"),
+            lit("9999-12-31").cast("date").alias("end_date"),
+            lit(True).alias("is_current"),
             # Audit columns
             col("_ingestion_timestamp").alias("last_updated")
         )
+        
+        logger.info(f"Dimension transformation completed: {df_gold.count()} records")
     
     elif TABLE_TYPE == "FACT":
-        # Fact: Aggregations and computed measures
-        df_gold = df_silver.select(
-            col("order_id"),
-            col("customer_id"),
-            col("product_id"),
-            col("order_date"),
-            col("quantity"),
-            col("unit_price"),
-            # Computed measures
-            (col("quantity") * col("unit_price")).alias("total_amount"),
-            ((col("quantity") * col("unit_price")) * col("discount_pct")).alias("discount_amount"),
-            # Audit
-            current_timestamp().alias("processed_timestamp")
+        # Fact: MUST use groupBy() for aggregations (MANDATORY)
+        # Grain: One row per order date, customer, and product combination
+        df_gold = df_silver.groupBy(
+            col("order_date").alias("date_key"),         # Use _key suffix for FKs
+            col("customer_id").alias("customer_key"),
+            col("product_id").alias("product_key")
+        ).agg(
+            count("order_id").alias("order_count"),
+            _sum(col("quantity")).alias("total_quantity"),
+            _sum(col("quantity") * col("unit_price")).alias("total_amount"),
+            avg(col("unit_price")).alias("avg_unit_price"),
+            _max(col("quantity")).alias("max_quantity"),
+            _min(col("quantity")).alias("min_quantity")
+        ).withColumn(
+            "processed_timestamp", current_timestamp()
         )
+        
+        logger.info(f"Fact aggregation completed: {df_gold.count()} records")
     
     else:
         # Default: Pass-through with minimal transformation
+        # Grain: Matches source table grain
         df_gold = df_silver.select("*")
-    
-    logger.info(f"Applied {TABLE_TYPE} business logic")
+        logger.info(f"Default transformation: {df_gold.count()} records")
     
     # 6. DATA VALIDATION
     record_count = df_gold.count()
@@ -150,19 +161,27 @@ finally:
 ### ✅ Table Type Handling:
 - **DIMENSION:** Clean, denormalized reference data
   - Customer, Product, Location, Time dimensions
-  - SCD Type 2 if tracking history
+  - **MUST include SCD Type 2 columns:** `effective_date`, `end_date`, `is_current`
   - Business-friendly column names and labels
+  - **Use `.select()` for column projection**
+  - **Primary key MUST end with `_key` suffix** (e.g., `customer_key`, `product_key`)
+  - **Document grain:** Add comment "# Grain: One row per [entity]"
 
 - **FACT:** Transactional, event, or measurement data
   - Sales, Orders, Inventory movements
-  - Computed measures (totals, averages, ratios)
-  - Foreign keys to dimensions
+  - **MUST use `.groupBy().agg()` for aggregations (MANDATORY)**
+  - Computed measures: totals, averages, counts, min/max
+  - **Foreign keys MUST end with `_key` suffix** (e.g., `customer_key`, `date_key`)
+  - Add `processed_timestamp` for audit
+  - **Document grain:** Add comment "# Grain: One row per [dimension combination]"
 
 ### ✅ Business Logic:
-- Apply calculations: `quantity * unit_price`
+- **FACT tables MUST use groupBy().agg()** - not just select()
+- Apply calculations: `sum()`, `avg()`, `count()`, `max()`, `min()`
 - Add derived columns: status labels, flags, categories
 - Rename columns to business terms: `customer_since`, `total_sales`
 - Handle NULLs: use `coalesce()` for defaults
+- Log record counts after each transformation
 
 ### ✅ Write Strategy:
 - **Mode:** `overwrite` (Gold is typically rebuilt daily)
@@ -180,6 +199,8 @@ finally:
 
 - [ ] Reads from Silver table
 - [ ] Table type (DIMENSION/FACT) specified
+- [ ] **DIMENSION: Includes SCD2 columns** (effective_date, end_date, is_current)
+- [ ] **FACT: Uses groupBy().agg()** - MANDATORY for aggregations
 - [ ] Business logic implemented (calculations, transformations)
 - [ ] Column names are business-friendly
 - [ ] NULLs handled appropriately
@@ -187,13 +208,13 @@ finally:
 - [ ] Uses `overwrite` mode
 - [ ] `overwriteSchema=true` enabled
 - [ ] Error handling (try/except)
-- [ ] Logging at key stages
+- [ ] **Logging at key stages (minimum 5 log points)**
 
 ---
 
 ## 📚 Examples
 
-### Example 1: Dimension Table (Customer)
+### Example 1: Dimension Table (Customer) with SCD2
 
 ```python
 TABLE_TYPE = "DIMENSION"
@@ -212,30 +233,33 @@ df_gold = df_silver.select(
         .otherwise("Unknown").alias("customer_status"),
     # Date attributes
     col("created_date").alias("customer_since"),
+    # SCD Type 2 columns (MANDATORY)
+    current_date().alias("effective_date"),
+    lit("9999-12-31").cast("date").alias("end_date"),
+    lit(True).alias("is_current"),
     # Audit
     current_timestamp().alias("last_updated")
 )
 ```
 
-### Example 2: Fact Table (Sales)
+### Example 2: Fact Table (Sales) with Aggregations
 
 ```python
 TABLE_TYPE = "FACT"
 
-df_gold = df_silver.select(
-    col("order_id").alias("order_key"),
-    col("customer_id").alias("customer_key"),
-    col("product_id").alias("product_key"),
+# MANDATORY: Use groupBy().agg() for FACT tables
+df_gold = df_silver.groupBy(
     col("order_date").alias("date_key"),
-    # Measures
-    col("quantity"),
-    col("unit_price"),
-    # Computed measures
-    (col("quantity") * col("unit_price")).alias("gross_sales"),
-    (col("quantity") * col("unit_price") * col("discount_pct")).alias("discount"),
-    (col("quantity") * col("unit_price") * (1 - col("discount_pct"))).alias("net_sales"),
-    # Audit
-    current_timestamp().alias("processed_at")
+    col("customer_id").alias("customer_key"),
+    col("product_id").alias("product_key")
+).agg(
+    count("order_id").alias("order_count"),
+    _sum(col("quantity")).alias("total_quantity"),
+    _sum(col("quantity") * col("unit_price")).alias("gross_sales"),
+    avg(col("unit_price")).alias("avg_unit_price"),
+    _max(col("quantity")).alias("max_quantity")
+).withColumn(
+    "processed_at", current_timestamp()
 )
 ```
 
@@ -279,17 +303,21 @@ df_gold = df_silver.groupBy(
 .mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
 ```
 
-### 3. No Business Logic
+### 3. No Aggregations for FACT Tables
 ```python
-# ❌ WRONG: Just copying Silver
-df_gold = df_silver.select("*")
-
-# ✅ CORRECT: Add business value
+# ❌ WRONG: FACT table without aggregation
 df_gold = df_silver.select(
-    col("product_id"),
-    col("product_name"),
-    (col("cost") * 1.2).alias("retail_price"),  # Add markup
-    when(col("stock") > 100, "In Stock").otherwise("Low Stock").alias("availability")
+    col("order_id"),
+    col("quantity") * col("unit_price").alias("total")
+)
+
+# ✅ CORRECT: FACT table MUST use groupBy().agg()
+df_gold = df_silver.groupBy(
+    col("order_date"),
+    col("customer_id")
+).agg(
+    count("order_id").alias("order_count"),
+    _sum(col("quantity") * col("unit_price")).alias("total_sales")
 )
 ```
 

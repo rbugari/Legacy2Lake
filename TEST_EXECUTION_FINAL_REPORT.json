@@ -1,0 +1,231 @@
+{
+  "timestamp": "2026-02-11 10:42:10",
+  "execution_time_seconds": 871.1033663749695,
+  "summary": {
+    "total_tests": 22,
+    "passed": 22,
+    "failed": 0,
+    "overall_score": 100.0,
+    "cartridge_score": 100.0,
+    "integration_score": 100.0
+  },
+  "cartridge_tests": {
+    "PySpark": [
+      {
+        "name": "PySpark - Bronze",
+        "script": "execute_agent_c_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 33.2547447681427,
+        "output_lines": 129,
+        "has_errors": false
+      },
+      {
+        "name": "PySpark - Silver",
+        "script": "execute_agent_c_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 38.651846408843994,
+        "output_lines": 101,
+        "has_errors": true
+      },
+      {
+        "name": "PySpark - Gold",
+        "script": "execute_agent_c_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 29.030922889709473,
+        "output_lines": 103,
+        "has_errors": false
+      }
+    ],
+    "MS Fabric": [
+      {
+        "name": "MS Fabric - Bronze",
+        "script": "execute_agent_c_fabric_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 30.405733108520508,
+        "output_lines": 65,
+        "has_errors": false
+      },
+      {
+        "name": "MS Fabric - Silver",
+        "script": "execute_agent_c_fabric_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 31.8830509185791,
+        "output_lines": 2,
+        "has_errors": false
+      },
+      {
+        "name": "MS Fabric - Gold",
+        "script": "execute_agent_c_fabric_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 33.43880009651184,
+        "output_lines": 2,
+        "has_errors": false
+      }
+    ],
+    "Generic": [
+      {
+        "name": "Generic - Bronze",
+        "script": "execute_agent_c_generic_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 28.62831473350525,
+        "output_lines": 70,
+        "has_errors": false
+      },
+      {
+        "name": "Generic - Silver",
+        "script": "execute_agent_c_generic_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 43.887744665145874,
+        "output_lines": 2,
+        "has_errors": false
+      },
+      {
+        "name": "Generic - Gold",
+        "script": "execute_agent_c_generic_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 35.69029927253723,
+        "output_lines": 2,
+        "has_errors": false
+      }
+    ],
+    "dbt": [
+      {
+        "name": "dbt - Bronze",
+        "script": "execute_agent_c_dbt_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 24.083465814590454,
+        "output_lines": 86,
+        "has_errors": false
+      }
+    ],
+    "GCP BigQuery": [
+      {
+        "name": "GCP BigQuery - Bronze",
+        "script": "execute_agent_c_gcp_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 28.030826091766357,
+        "output_lines": 73,
+        "has_errors": false
+      }
+    ],
+    "AWS Glue": [
+      {
+        "name": "AWS Glue - Bronze",
+        "script": "execute_agent_c_aws_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 27.136868000030518,
+        "output_lines": 83,
+        "has_errors": false
+      },
+      {
+        "name": "AWS Glue - Silver",
+        "script": "execute_agent_c_aws_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 27.89919352531433,
+        "output_lines": 2,
+        "has_errors": false
+      },
+      {
+        "name": "AWS Glue - Gold",
+        "script": "execute_agent_c_aws_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 45.61883997917175,
+        "output_lines": 30,
+        "has_errors": false
+      }
+    ],
+    "Snowflake": [
+      {
+        "name": "Snowflake - Bronze",
+        "script": "execute_agent_c_snowflake_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 26.66385793685913,
+        "output_lines": 113,
+        "has_errors": false
+      },
+      {
+        "name": "Snowflake - Silver",
+        "script": "execute_agent_c_snowflake_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 30.75098967552185,
+        "output_lines": 2,
+        "has_errors": false
+      },
+      {
+        "name": "Snowflake - Gold",
+        "script": "execute_agent_c_snowflake_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 26.69060206413269,
+        "output_lines": 30,
+        "has_errors": false
+      }
+    ],
+    "Salesforce Data Cloud": [
+      {
+        "name": "Salesforce Data Cloud - Bronze",
+        "script": "execute_agent_c_salesforce_bronze_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 20.679083585739136,
+        "output_lines": 28,
+        "has_errors": false
+      },
+      {
+        "name": "Salesforce Data Cloud - Silver",
+        "script": "execute_agent_c_salesforce_silver_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 23.31645154953003,
+        "output_lines": 28,
+        "has_errors": false
+      },
+      {
+        "name": "Salesforce Data Cloud - Gold",
+        "script": "execute_agent_c_salesforce_gold_test.py",
+        "status": "passed",
+        "return_code": 0,
+        "elapsed": 27.212191820144653,
+        "output_lines": 28,
+        "has_errors": false
+      }
+    ]
+  },
+  "integration_tests": [
+    {
+      "name": "Sprint 2 Integration Tests",
+      "script": "execute_sprint2_integration_tests.py",
+      "status": "passed",
+      "return_code": 0,
+      "elapsed": 97.79363679885864,
+      "output_lines": 86,
+      "has_errors": false
+    },
+    {
+      "name": "End-to-End Smoke Test",
+      "script": "execute_e2e_smoke_test.py",
+      "status": "passed",
+      "return_code": 0,
+      "elapsed": 136.29549717903137,
+      "output_lines": 107,
+      "has_errors": false
+    }
+  ],
+  "final_status": "\u2705 EXCELLENT - Production Ready"
+}

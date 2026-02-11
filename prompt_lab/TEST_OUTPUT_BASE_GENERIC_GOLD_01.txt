@@ -1,0 +1,82 @@
+-- GOLD LAYER: Star Schema Pattern for Business Analytics (Generic SQL - Technology Agnostic)
+
+-- DIMENSION: Customers
+CREATE OR REPLACE TABLE gold.dim_customers AS
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY customer_id) AS customer_key,  -- Surrogate key
+    customer_id,  -- Business key
+    customer_name,
+    customer_email,
+    customer_segment,
+    country,
+    CURRENT_TIMESTAMP AS _gold_created_at,
+    'customer' AS _grain_level,
+    CURRENT_TIMESTAMP AS _last_updated
+FROM silver.customers;
+
+-- DIMENSION: Products
+CREATE OR REPLACE TABLE gold.dim_products AS
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY product_id) AS product_key,  -- Surrogate key
+    product_id,  -- Business key
+    product_name,
+    category,
+    subcategory,
+    unit_price,
+    CURRENT_TIMESTAMP AS _gold_created_at,
+    'product' AS _grain_level,
+    CURRENT_TIMESTAMP AS _last_updated
+FROM silver.products;
+
+-- DIMENSION: Date (for time intelligence)
+CREATE OR REPLACE TABLE gold.dim_date AS
+SELECT 
+    CAST(TO_CHAR(d, 'YYYYMMDD') AS INTEGER) AS date_key,  -- YYYYMMDD format
+    d AS date,
+    EXTRACT(YEAR FROM d) AS year,
+    EXTRACT(QUARTER FROM d) AS quarter,
+    EXTRACT(MONTH FROM d) AS month,
+    EXTRACT(WEEK FROM d) AS week,
+    EXTRACT(DOW FROM d) AS day_of_week,
+    CASE WHEN EXTRACT(DOW FROM d) IN (0, 6) THEN TRUE ELSE FALSE END AS is_weekend,
+    CURRENT_TIMESTAMP AS _gold_created_at
+FROM GENERATE_SERIES('2020-01-01', '2030-12-31', INTERVAL '1 day') d;
+
+-- FACT: Orders (grain: order)
+CREATE OR REPLACE TABLE gold.fact_orders AS
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY o.order_id) AS order_key,  -- Surrogate key
+    o.order_id,  -- Business key
+    c.customer_key,  -- Foreign key to dim_customers
+    TO_CHAR(o.order_date, 'YYYYMMDD')::INTEGER AS date_key,  -- Foreign key to dim_date
+    o.order_date,
+    o.amount AS order_amount,
+    o.discount AS discount_amount,
+    (o.amount - o.discount) AS net_amount,
+    CURRENT_TIMESTAMP AS _gold_created_at,
+    'order' AS _grain_level,
+    CURRENT_TIMESTAMP AS _last_updated
+FROM silver.orders o
+INNER JOIN gold.dim_customers c ON o.customer_id = c.customer_id;
+
+-- AGGREGATED VIEW: Daily Sales by Segment
+CREATE OR REPLACE VIEW gold.vw_daily_sales AS
+SELECT 
+    d.date,
+    d.year,
+    d.month,
+    c.customer_segment,
+    c.country,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    COUNT(DISTINCT c.customer_key) AS unique_customers,
+    SUM(f.order_amount) AS gross_sales,
+    SUM(f.discount_amount) AS total_discounts,
+    SUM(f.net_amount) AS net_sales,
+    AVG(f.net_amount) AS avg_order_value,
+    CURRENT_TIMESTAMP AS _gold_created_at,
+    'daily_by_segment' AS _grain_level,
+    CURRENT_TIMESTAMP AS _refresh_time
+FROM gold.fact_orders f
+INNER JOIN gold.dim_customers c ON f.customer_key = c.customer_key
+INNER JOIN gold.dim_date d ON f.date_key = d.date_key
+GROUP BY 1, 2, 3, 4, 5;

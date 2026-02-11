@@ -1,0 +1,82 @@
+[
+  {
+    "test": "PYSPARK-SILVER-01",
+    "script": "execute_agent_c_silver_test.py",
+    "status": "\u2705 PASS",
+    "score": "\ud83c\udfaf SCORE: 9/15 (60.0%)",
+    "elapsed": "33.8s",
+    "return_code": 0
+  },
+  {
+    "test": "PYSPARK-GOLD-01",
+    "script": "execute_agent_c_gold_test.py",
+    "status": "\u2705 PASS",
+    "score": "\ud83c\udfaf SCORE: 10/15 (66.7%)",
+    "elapsed": "27.3s",
+    "return_code": 0
+  },
+  {
+    "test": "SNOWFLAKE-SILVER-01",
+    "script": "execute_agent_c_snowflake_silver_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "30.5s",
+    "return_code": 0
+  },
+  {
+    "test": "SNOWFLAKE-GOLD-01",
+    "script": "execute_agent_c_snowflake_gold_test.py",
+    "status": "\u274c FAIL",
+    "score": "N/A",
+    "elapsed": "22.3s",
+    "return_code": 1
+  },
+  {
+    "test": "FABRIC-SILVER-01",
+    "script": "execute_agent_c_fabric_silver_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "28.0s",
+    "return_code": 0
+  },
+  {
+    "test": "FABRIC-GOLD-01",
+    "script": "execute_agent_c_fabric_gold_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "63.9s",
+    "return_code": 0
+  },
+  {
+    "test": "AWS-SILVER-01",
+    "script": "execute_agent_c_aws_silver_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "29.9s",
+    "return_code": 0
+  },
+  {
+    "test": "AWS-GOLD-01",
+    "script": "execute_agent_c_aws_gold_test.py",
+    "status": "\u274c FAIL",
+    "score": "N/A",
+    "elapsed": "31.9s",
+    "return_code": 1
+  },
+  {
+    "test": "GENERIC-SILVER-01",
+    "script": "execute_agent_c_generic_silver_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "29.2s",
+    "return_code": 0
+  },
+  {
+    "test": "GENERIC-GOLD-01",
+    "script": "execute_agent_c_generic_gold_test.py",
+    "status": "\u2705 PASS",
+    "score": "N/A",
+    "elapsed": "39.7s",
+    "return_code": 0
+  }
+]

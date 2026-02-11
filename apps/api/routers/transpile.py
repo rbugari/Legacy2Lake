@@ -37,6 +37,28 @@ class OptimizeRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+# --- Helper Functions ---
+
+def extract_code_from_result(result: Dict[str, Any]) -> Optional[str]:
+    """
+    Extracts code from Agent C result, handling multiple possible key formats.
+    Tries: code, pyspark_code, sql_code, final_code, generated_code
+    Special case: If no standard key found, check if result itself is JSON schema (Salesforce case)
+    """
+    possible_keys = ["code", "pyspark_code", "sql_code", "dbt_code", "final_code", "generated_code"]
+    for key in possible_keys:
+        if key in result and result[key]:
+            return result[key]
+    
+    # Special case: Salesforce JSON schemas come as root object without "code" wrapper
+    # Detect by presence of schema-like keys: "fields", "name", "sourceObject"
+    if isinstance(result, dict) and ("fields" in result or "sourceObject" in result):
+        import json
+        return json.dumps(result, indent=2)
+    
+    return None
+
+
 # --- Single Task Transpilation ---
 
 @router.post("/task")
@@ -52,18 +74,30 @@ async def transpile_task(payload: TranspileRequest, db: SupabasePersistence = De
     if "error" in c_result:
         return c_result
 
+    # Extract code from result (handle multiple key formats)
+    generated_code = extract_code_from_result(c_result)
+    if not generated_code:
+        return {
+            "error": "No code generated",
+            "detail": "Agent C did not return valid code",
+            "result_keys": list(c_result.keys())
+        }
+
     # 2. Audit and Optimize (Agent F)
     agent_f = AgentFService(tenant_id=db.tenant_id, client_id=db.client_id)
-    f_result = await agent_f.review_code(node_data, c_result["pyspark_code"])
+    f_result = await agent_f.review_code(node_data, generated_code)
     
     # 3. Persistence (Local & Supabase)
     solution_name = context.get("solution_name", "DefaultProject")
     task_name = node_data.get("name", "UnnamedTask")
     
+    # Final code: optimized version if available, otherwise original generated code
+    final_code = f_result.get("optimized_code") or generated_code
+    
     local_path = PersistenceService.save_transformation(
         solution_name, 
         task_name, 
-        f_result.get("optimized_code") or c_result["pyspark_code"]
+        final_code
     )
     
     # 4. Persistence (Supabase)
@@ -73,13 +107,13 @@ async def transpile_task(payload: TranspileRequest, db: SupabasePersistence = De
         await db.save_transformation(
             asset_id,
             node_data.get("description", ""),
-            f_result.get("optimized_code") or c_result["pyspark_code"]
+            final_code
         )
 
     return {
         "interpreter": c_result,
         "critic": f_result,
-        "final_code": f_result.get("optimized_code") or c_result["pyspark_code"],
+        "final_code": final_code,
         "saved_at": local_path
     }
 
@@ -125,10 +159,21 @@ async def transpile_all(payload: TranspileAllRequest, db: SupabasePersistence = 
         if "error" in c_res:
             results.append({"node": node_data.get("label"), "status": "FAILED", "error": c_res["error"]})
             continue
+        
+        # Extract generated code
+        generated_code = extract_code_from_result(c_res)
+        if not generated_code:
+            results.append({
+                "node": node_data.get("label"), 
+                "status": "FAILED", 
+                "error": "No code generated",
+                "result_keys": list(c_res.keys())
+            })
+            continue
             
         # 2. Audit
-        f_res = await agent_f.review_code(node_data, c_res["pyspark_code"])
-        final_code = f_res.get("optimized_code") or c_res["pyspark_code"]
+        f_res = await agent_f.review_code(node_data, generated_code)
+        final_code = f_res.get("optimized_code") or generated_code
         
         # 3. Save Local
         local_path = PersistenceService.save_transformation(

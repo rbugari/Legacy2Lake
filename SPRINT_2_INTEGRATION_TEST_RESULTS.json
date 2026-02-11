@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-02-11 10:39:50",
+  "summary": {
+    "passed": 2,
+    "skipped": 2,
+    "warnings": 1,
+    "failed": 0,
+    "total": 5,
+    "score": 50.0
+  },
+  "results": [
+    {
+      "name": "Workflow State Management",
+      "status": "skipped",
+      "reason": "Endpoints pending implementation"
+    },
+    {
+      "name": "Context Caching",
+      "status": "warning",
+      "speedup_percent": 100.50004110247606,
+      "note": "Caching may not be active"
+    },
+    {
+      "name": "Retry Logic",
+      "status": "passed",
+      "note": "Manual retry successful"
+    },
+    {
+      "name": "Pipeline Optimization",
+      "status": "passed",
+      "validation_score": 1.0,
+      "code_length": 801
+    },
+    {
+      "name": "Orchestration Metrics",
+      "status": "skipped",
+      "reason": "Metrics endpoint pending"
+    }
+  ]
+}

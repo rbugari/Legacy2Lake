@@ -54,6 +54,11 @@ load_dotenv()
 from apps.api.utils.logger import logger
 from apps.api.services.persistence_service import SupabasePersistence
 
+# Sprint 6: Security enhancements
+from apps.api.middleware.rate_limiter import RateLimitMiddleware
+from apps.api.services.audit_log_service import init_audit_service
+from apps.api.routers.dependencies import get_supabase_client
+
 # Import Routers
 from apps.api.routers import system, config # Standardize path
 from apps.api.routers.auth import router as auth_router
@@ -70,11 +75,27 @@ from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
     title="Legacy2Lake API", 
-    version="3.8.0",
+    version="3.8.1",  # Sprint 6: Rate Limiting + Audit Log
     description="Refactored Core API for Cloud-Native Multi-Tenant Architecture with Formalized Governance"
 )
 
+# --- STARTUP INITIALIZATION (Sprint 6) ---
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    # Initialize audit log service with Supabase client
+    try:
+        supabase_client = get_supabase_client()
+        init_audit_service(supabase_client)
+        logger.info("✅ API startup complete - Audit log and rate limiter active")
+    except Exception as e:
+        logger.error(f"⚠️  Failed to initialize audit service: {e}")
+
 # --- MIDDLEWARES ---
+
+# Sprint 6: Rate limiting (BEFORE request logging)
+app.add_middleware(RateLimitMiddleware)
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):

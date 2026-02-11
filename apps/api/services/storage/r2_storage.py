@@ -28,6 +28,10 @@ class R2StorageProvider(StorageProvider):
         # Boto3 expects bytes or string
         if not is_binary and isinstance(content, str):
             body = content.encode('utf-8')
+        elif not is_binary and isinstance(content, (dict, list)):
+            # Handle JSON-serializable objects (e.g. Salesforce Bronze schemas)
+            import json
+            body = json.dumps(content, indent=2).encode('utf-8')
         else:
             body = content
 

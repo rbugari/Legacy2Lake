@@ -1,0 +1,76 @@
+// =====================
+// SILVER LAYER TRANSFORMATION PATTERN (GENERIC)
+// Purpose: Clean, deduplicate, and standardize Bronze data
+// Layer: Silver (Cleaned/Validated)
+
+FUNCTION transform_to_silver(bronze_path, silver_path, primary_keys, business_date_column):
+
+    // Step 1: Read Bronze data
+    bronze_data = READ(bronze_path)
+
+    // Step 2: Deduplication (keep latest by ingestion timestamp)
+    deduped_data = DEDUPLICATE(
+        data = bronze_data,
+        partition_by = primary_keys,
+        order_by = [_ingestion_timestamp DESC],
+        keep = FIRST  // Keep first record (latest)
+    )
+
+    // Step 3: Data Quality Filtering (examples below; adapt as needed)
+    clean_data = deduped_data.FILTER(
+        AND(
+            ALL_NOT_NULL(primary_keys),
+            numeric_column > 0,  // Replace with actual business numeric columns
+            date_column >= '2020-01-01',  // Replace with actual business date columns
+            status IN ['VALID', 'ACTIVE', 'PENDING']  // Replace with actual valid status codes
+        )
+    )
+
+    // Step 4: Type Standardization (examples below; adapt as needed)
+    standardized_data = clean_data.TRANSFORM(
+        amount = CAST(amount AS DECIMAL(18,2)),
+        order_date = CAST(order_date AS DATE),
+        email = LOWER(TRIM(email)),
+        status = UPPER(status)
+        // Add other columns as required
+    )
+
+    // Step 5: Add Silver audit columns
+    silver_data = standardized_data.ADD_COLUMNS(
+        _processed_timestamp = CURRENT_TIMESTAMP(),
+        _quality_score = CALCULATE_QUALITY_SCORE(standardized_data),
+        _silver_source = CONCAT('bronze_', TABLE_NAME),
+        _bronze_ingestion_timestamp = _ingestion_timestamp
+    )
+
+    // Step 6: Write to Silver layer (idempotent - OVERWRITE)
+    WRITE(
+        data = silver_data,
+        target = silver_path,
+        mode = OVERWRITE,
+        format = PARQUET,
+        partition_by = [business_date_column]
+    )
+
+    // Step 7: Log transformation metadata
+    LOG_INFO(
+        source = bronze_path,
+        target = silver_path,
+        records_in = COUNT(bronze_data),
+        records_out = COUNT(silver_data),
+        rejection_rate = ((COUNT(bronze_data) - COUNT(silver_data)) / COUNT(bronze_data)) * 100
+    )
+
+    RETURN SUCCESS
+END FUNCTION
+
+// Helper: Calculate Quality Score (0-100)
+FUNCTION CALCULATE_QUALITY_SCORE(record):
+    score = 0
+    IF record.primary_key IS NOT NULL THEN score += 20
+    IF record.business_key IS NOT NULL THEN score += 20
+    IF record.amount IS NOT NULL AND record.amount > 0 THEN score += 20
+    IF record.date IS NOT NULL THEN score += 20
+    IF record.status IN VALID_STATUSES THEN score += 20
+    RETURN score
+END FUNCTION

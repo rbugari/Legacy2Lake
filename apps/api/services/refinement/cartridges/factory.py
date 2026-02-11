@@ -13,13 +13,17 @@ class CartridgeFactory:
     """
     
     @staticmethod
-    def get_cartridge(project_id: str, registry: Dict[str, Any], tenant_id: str = None) -> Cartridge:
+    def get_cartridge(project_id: str, registry: Dict[str, Any], tenant_id: str = None, target_tech: str = None) -> Cartridge:
         """
         Determines the correct cartridge based on Design Registry settings.
         Fetches compliance rules from DB and injects them.
+        
+        Args:
+            target_tech: Optional override for target technology (takes priority over registry)
         """
-        # Feature Flag: Check registry for 'target_stack'
-        target = str(registry.get("paths", {}).get("target_stack", "pyspark")).lower()
+        # Priority: Explicit parameter > Registry > Default
+        target = str(target_tech or registry.get("paths", {}).get("target_stack", "pyspark")).lower()
+        print(f"[CartridgeFactory] DEBUG: target_tech={target_tech}, registry_target={registry.get('paths', {}).get('target_stack')}, final_target={target}")
         
         # Resolve Tech Config from DB
         try:
@@ -45,11 +49,15 @@ class CartridgeFactory:
 
         if target in ["dbt"]:
             # Lazy import to avoid circular dependencies or import errors if not ready
+            print(f"[CartridgeFactory] DEBUG: Matched 'dbt', importing DbtCartridge...")
             from .dbt_cartridge import DbtCartridge
+            print(f"[CartridgeFactory] DEBUG: DbtCartridge imported successfully")
             return DbtCartridge(project_id, registry)
             
         elif target in ["snowflake"]:
+            print(f"[CartridgeFactory] DEBUG: Matched 'snowflake', importing SnowflakeCartridge...")
             from .snowflake_cartridge import SnowflakeCartridge
+            print(f"[CartridgeFactory] DEBUG: SnowflakeCartridge imported successfully")
             return SnowflakeCartridge(project_id, registry)
 
         elif target in ["fabric", "ms_fabric", "microsoft_fabric"]:
@@ -76,7 +84,9 @@ class CartridgeFactory:
             # Special mode: We use PySparkCartridge but we expect the prompt 
             # (which includes the registry) to trigger dual generation.
             # In a more advanced version, we might return a MultiCartridge.
+            print(f"[CartridgeFactory] DEBUG: Matched 'both', using PySparkCartridge for dual mode")
             return PySparkCartridge(project_id, registry)
 
         else:
+            print(f"[CartridgeFactory] DEBUG: No match for target='{target}', defaulting to PySparkCartridge")
             return PySparkCartridge(project_id, registry)

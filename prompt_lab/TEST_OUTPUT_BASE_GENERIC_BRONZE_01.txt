@@ -1,0 +1,47 @@
+-- BRONZE LAYER INGESTION PATTERN (GENERIC PSEUDOCODE)
+-- Purpose: Ingest raw customers table with minimal transformation
+-- Layer: Bronze (Raw/Immutable)
+
+FUNCTION ingest_to_bronze(source_table, target_table, source_system_name):
+    TRY:
+        // Step 1: Read source data (preserve all original columns)
+        raw_data = READ(
+            source = source_table,
+            format = AUTO_DETECT
+        )
+
+        // Step 2: Add Bronze audit columns
+        bronze_data = raw_data.ADD_COLUMNS(
+            _ingestion_timestamp = CURRENT_TIMESTAMP(),
+            _ingestion_date = CURRENT_DATE(),
+            _source_system = source_system_name,
+            _source_file = source_table,
+            _record_hash = HASH(customer_key, customer_id, name, email, region)
+        )
+
+        // Step 3: Write to Bronze layer (append-only, partitioned by ingestion date)
+        WRITE(
+            data = bronze_data,
+            target = target_table,
+            mode = APPEND,  // Never delete Bronze data
+            format = PARQUET,  // Or CSV, JSON depending on ecosystem
+            partition_by = [_ingestion_date],
+            compression = SNAPPY
+        )
+
+        // Step 4: Log ingestion metadata
+        LOG_INFO(
+            source = source_table,
+            target = target_table,
+            record_count = COUNT(bronze_data),
+            ingestion_time = CURRENT_TIMESTAMP()
+        )
+        RETURN SUCCESS
+    CATCH error:
+        LOG_ERROR(
+            message = 'Bronze ingestion failed',
+            error = error,
+            source = source_table
+        )
+        RETURN FAILURE
+END FUNCTION

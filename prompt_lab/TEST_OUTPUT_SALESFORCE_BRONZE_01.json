@@ -1,0 +1,72 @@
+{
+  "name": "bronze_accounts_sf",
+  "sourceObject": "Account",
+  "description": "Bronze - Raw Accounts (Salesforce Data Cloud): Extract Account records from Salesforce to Bronze layer.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "Text",
+      "isRequired": true,
+      "isPrimaryKey": true,
+      "description": "Salesforce Account record identifier"
+    },
+    {
+      "name": "name",
+      "type": "Text",
+      "isRequired": true,
+      "description": "Account Name"
+    },
+    {
+      "name": "industry",
+      "type": "Text",
+      "isRequired": false,
+      "description": "Account Industry"
+    },
+    {
+      "name": "annual_revenue",
+      "type": "Number",
+      "isRequired": false,
+      "description": "Annual Revenue for the Account"
+    },
+    {
+      "name": "account_number",
+      "type": "Text",
+      "isRequired": false,
+      "description": "External Account Number"
+    },
+    {
+      "name": "_ingestionTimestamp",
+      "type": "DateTime",
+      "isRequired": false,
+      "description": "Data Cloud ingestion timestamp"
+    },
+    {
+      "name": "_sourceSystem",
+      "type": "Text",
+      "isRequired": false,
+      "description": "Source system identifier (e.g., SALESFORCE_CRM)"
+    },
+    {
+      "name": "_batchId",
+      "type": "Text",
+      "isRequired": false,
+      "description": "Ingestion batch identifier"
+    }
+  ],
+  "config": {
+    "ingestionMode": "upsert",
+    "matchFields": ["id"],
+    "enableStreaming": true,
+    "retentionDays": 365
+  },
+  "examplePayloadJSON": {
+    "id": "0018c00002U5p9VAAR",
+    "name": "Acme Corporation",
+    "industry": "Manufacturing",
+    "annual_revenue": 1250000,
+    "account_number": "ACCT-12345",
+    "_ingestionTimestamp": "2025-02-12T13:45:00Z",
+    "_sourceSystem": "SALESFORCE_CRM",
+    "_batchId": "batch_20250212_001"
+  }
+}

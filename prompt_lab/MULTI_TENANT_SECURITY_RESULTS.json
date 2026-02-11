@@ -1,0 +1,102 @@
+{
+  "total_tests": 13,
+  "passed": 10,
+  "failed": 3,
+  "vulnerabilities": [
+    {
+      "test": "Duplicate tenant headers",
+      "message": "API accepted duplicate tenant headers - ambiguous behavior",
+      "severity": "high"
+    },
+    {
+      "test": "Missing tenant header",
+      "message": "API allowed request without tenant_id (status: 422)",
+      "severity": "critical"
+    },
+    {
+      "test": "Tenant enumeration via status codes",
+      "message": "API reveals tenant validity via different status codes",
+      "severity": "medium"
+    }
+  ],
+  "details": [
+    {
+      "test": "SQL Injection: ' OR '1'='1...",
+      "status": "\u2705 SECURE",
+      "message": "API rejected malicious tenant_id (status: 403)",
+      "severity": "info"
+    },
+    {
+      "test": "SQL Injection: '; DROP TABLE utm_prompts; --...",
+      "status": "\u2705 SECURE",
+      "message": "API rejected malicious tenant_id (status: 403)",
+      "severity": "info"
+    },
+    {
+      "test": "SQL Injection: ' UNION SELECT * FROM utm_tena...",
+      "status": "\u2705 SECURE",
+      "message": "API rejected malicious tenant_id (status: 403)",
+      "severity": "info"
+    },
+    {
+      "test": "SQL Injection: ../../../etc/passwd...",
+      "status": "\u2705 SECURE",
+      "message": "API rejected malicious tenant_id (status: 403)",
+      "severity": "info"
+    },
+    {
+      "test": "SQL Injection: <script>alert('xss')</script>...",
+      "status": "\u2705 SECURE",
+      "message": "API rejected malicious tenant_id (status: 403)",
+      "severity": "info"
+    },
+    {
+      "test": "Duplicate tenant headers",
+      "status": "\ud83d\udea8 VULNERABLE",
+      "message": "API accepted duplicate tenant headers - ambiguous behavior",
+      "severity": "high"
+    },
+    {
+      "test": "Empty tenant header",
+      "status": "\u2705 SECURE",
+      "message": "API rejected empty tenant_id",
+      "severity": "info"
+    },
+    {
+      "test": "Missing tenant header",
+      "status": "\ud83d\udea8 VULNERABLE",
+      "message": "API allowed request without tenant_id (status: 422)",
+      "severity": "critical"
+    },
+    {
+      "test": "Cross-tenant prompt access: agent_c_interpreter",
+      "status": "\u2705 SECURE",
+      "message": "API blocked cross-tenant prompt access",
+      "severity": "info"
+    },
+    {
+      "test": "Cross-tenant prompt access: agent_f_critic",
+      "status": "\u2705 SECURE",
+      "message": "API blocked cross-tenant prompt access",
+      "severity": "info"
+    },
+    {
+      "test": "Service role RLS bypass",
+      "status": "\u2705 SECURE",
+      "message": "Service role can see 4 tenants (expected for admin)",
+      "severity": "info"
+    },
+    {
+      "test": "RLS policy existence",
+      "status": "\u2705 SECURE",
+      "message": "RLS policies should be verified via Supabase dashboard or SQL inspection",
+      "severity": "info"
+    },
+    {
+      "test": "Tenant enumeration via status codes",
+      "status": "\ud83d\udea8 VULNERABLE",
+      "message": "API reveals tenant validity via different status codes",
+      "severity": "medium"
+    }
+  ]
+}

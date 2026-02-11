@@ -8,6 +8,11 @@ from apps.api.services.persistence_service import SupabasePersistence
 from supabase import create_client, Client, ClientOptions
 import os
 import httpx
+import uuid
+import re
+
+# Import audit service
+from apps.api.services.audit_log_service import get_audit_service, AuditEventType, AuditSeverity
 
 # --- Supabase Client (Singleton) ---
 _supabase_client: Optional[Client] = None
@@ -26,24 +31,148 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
-# --- Identity & Multi-tenancy (v3.9) ---
+# --- Security Validators (v4.0 → v4.1 Sprint 6) ---
+def validate_tenant_id(request: Request, tenant_id: Optional[str]) -> str:
+    """
+    Validates X-Tenant-ID header for security (Sprint 4 + Sprint 6 Audit Log).
+    
+    Protects against:
+    - SQL injection (e.g., ' OR '1'='1)
+    - Path traversal (e.g., ../../../etc/passwd)
+    - XSS attacks (e.g., <script>alert('xss')</script>)
+    - Missing/empty headers
+    - Duplicate headers
+    - Non-UUID values
+    
+    Returns: Validated tenant_id as string
+    Raises: HTTPException with 400/403 status on validation failure
+    """
+    audit = get_audit_service()
+    client_ip = request.client.host if request.client else "unknown"
+    endpoint = str(request.url.path)
+    
+    # Check for duplicate X-Tenant-ID headers
+    tenant_headers = [k for k in request.headers.keys() if k.lower() == 'x-tenant-id']
+    if len(tenant_headers) > 1:
+        audit.log_event(
+            event_type=AuditEventType.DUPLICATE_HEADERS,
+            severity=AuditSeverity.WARNING,
+            message=f"Multiple X-Tenant-ID headers detected from {client_ip}",
+            ip_address=client_ip,
+            endpoint=endpoint
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Bad Request: Multiple X-Tenant-ID headers detected. Provide exactly one."
+        )
+    
+    # Require X-Tenant-ID header (not optional)
+    if tenant_id is None:
+        audit.log_auth_attempt(
+            success=False,
+            tenant_id=None,
+            user_id=None,
+            ip_address=client_ip,
+            reason="Missing X-Tenant-ID header"
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required: Missing X-Tenant-ID header."
+        )
+    
+    # Reject empty strings
+    if not tenant_id or not tenant_id.strip():
+        audit.log_auth_attempt(
+            success=False,
+            tenant_id=None,
+            user_id=None,
+            ip_address=client_ip,
+            reason="Empty X-Tenant-ID header"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Bad Request: X-Tenant-ID cannot be empty."
+        )
+    
+    # Detect attack patterns before UUID validation
+    violation_type = None
+    if "'" in tenant_id or "OR" in tenant_id.upper() or "SELECT" in tenant_id.upper() or "UNION" in tenant_id.upper() or "DROP" in tenant_id.upper():
+        violation_type = "sql_injection"
+    elif "<script" in tenant_id.lower() or "javascript:" in tenant_id.lower() or "onerror=" in tenant_id.lower():
+        violation_type = "xss"
+    elif ".." in tenant_id or "/" in tenant_id or "\\" in tenant_id:
+        violation_type = "path_traversal"
+    
+    # Log security violation and REJECT immediately if detected
+    if violation_type:
+        audit.log_security_violation(
+            violation_type=violation_type,
+            attempted_value=tenant_id,
+            ip_address=client_ip,
+            endpoint=endpoint,
+            tenant_id=None
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Security violation detected ({violation_type})"
+        )
+    
+    # Validate UUID format (strict RFC 4122 validation)
+    try:
+        # Attempt to parse as UUID - raises ValueError if invalid
+        parsed_uuid = uuid.UUID(tenant_id, version=4)
+        
+        # Additional check: ensure lowercase hex format matches
+        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$', re.IGNORECASE)
+        if not uuid_pattern.match(tenant_id):
+            raise ValueError("UUID format validation failed")
+        
+        return tenant_id
+        
+    except (ValueError, AttributeError) as e:
+        # Log invalid UUID attempt
+        if not violation_type:  # Only log if not already logged as attack
+            audit.log_security_violation(
+                violation_type="invalid_uuid",
+                attempted_value=tenant_id,
+                ip_address=client_ip,
+                endpoint=endpoint,
+                tenant_id=None
+            )
+        
+        print(f"[SECURITY] Invalid X-Tenant-ID rejected: {tenant_id[:50]}... (Error: {e})")
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: X-Tenant-ID must be a valid UUID v4."
+        )
+
+
+# --- Identity & Multi-tenancy (v3.9 → v4.1 Sprint 6) ---
 async def get_identity(
     request: Request,
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"), 
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),  # Required + validated (v4.0)
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
     x_client_id: Optional[str] = Header(None, alias="X-Client-ID"),
     x_impersonate_user_id: Optional[str] = Header(None, alias="X-Impersonate-User-ID")
 ) -> dict:
     """
-    Extracts user/tenant identity from request headers (v3.9).
+    Extracts user/tenant identity from request headers (v4.0 - Security Hardened).
+    
+    Security Features (Sprint 4):
+    - Validates X-Tenant-ID as required UUID v4 (protects against SQL injection, XSS, path traversal)
+    - Rejects duplicate/empty headers
+    - Validates user_id as UUID if provided
     
     Supports Admin Impersonation:
     If X-Impersonate-User-ID is provided, validates that current user is ADMIN
     and switches context to impersonated user while tracking admin_id.
     """
+    # Step 1: Validate X-Tenant-ID (REQUIRED, Sprint 4 Security Fix)
+    validated_tenant_id = validate_tenant_id(request, x_tenant_id)
+    
     db = SupabasePersistence(tenant_id=None)
     
-    # 1. Check for Impersonation (v3.9: ADMIN impersonates specific user)
+    # Step 2: Check for Impersonation (v3.9: ADMIN impersonates specific user)
     if x_impersonate_user_id and x_user_id:
         # Verify admin user
         admin_res = db.client.table("utm_users").select(
@@ -82,24 +211,16 @@ async def get_identity(
             print(f"[AUTH] Unauthorized impersonation attempt by {x_user_id}")
             raise HTTPException(status_code=403, detail="Only ADMIN can impersonate users")
 
-    # 2. Standard Identity (v3.9: with user_id)
-    # Sanitize UUIDs
-    if x_tenant_id:
-        import re
-        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
-        if not uuid_pattern.match(x_tenant_id):
-            print(f"[AUTH] Sanitizing non-UUID tenant_id: {x_tenant_id}")
-            x_tenant_id = None
-    
+    # Step 3: Validate user_id as UUID (if provided)
     if x_user_id:
-        import re
         uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
         if not uuid_pattern.match(x_user_id):
-            print(f"[AUTH] Sanitizing non-UUID user_id: {x_user_id}")
-            x_user_id = None
+            print(f"[AUTH] Invalid user_id format rejected: {x_user_id}")
+            raise HTTPException(status_code=403, detail="Forbidden: X-User-ID must be a valid UUID")
         
+    # Step 4: Return validated identity
     return {
-        "tenant_id": x_tenant_id, 
+        "tenant_id": validated_tenant_id,  # Always valid UUID (Sprint 4)
         "user_id": x_user_id,
         "client_id": x_client_id,
         "role": request.headers.get("X-Role", "VIEWER"),

@@ -1,0 +1,49 @@
+{
+  "summary": {
+    "timestamp": "2026-02-11T12:01:12.978363",
+    "total_tests": 2,
+    "passed": 0,
+    "failed": 2,
+    "timeout": 0,
+    "error": 0,
+    "pass_rate": 0.0,
+    "total_duration_seconds": 9.94,
+    "parallel_duration_seconds": 5.02,
+    "speedup": 1.98,
+    "by_category": {
+      "security": {
+        "total": 2,
+        "passed": 0,
+        "failed": 2,
+        "timeout": 0,
+        "error": 0
+      }
+    }
+  },
+  "results": [
+    {
+      "name": "test_multi_tenant_security",
+      "file": "test_multi_tenant_security.py",
+      "category": "security",
+      "start_time": "2026-02-11T12:01:08.008868",
+      "status": "failed",
+      "duration_seconds": 4.97,
+      "exit_code": 1,
+      "output": "\n================================================================================\n",
+      "error": "Traceback (most recent call last):\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_security.py\", line 420, in <module>\n    results = run_security_tests()\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_security.py\", line 391, in run_security_tests\n    print(\"\\U0001f6e1\\ufe0f  MULTI-TENANT SECURITY TEST SUITE\")\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\rfbugari\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1: character maps to <undefined>\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_security.py\", line 431, in <module>\n    print(f\"\\n\\u274c Security test suite failed: {e}\")\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\rfbugari\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode character '\\u274c' in position 2: character maps to <undefined>\n",
+      "end_time": "2026-02-11T12:01:12.977729"
+    },
+    {
+      "name": "test_multi_tenant_isolation",
+      "file": "test_multi_tenant_isolation.py",
+      "category": "security",
+      "start_time": "2026-02-11T12:01:08.006618",
+      "status": "failed",
+      "duration_seconds": 4.97,
+      "exit_code": 1,
+      "output": "\n================================================================================\n",
+      "error": "Traceback (most recent call last):\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_isolation.py\", line 478, in <module>\n    results = run_all_tests()\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_isolation.py\", line 449, in run_all_tests\n    print(\"\\U0001f512 MULTI-TENANT ISOLATION TEST SUITE\")\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\rfbugari\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode character '\\U0001f512' in position 0: character maps to <undefined>\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"C:\\proyectos_dev\\UTM\\test_multi_tenant_isolation.py\", line 491, in <module>\n    print(f\"\\n\\u274c Test suite failed: {e}\")\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\rfbugari\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode character '\\u274c' in position 2: character maps to <undefined>\n",
+      "end_time": "2026-02-11T12:01:12.977872"
+    }
+  ]
+}

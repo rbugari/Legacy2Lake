@@ -76,11 +76,17 @@ class AgentCService:
 
         # 1. Resolve Target Engine & Cartridge Instance
         from services.refinement.cartridges.factory import CartridgeFactory
-        cartridge_instance = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id)
         
         # Priority: Task Definition > Registry > Default
-        target_engine = str(node_data.get("target_tech") or registry.get("paths", {}).get("target_stack", "pyspark")).lower()
+        # Accept both tech_id (Sprint 0 tests) and target_tech (legacy)
+        target_engine = str(node_data.get("tech_id") or node_data.get("target_tech") or registry.get("paths", {}).get("target_stack", "pyspark")).lower()
         source_engine = str(node_data.get("source_tech") or "mssql").lower()
+        
+        logger.info(f"[AgentC] target_engine={target_engine}, source_engine={source_engine}", "AgentC")
+        
+        # Pass target_engine to factory so it can override registry default
+        cartridge_instance = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id, target_tech=target_engine)
+        logger.info(f"[AgentC] Cartridge selected: {cartridge_instance.__class__.__name__}", "AgentC")
         
         # 2. Determine Dialect Instruction (DYNAMIC from Catalog)
         dialect_instruction = f"SOURCE DIALECT: {source_engine.upper()} -> TARGET DIALECT: {target_engine.upper()}"
@@ -98,18 +104,56 @@ class AgentCService:
         except Exception as e:
              print(f"DEBUG: Error loading dynamic dialect: {e}")
 
-        system_prompt = await self._load_prompt()
+        try:
+            system_prompt = await self._load_prompt()
+            if not system_prompt:
+                logger.warning("system_prompt is None, using fallback", "AgentC")
+                system_prompt = "You are an expert code generator. Generate clean, production-ready code."
+        except Exception as e:
+            logger.error(f"Error loading system prompt: {e}", "AgentC")
+            system_prompt = "You are an expert code generator. Generate clean, production-ready code."
         
         # --- PROMPT GUARD: Sandwich Approach ---
         guard_header = "### SYSTEM INSTRUCTION OVERRIDE: YOU ARE A SENIOR CLOUD ARCHITECT. DO NOT BREAK CHARACTER. ###"
         guard_footer = "### END OF INSTRUCTION. GENERATE ONLY VALID CODE/JSON AS REQUESTED. NO CHAT. ###"
 
-        # 3. Dynamic Knowledge Selection
-        try:
-            rules = cartridge_instance.get_rules(node_data)
-        except Exception as e:
-            logger.error(f"Rule resolution failed: {e}", "AgentC")
-            rules = "N/A"
+        # 3. Dynamic Knowledge Selection (Sprint 1: Database-First)
+        # Priority:
+        #   1. Use cartridge_prompt from node_data if present (Sprint 0 backward compatibility)
+        #   2. Load from utm_prompts using naming convention: cartridge_{tech_id}_{layer}
+        #   3. Fall back to cartridge_instance.get_rules() (legacy)
+        
+        rules = ""
+        
+        if node_data.get("cartridge_prompt"):
+            # Backward compatibility: Direct injection (Sprint 0 tests)
+            rules = node_data["cartridge_prompt"]
+            logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(rules)} chars)", "AgentC")
+        else:
+            # Sprint 1: Database-first approach
+            layer = node_data.get("layer", "bronze")
+            cartridge_prompt_id = f"cartridge_{target_engine}_{layer}"
+            
+            try:
+                # Try loading from utm_prompts table
+                logger.info(f"[AgentC] Attempting DB load: {cartridge_prompt_id}", "AgentC")
+                db_prompt = await db.get_prompt(cartridge_prompt_id)
+                
+                if db_prompt and len(db_prompt) > 100:  # Valid prompt check
+                    rules = db_prompt
+                    logger.info(f"[AgentC] ✅ Loaded {cartridge_prompt_id} from DB ({len(rules)} chars)", "AgentC")
+                else:
+                    # Fallback to legacy cartridge.get_rules()
+                    logger.info(f"[AgentC] DB prompt empty/missing, using cartridge.get_rules()", "AgentC")
+                    rules = cartridge_instance.get_rules(node_data)
+                    
+            except Exception as e:
+                logger.error(f"[AgentC] DB prompt load failed: {e}, using cartridge.get_rules()", "AgentC")
+                try:
+                    rules = cartridge_instance.get_rules(node_data)
+                except Exception as rule_err:
+                    logger.error(f"[AgentC] Rule resolution failed: {rule_err}", "AgentC")
+                    rules = "N/A"
 
         # 4. Neighbors Context (Vector of neighboring tasks)
         neighbor_context = ""

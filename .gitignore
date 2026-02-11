@@ -25,6 +25,9 @@ solutions/
 *.sqlite
 *.db
 
+# Audit Logs (large files)
+logs/*.jsonl
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-02-11 10:42:08",
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "timeout": 0,
+    "error": 0,
+    "total": 5,
+    "score": 100.0
+  },
+  "by_technology": {
+    "pyspark": 1,
+    "fabric": 1,
+    "snowflake": 1,
+    "aws": 1,
+    "dbt": 1
+  },
+  "results": [
+    {
+      "package": "bronze_customers_pyspark",
+      "tech_id": "pyspark",
+      "layer": "bronze",
+      "status": "passed",
+      "code_length": 2993,
+      "code_lines": 85,
+      "elapsed": 27.78052306175232,
+      "output_file": "prompt_lab/SMOKE_TEST_bronze_customers_pyspark.py"
+    },
+    {
+      "package": "silver_customers_fabric",
+      "tech_id": "fabric",
+      "layer": "silver",
+      "status": "passed",
+      "code_length": 2332,
+      "code_lines": 57,
+      "elapsed": 25.955437421798706,
+      "output_file": "prompt_lab/SMOKE_TEST_silver_customers_fabric.py"
+    },
+    {
+      "package": "gold_analytics_snowflake",
+      "tech_id": "snowflake",
+      "layer": "gold",
+      "status": "passed",
+      "code_length": 3861,
+      "code_lines": 107,
+      "elapsed": 28.803658723831177,
+      "output_file": "prompt_lab/SMOKE_TEST_gold_analytics_snowflake.sql"
+    },
+    {
+      "package": "bronze_products_aws",
+      "tech_id": "aws",
+      "layer": "bronze",
+      "status": "passed",
+      "code_length": 1442,
+      "code_lines": 46,
+      "elapsed": 22.61753559112549,
+      "output_file": "prompt_lab/SMOKE_TEST_bronze_products_aws.py"
+    },
+    {
+      "package": "dbt_customers_dbt",
+      "tech_id": "dbt",
+      "layer": "silver",
+      "status": "passed",
+      "code_length": 1385,
+      "code_lines": 46,
+      "elapsed": 19.75657367706299,
+      "output_file": "prompt_lab/SMOKE_TEST_dbt_customers_dbt.sql"
+    }
+  ]
+}

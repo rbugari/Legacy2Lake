@@ -15,15 +15,18 @@
 ## 📊 Summary Dashboard
 
 ```
-Overall Progress: 0/24 tests (0%)
-[░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+Overall Progress: 5/24 tests (21%)
+[█████░░░░░░░░░░░░░░░░░░░] 21%
 
 By Priority:
-🔴 P0 (Critical):  0/16 (0%)
-🟡 P1 (High):      0/6  (0%)
+🔴 P0 (Critical):  3/16 (19%) - 1 PASSED, 0 NEEDS REVIEW, 2 BLOCKER
+🟡 P1 (High):      2/6  (33%) - 0 PASSED, 2 NEEDS REVIEW
 🟢 P2 (Medium):    0/2  (0%)
 
-Pass Rate: N/A (testing not started)
+Pass Rate: 1/5 (20%) - Score >= 80%
+Average Score: 48.0% (24/50 checks)
+
+🚨 CRITICAL BUG: Cartridge selection broken (tests 4-5)
 ```
 
 ---
@@ -32,101 +35,170 @@ Pass Rate: N/A (testing not started)
 
 ### 1. PySpark Cartridge (0/3)
 
-#### ❓ PYSPARK-BRONZE-01: CSV Ingestion
-**Status:** NOT STARTED  
+#### ✅ PYSPARK-BRONZE-01: CSV Ingestion
+**Status:** PASSED (93.3%)  
 **Priority:** 🔴 P0  
-**Prompt File:** [pyspark/bronze_layer.md](cartridges/pyspark/bronze_layer.md)
+**Prompt File:** [pyspark/bronze_layer.md](cartridges/pyspark/bronze_layer.md)  
+**Output File:** [TEST_OUTPUT_PYSPARK_BRONZE_01.py](../TEST_OUTPUT_PYSPARK_BRONZE_01.py)
 
 **Test Prompt:**
 ```
-Using PySpark, create a Bronze layer ingestion job that reads CSV files 
-from /landing/customers/ and writes to Delta table bronze.customers.
-Include all mandatory audit columns.
+Create Bronze layer ingestion for dbo.DimCustomers from SQL Server using JDBC.
+Write to Delta table with 4 audit columns and partition by _ingestion_date.
 ```
 
 **Expected Checklist:**
-- [ ] Uses Delta Lake format
-- [ ] Includes 4 mandatory audit columns
-- [ ] Uses .saveAsTable() not .save()
-- [ ] Partition by _ingestion_date
-- [ ] Append mode (not overwrite)
-- [ ] Complete runnable code (no placeholders)
-
-**Score:** N/A  
-**Issues Found:** N/A  
-**Notes:** 
-
----
-
-#### ❓ PYSPARK-SILVER-01: Deduplication
-**Status:** NOT STARTED  
+- [x] Uses Delta Lake format
+- [x] Includes 4 mandatory audit columns
+- [x] Uses .saveAsTable() not .save()
+- [x] Partition by _ingestion_date
+- [x] Append mode (not overwrite)
+- [x] Complete runnable code (no placeholders)
+- [x] JDBC read pattern
+- [x] Try/except error handling
+- [x] Logging statements
+- [x] .withColumn() for metadata
+- [x] current_timestamp(), current_date(), lit()
+- [x] Data validation (assert)
+- [x] Explicit type casting
+- [ ]⚠️ PYSPARK-SILVER-01: Deduplication
+**Status:** NEEDS REVIEW (53.3%)  
 **Priority:** 🔴 P0  
-**Prompt File:** [pyspark/silver_layer.md](cartridges/pyspark/silver_layer.md)
+**Prompt File:** [pyspark/silver_layer.md](cartridges/pyspark/silver_layer.md)  
+**Output File:** [TEST_OUTPUT_PYSPARK_SILVER_01.py](../TEST_OUTPUT_PYSPARK_SILVER_01.py)
 
 **Test Prompt:**
 ```
-Create a PySpark Silver layer job that deduplicates bronze.orders 
-using order_id as primary key. Keep the latest record based on 
-_ingestion_timestamp. Write to silver.orders.
+Create Silver layer deduplication for DimCustomer using CustomerKey as primary key.
+Keep latest record by _ingestion_timestamp. Write to Silver Delta table.
 ```
 
 **Expected Checklist:**
-- [ ] Window function with ROW_NUMBER()
+- [ ] Window function with partitionBy()
+- [ ] row_number() window function
 - [ ] Filters _row_num = 1
-- [ ] Uses MERGE for incremental (not full overwrite)
 - [ ] Preserves bronze audit columns
+- [ ] Delta Lake format explicit
+- [ ] Logging statements
+- [ ] from pyspark.sql.window import
+- [x] DeltaTable.forName().merge()
+- [x] Uses MERGE for incremental (not overwrite)
+- [x] Uses .saveAsTable()
+- [x] Try/except error handling
+- [x] .withColumn() transformations
+- [x] Primary key deduplication logic
+- [x] Quality checks (count validation)
+- [x] Explicit casting
 
-**Score:** N/A  
-**Issues Found:** N/A  
-**Notes:** 
-
----
-
-#### ❓ PYSPARK-GOLD-01: Star Schema
-**Status:** NOT STARTED  
+**Score:** 8/15 (53.3%) ⚠️  
+**Code Lines:** 123  
+**Issues Found:** 
+1. Uses dropDuplicates() instead of Window.partitionBy + row_number() pattern
+2. Missing explicit logging statements
+3. Br⚠️ PYSPARK-GOLD-01: Star Schema
+**Status:** NEEDS REVIEW (46.7%)  
 **Priority:** 🟡 P1  
-**Prompt File:** [pyspark/gold_layer.md](cartridges/pyspark/gold_layer.md)
+**Prompt File:** [pyspark/gold_layer.md](cartridges/pyspark/gold_layer.md)  
+**Output File:** [TEST_OUTPUT_PYSPARK_GOLD_01.py](../TEST_OUTPUT_PYSPARK_GOLD_01.py)
 
 **Test Prompt:**
 ```
-Build a Gold layer Star Schema with fact_orders and dim_customers.
-Aggregate daily sales by customer segment. Use PySpark.
+Build Gold Star Schema with fact_orders and dim_customers for BI reporting.
+Include measures (order_amount, quantity) and grain documentation.
 ```
 
 **Expected Checklist:**
-- [ ] Surrogate keys (auto-increment or hash)
-- [ ] Foreign key relationships documented
-- [ ] Aggregations with GROUP BY
-- [ ] SCD Type 2 columns if dimension changes
+- [x] FACT table creation
+- [x] DIMENSION table reference
+- [x] Surrogate keys (long/bigint)
+- [x] Foreign key relationships (join)
+- [ ] .groupBy() aggregation
+- [x] SUM/AVG/COUNT aggregates
+- [ ] SCD Type 2 columns
+- [ ] Delta Lake format explicit
+- [ ] Uses .saveAsTable()
+- [ ] Try/except error handling
+- [ ] Logging statements
+- [ ] .withColumn() transformations
+- [x] Date dimension handling
+- [x] Business metrics (amount/revenue)
+- [ ] Grain documentation in comments
 
-**Score:** N/A  
-**Issues Found:** N/A  
-**Notes:** 
+**Score:** 7/15 (46.7%) ⚠️  
+**Code Lines:** 93  
+**Issues Found:**
+1. Missing .groupBy() aggregation pattern
+2. No SCD Type 2 columns (effective_date, is_current, etc.)
+3. No explicit Delta Lake format
+4. No saveAsTable() method
+5. No try/except error handling
+6. No logging statements
+7. Missing .withColumn() usage
+8. Grain not documented in comments
+
+**Notes:** Generated code has MERGE pattern and calculations but missing key Gold layer patterns (groupBy aggregations, SCD2, logging). Prompt needs stronger enforcement of these requirements.
 
 ---
 
-### 2. Snowflake Cartridge (0/3)
+### 2. Snowflake Cartridge (1/3)
 
-#### ❓ SNOWFLAKE-BRONZE-01: Snowpark Python
-**Status:** NOT STARTED  
+#### 🚨 SNOWFLAKE-BRONZE-01: COPY INTO Ingestion
+**Status:** BLOCKER (20.0%) - WRONG TECH GENERATED  
 **Priority:** 🔴 P0  
-**Prompt File:** [snowflake/bronze_layer.md](cartridges/snowflake/bronze_layer.md)
+**Prompt File:** [snowflake/bronze_layer.md](cartridges/snowflake/bronze_layer.md)  
+**Output File:** [TEST_OUTPUT_SNOWFLAKE_BRONZE_01.sql](../TEST_OUTPUT_SNOWFLAKE_BRONZE_01.sql)
 
 **Test Prompt:**
 ```
-Using Snowpark Python, ingest JSON files from @MY_STAGE/landing/ 
-into BRONZE.CUSTOMERS table in Snowflake.
+Ingest CSV from S3 stage to Snowflake RAW_DATA.BRONZE_CUSTOMERS using COPY INTO.
+Use FILE_FORMAT CSV with proper error handling.
 ```
 
 **Expected Checklist:**
-- [ ] Snowpark Python syntax (not PySpark)
+- [ ] COPY INTO statement
+- [ ] FROM @STAGE pattern
+- [ ] FILE_FORMAT definition
+- [x] CSV type
 - [ ] UPPERCASE naming convention
-- [ ] .save_as_table() not .saveAsTable()
-- [ ] No Delta Lake references
+- [x] Metadata columns (_INGESTION_TIMESTAMP)
+- [ ] CREATE OR REPLACE TABLE
+- [ ] Schema qualification (DATABASE.SCHEMA.TABLE)
+- [ ] ON_ERROR clause
+- [ ] Column mapping in COPY INTO
+- [ ] File format options (SKIP_HEADER, FIELD_DELIMITER)
+- [x] Audit timestamp (CURRENT_TIMESTAMP())
+- [ ] L2L trace comment
+- [ ] Transaction safety
+- [ ] Validation query (SELECT COUNT)
 
-**Score:** N/A  
-**Issues Found:** N/A  
-**Notes:** 
+**Score:** 3/15 (20.0%) 🚨 BLOCKER  
+**Code Lines:** 72  
+
+**🚨 CRITICAL BUG:**  
+Generated **PySpark Python code** instead of **Snowflake SQL**!
+
+```python
+# L2L MODERNIZATION TRACE
+# Component: PySpark Notebook  ❌ WRONG - Should be "Snowflake SQL Script"
+from pyspark.sql import functions as F  ❌ Should be COPY INTO SQL
+```
+
+**Expected Output:**
+```sql
+-- L2L MODERNIZATION TRACE
+-- Component: Snowflake SQL Script
+
+COPY INTO RAW_DATA.BRONZE_CUSTOMERS
+FROM @CUSTOMER_STAGE/customers.csv
+FILE_FORMAT = (TYPE = CSV, SKIP_HEADER = 1, FIELD_DELIMITER = ',')
+ON_ERROR = 'CONTINUE';
+```
+
+**Root Cause:** Backend `/transpile/task` endpoint not respecting `tech_id="snowflake"` - defaulting to PySpark for all non-PySpark cartridges.
+
+**See:** [CRITICAL_BUG_CARTRIDGE_SELECTION.md](../CRITICAL_BUG_CARTRIDGE_SELECTION.md)
+
+**Notes:** BLOCKER bug - cannot test Snowflake/dbt/Fabric/BigQuery/Glue/Salesforce/Generic until cartridge selection is fixed. 
 
 ---
 
@@ -174,27 +246,77 @@ Optimize for BI queries with clustering.
 
 ---
 
-### 3. dbt Cartridge (0/3)
+### 3. dbt Cartridge (1/3)
 
-#### ❓ DBT-BRONZE-01: Source Definition
-**Status:** NOT STARTED  
+#### 🚨 DBT-BRONZE-01: Source Definition
+**Status:** BLOCKER (26.7%) - WRONG TECH GENERATED  
 **Priority:** 🔴 P0  
-**Prompt File:** [dbt/bronze_layer.md](cartridges/dbt/bronze_layer.md)
+**Prompt File:** [dbt/bronze_layer.md](cartridges/dbt/bronze_layer.md)  
+**Output File:** [TEST_OUTPUT_DBT_BRONZE_01.yml](../TEST_OUTPUT_DBT_BRONZE_01.yml)
 
 **Test Prompt:**
 ```
-Create dbt model for Bronze layer that references raw schema.
-Source: raw.customers, Target: bronze.customers
+Create dbt source definition for raw customers table with freshness checks.
+Source schema: raw_data, Table: customers, Freshness: 24 hours
 ```
 
 **Expected Checklist:**
-- [ ] Uses {{ source() }} not raw table names
-- [ ] config(materialized='incremental')
-- [ ] CTE pattern (WITH source_data AS...)
+- [ ] version: 2 in YAML
+- [ ] sources: block
+- [ ] name: (source name)
+- [ ] database: declaration
+- [ ] schema: declaration
+- [ ] tables: list
+- [ ] freshness: with warn_after
+- [ ] loaded_at_field: specification
+- [ ] columns: with names
+- [ ] description: for source and tables
+- [x] tests: (unique/not_null detected but wrong format)
+- [x] YAML format (header detected)
+- [ ] No SQL code (SELECT/FROM found)
+- [x] Indentation correct
+- [x] L2L trace comment
 
-**Score:** N/A  
-**Issues Found:** N/A  
-**Notes:** 
+**Score:** 4/15 (26.7%) 🚨 BLOCKER  
+**Code Lines:** 65  
+
+**🚨 CRITICAL BUG:**  
+Generated **PySpark Python code** instead of **dbt YAML**!
+
+```python
+# L2L MODERNIZATION TRACE
+# Component: PySpark Notebook  ❌ WRONG - Should be "dbt Source Definition"
+def execute_task(spark, config):  ❌ Should be YAML, not Python
+    import pyspark.sql.functions as F
+```
+
+**Expected Output:**
+```yaml
+# L2L MODERNIZATION TRACE
+# Component: dbt Source Definition
+version: 2
+
+sources:
+  - name: raw_data
+    database: analytics
+    schema: raw_data
+    tables:
+      - name: customers
+        freshness:
+          warn_after: {count: 24, period: hour}
+        loaded_at_field: _ingested_at
+        columns:
+          - name: customer_id
+            tests:
+              - unique
+              - not_null
+```
+
+**Root Cause:** Same as SNOWFLAKE-BRONZE-01 - backend not respecting `tech_id="dbt"`.
+
+**See:** [CRITICAL_BUG_CARTRIDGE_SELECTION.md](../CRITICAL_BUG_CARTRIDGE_SELECTION.md)
+
+**Notes:** BLOCKER bug - 21/24 tests blocked until cartridge selection fixed. 
 
 ---
 

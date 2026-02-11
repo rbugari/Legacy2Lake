@@ -1,0 +1,18 @@
+[
+  {
+    "timestamp": "2026-02-11T12:01:12.978363",
+    "total_tests": 2,
+    "passed": 0,
+    "failed": 2,
+    "pass_rate": 0.0,
+    "duration": 5.02
+  },
+  {
+    "timestamp": "2026-02-11T12:04:45.280363",
+    "total_tests": 19,
+    "passed": 1,
+    "failed": 18,
+    "pass_rate": 5.26,
+    "duration": 203.26
+  }
+]

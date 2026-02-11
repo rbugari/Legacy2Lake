@@ -51,8 +51,8 @@ Generate PySpark code that:
 # ==============================================================================
 
 # 1. IMPORTS
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, count, when
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import col, lit, count, when, row_number
 from delta.tables import DeltaTable
 import logging
 
@@ -88,11 +88,14 @@ try:
             " AND ".join([f"{pk} IS NOT NULL" for pk in PRIMARY_KEYS])
         )
     
-    # 6. DEDUPLICATION
-    # Keep latest record per PK (based on _ingestion_timestamp)
+    # 6. DEDUPLICATION (using Window functions - MANDATORY)
+    # Keep latest record per PK using Window.partitionBy + row_number()
+    window_spec = Window.partitionBy(*PRIMARY_KEYS).orderBy(col("_ingestion_timestamp").desc())
+    
     df_clean = df_bronze \
-        .orderBy(col("_ingestion_timestamp").desc()) \
-        .dropDuplicates(PRIMARY_KEYS)
+        .withColumn("_row_num", row_number().over(window_spec)) \
+        .filter(col("_row_num") == 1) \
+        .drop("_row_num")
     
     logger.info(f"After deduplication: {df_clean.count()} records")
     
@@ -149,9 +152,11 @@ finally:
 - Use for deduplication: `.dropDuplicates(PRIMARY_KEYS)`
 - Use for merge condition: `target.pk = source.pk`
 
-### ✅ Deduplication Strategy:
-- Order by `_ingestion_timestamp DESC` to keep latest
-- Drop duplicates based on Primary Keys
+### ✅ Deduplication Strategy (MANDATORY):
+- **MUST use Window functions:** `Window.partitionBy(*PRIMARY_KEYS).orderBy(col("_ingestion_timestamp").desc())`
+- **MUST use row_number():** Add `_row_num` column with `row_number().over(window_spec)`
+- **MUST filter row 1:** Keep only `_row_num == 1`
+- **DO NOT use dropDuplicates():** Window functions are required for consistency
 - Log before/after counts
 
 ### ✅ Data Quality:
@@ -175,12 +180,13 @@ finally:
 
 - [ ] Reads from Bronze table
 - [ ] Primary Keys specified (not hardcoded "id")
-- [ ] Deduplication logic present
+- [ ] **Window function deduplication present** (Window.partitionBy + row_number)
+- [ ] **NO dropDuplicates()** - only Window functions allowed
 - [ ] NULL filtering for PKs
 - [ ] SCD Type 2 merge implemented
 - [ ] Conditional logic: merge if exists, overwrite if first load
 - [ ] Error handling (try/except)
-- [ ] Logging at key stages
+- [ ] Logging at key stages (minimum 4 log points)
 - [ ] Final validation (count check)
 
 ---
@@ -192,10 +198,12 @@ finally:
 ```python
 PRIMARY_KEYS = ["customer_id"]
 
-# Deduplication
+# Deduplication using Window functions (MANDATORY)
+window_spec = Window.partitionBy("customer_id").orderBy(col("_ingestion_timestamp").desc())
 df_clean = df_bronze \
-    .orderBy(col("_ingestion_timestamp").desc()) \
-    .dropDuplicates(["customer_id"])
+    .withColumn("_row_num", row_number().over(window_spec)) \
+    .filter(col("_row_num") == 1) \
+    .drop("_row_num")
 
 # Merge condition
 merge_condition = "target.customer_id = source.customer_id"
@@ -206,10 +214,12 @@ merge_condition = "target.customer_id = source.customer_id"
 ```python
 PRIMARY_KEYS = ["order_id", "line_number"]
 
-# Deduplication
+# Deduplication using Window functions (MANDATORY)
+window_spec = Window.partitionBy("order_id", "line_number").orderBy(col("_ingestion_timestamp").desc())
 df_clean = df_bronze \
-    .orderBy(col("_ingestion_timestamp").desc()) \
-    .dropDuplicates(["order_id", "line_number"])
+    .withColumn("_row_num", row_number().over(window_spec)) \
+    .filter(col("_row_num") == 1) \
+    .drop("_row_num")
 
 # Merge condition
 merge_condition = "target.order_id = source.order_id AND target.line_number = source.line_number"
@@ -231,15 +241,22 @@ df_bronze = df_bronze.filter(
 df_clean = df_bronze.dropDuplicates(PRIMARY_KEYS)
 ```
 
-### 2. Not Ordering Before Dedup
+### 2. Using dropDuplicates() Instead of Window Functions
 ```python
-# ❌ WRONG: Random record kept
+# ❌ WRONG: dropDuplicates() not allowed
 df_clean = df_bronze.dropDuplicates(PRIMARY_KEYS)
 
-# ✅ CORRECT: Keep latest by timestamp
+# ❌ WRONG: Even with orderBy, dropDuplicates() not allowed
 df_clean = df_bronze \
     .orderBy(col("_ingestion_timestamp").desc()) \
     .dropDuplicates(PRIMARY_KEYS)
+
+# ✅ CORRECT: Use Window functions (MANDATORY)
+window_spec = Window.partitionBy(*PRIMARY_KEYS).orderBy(col("_ingestion_timestamp").desc())
+df_clean = df_bronze \
+    .withColumn("_row_num", row_number().over(window_spec)) \
+    .filter(col("_row_num") == 1) \
+    .drop("_row_num")
 ```
 
 ### 3. Always Using Overwrite

@@ -362,7 +362,8 @@ async def run_triage(
 
         # Transform Agent Nodes to ReactFlow Nodes
         final_nodes = []
-        graph_eligible = [n for n in rf_nodes if n.get("category") != "IGNORED"]
+        # FIX: Only CORE assets go to the graph. SUPPORT assets provide context but are NOT migrated.
+        graph_eligible = [n for n in rf_nodes if n.get("category") == "CORE"]
     
         for i, n in enumerate(graph_eligible):
             n_id = n.get("id") or f"node_{i}" 

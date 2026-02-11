@@ -602,6 +602,15 @@ export default function TriageView({
             // We can do one final fetch to be sure.
             await fetchTriageLogs();
 
+            // FIX: Auto-refresh data after triage completes
+            console.log("DEBUG: Auto-refreshing project data after triage...");
+            await fetchProject();  // Refresh project metadata
+            await fetchLayout();   // Refresh graph layout
+            
+            // Switch to assets tab to show results
+            setActiveTab('assets');
+            console.log("DEBUG: Triage data refreshed and switched to assets tab");
+
         } catch (e) {
             console.error("Triage failed", e);
             alert("Connection error running triage. Please verify backend server is running.");
