@@ -156,10 +156,13 @@ class RefinementOrchestrator:
 
             # 1. Profile (Agent P)
             local_log.append(f"--- [PHASE 1] PROFILER: {models['Profiler']} ---")
+            print(f"[ORCHESTRATOR DEBUG] Starting Phase 1: PROFILER")
             msg = await _log("Starting analysis...", "Profiler")
             local_log.append(msg)
             
             profile_meta = await self.profiler.analyze_codebase(project_id, local_log, project_name=self.project_name)
+            print(f"[ORCHESTRATOR DEBUG] Profiler complete. profile_meta keys: {profile_meta.keys() if profile_meta else 'None'}")
+            print(f"[ORCHESTRATOR DEBUG] analyzed_files: {profile_meta.get('analyzed_files', []) if profile_meta else []}")
             
             # Check for cancellation
             if await self._check_cancellation(project_id):
@@ -173,9 +176,13 @@ class RefinementOrchestrator:
             
             # 2. Architect (Agent A)
             local_log.append(f"--- [PHASE 2] ARCHITECT: {models['Architect']} ---")
+            print(f"[ORCHESTRATOR DEBUG] Starting Phase 2: ARCHITECT")
+            print(f"[ORCHESTRATOR DEBUG] Calling architect.refine_project() with profile_meta")
             msg = await _log("Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)
             architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name)
+            print(f"[ORCHESTRATOR DEBUG] Architect complete. architect_out keys: {architect_out.keys() if architect_out else 'None'}")
+            print(f"[ORCHESTRATOR DEBUG] refined_files: {architect_out.get('refined_files', {}) if architect_out else {}}")
             
             # Check for cancellation
             if await self._check_cancellation(project_id):

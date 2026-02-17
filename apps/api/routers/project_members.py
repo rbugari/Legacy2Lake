@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-from services.persistence_service import SupabasePersistence
-from routers.dependencies import get_db, require_manager
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.routers.dependencies import get_db, require_manager
 
 router = APIRouter(prefix="/projects", tags=["Project Members"])
 

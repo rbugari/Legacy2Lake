@@ -9,11 +9,15 @@ class Cartridge(ABC):
     """
     Abstract Base Class for generation strategies (PySpark, dbt, SQL).
     Defines the contract for generating Medallion Architecture code.
+    
+    Sprint 9 Enhancement:
+        Added tenant_id parameter to support schema-aware generation.
     """
 
-    def __init__(self, project_id: str, design_registry: Dict[str, Any]):
+    def __init__(self, project_id: str, design_registry: Dict[str, Any], tenant_id: str = None):
         self.project_id = project_id
         self.registry = design_registry
+        self.tenant_id = tenant_id  # Sprint 9: For schema-aware services
 
     @abstractmethod
     def generate_bronze(self, table_metadata: Dict[str, Any]) -> str:

@@ -2,6 +2,7 @@ import os
 import shutil
 import ssl
 from typing import Dict, Any, Optional, List
+from datetime import datetime
 from supabase import create_client, Client
 from .storage.factory import StorageFactory
 import httpx
@@ -565,7 +566,11 @@ class SupabasePersistence:
         allowed_fields = [
             "type", "selected", "metadata", 
             "frequency", "load_strategy", "criticality", "is_pii", "masking_rule",
-            "business_entity", "target_name"
+            "business_entity", "target_name",
+            # Sprint 8-12: Code generation and visualization fields
+            "generated_code", "tech_id", "layer", "object_name",
+            "validation_result", "optimization_metadata", "schema_metadata",
+            "row_count", "column_count", "quality_score", "quality_violations"
         ]
         safe_updates = {k: v for k, v in updates.items() if k in allowed_fields}
         
@@ -619,7 +624,9 @@ class SupabasePersistence:
                 "is_pii": asset.get("is_pii", False),
                 "masking_rule": asset.get("masking_rule"),
                 "business_entity": asset.get("business_entity"),
-                "target_name": asset.get("target_name")
+                "target_name": asset.get("target_name"),
+                # Sprint 14: File classification
+                "category": asset.get("category")  # migrable, soporte, documentacion, no_reconocido
             })
             # [v3.9] Only tenant_id for isolation (object ownership tracked via project)
             if self.tenant_id: 
@@ -655,6 +662,22 @@ class SupabasePersistence:
         except Exception as e:
             print(f"Error fetching assets for {project_id}: {e}")
             return []
+
+    async def get_asset_by_id(self, asset_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a single asset by its object_id."""
+        try:
+            res = self.client.table("utm_objects").select("*").eq("object_id", asset_id).execute()
+            if res.data and len(res.data) > 0:
+                asset = res.data[0]
+                # Add compatibility fields
+                asset["id"] = asset["object_id"]
+                asset["filename"] = asset["source_name"]
+                asset["name"] = asset["source_name"]
+                return asset
+            return None
+        except Exception as e:
+            print(f"Error fetching asset {asset_id}: {e}")
+            return None
 
     async def save_transformation(self, asset_id: str, source_code: str, target_code: str, status: str = "completed") -> str:
         """Saves a transformation record."""
@@ -927,34 +950,22 @@ class SupabasePersistence:
 
     async def get_prompt(self, prompt_id: str, version: Optional[int] = None) -> str:
         """
-        Fetching prompt content from DB with local file fallback and versioning support.
-        Supports Tenant-Priority: Fetches tenant-specific prompt if exists, otherwise global (tenant_id is NULL).
+        v4.0: Fetching prompt content from DB (GLOBAL prompts only - no tenant_id).
+        Prompts are now global across all tenants (v4.0 design decision).
+        Falls back to local file with auto-seed if not found in DB.
         """
         try:
-            print(f"DEBUG: Fetching prompt '{prompt_id}' (Tenant: {self.tenant_id or 'GLOBAL'}) from DB...")
+            print(f"DEBUG: Fetching prompt '{prompt_id}' from DB (v4.0 Global Prompts)...")
             
-            query = self.client.table("utm_prompts").select("content, version_number, tenant_id")
+            # v4.0: Simple query - no tenant filtering (prompts are global)
+            query = self.client.table("utm_prompts").select("content")
             query = query.eq("prompt_id", prompt_id)
-            
-            if self.tenant_id:
-                # [Release 3.6] Support Global Fallback: Query matches my tenant OR is null
-                # We sort by tenant_id DESC to ensure specific UUID comes before NULL
-                query = query.or_(f"tenant_id.eq.{self.tenant_id},tenant_id.is.null")
-                query = query.order("tenant_id", desc=True)
-            else:
-                # Strictly global
-                query = query.is_("tenant_id", "null")
-            
-            if version:
-                query = query.eq("version_number", version)
-            else:
-                query = query.eq("is_active", True)
+            query = query.eq("is_active", True)
                 
             res = query.execute()
             
             if res.data and res.data[0].get("content"):
-                print(f"DEBUG: Loaded prompt {prompt_id} v{res.data[0].get('version_number')} from DB " + 
-                      f"({'Tenant' if res.data[0].get('tenant_id') else 'Global'})")
+                print(f"DEBUG: ✅ Loaded prompt '{prompt_id}' from DB (Global, {len(res.data[0]['content'])} chars)")
                 return res.data[0]["content"]
             
             # Fallback to local file with auto-seed
@@ -962,38 +973,47 @@ class SupabasePersistence:
             return await self._auto_seed_prompt(prompt_id)
                 
         except Exception as e:
-            print(f"Error fetching prompt {prompt_id}: {e}")
+            print(f"DEBUG: ❌ Error fetching prompt {prompt_id}: {e}")
+            import traceback
+            traceback.print_exc()
         return ""
 
     async def _auto_seed_prompt(self, prompt_id: str) -> str:
-        """Seed a prompt from local markdown file to DB as v1 Active."""
+        """
+        v4.0: Seed a prompt from local markdown file to DB as global prompt.
+        No tenant_id - all prompts are global.
+        """
         try:
             prompt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prompts"))
             file_path = os.path.join(prompt_dir, f"{prompt_id}.md")
             
             if not os.path.exists(file_path):
-                print(f"DEBUG: Local prompt file not found at {file_path}")
+                print(f"DEBUG: ❌ Local prompt file not found at {file_path}")
                 return ""
                 
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 
-            # Seed to DB
+            # v4.0: Seed to DB (GLOBAL - no tenant_id)
             data = {
-                "tenant_id": self.tenant_id,
                 "prompt_id": prompt_id,
-                "version_number": 1,
                 "content": content,
                 "is_active": True,
-                "changelog": "Initial auto-seed from local .md file"
+                "metadata": {
+                    "auto_seeded": True,
+                    "source_file": f"{prompt_id}.md",
+                    "seeded_at": datetime.now().isoformat()
+                }
             }
             
             self.client.table("utm_prompts").insert(data).execute()
-            print(f"DEBUG: Successfully auto-seeded {prompt_id} v1 to DB")
+            print(f"DEBUG: ✅ Successfully auto-seeded '{prompt_id}' to DB ({len(content)} chars)")
             return content
             
         except Exception as e:
-            print(f"DEBUG: Error auto-seeding prompt {prompt_id}: {e}")
+            print(f"DEBUG: ❌ Error auto-seeding prompt {prompt_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
 
     async def list_prompts(self) -> List[Dict[str, Any]]:
@@ -1020,37 +1040,63 @@ class SupabasePersistence:
             print(f"Error listing techs: {e}")
             return []
 
-    async def save_prompt(self, prompt_id: str, content: str) -> bool:
+    async def save_prompt(
+        self, 
+        prompt_id: str, 
+        content: str,
+        agent_id: Optional[str] = None,
+        tech_stack: Optional[str] = None,
+        pattern_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """
-        Updates the ACTIVE prompt version in the DB.
-        DEPRECATED: Use PromptLabService for versioned imports.
+        Save or update a prompt in the database (v4.0).
+        Prompts are GLOBAL (no tenant_id).
+        Trigger automatically saves old version to utm_prompts_history on UPDATE.
+        
+        Args:
+            prompt_id: Unique prompt identifier
+            content: Full prompt content
+            agent_id: Agent identifier (e.g., 'agent-c')
+            tech_stack: Technology stack (e.g., 'databricks')
+            pattern_type: Pattern type (e.g., 'direct', 'bronze')
+            metadata: Additional metadata
+        
+        Returns:
+            True if successful, False otherwise
         """
         try:
-            print(f"DEBUG: Saving (updating active) prompt '{prompt_id}' length={len(content)}")
+            print(f"DEBUG: Saving prompt '{prompt_id}' length={len(content)}")
             
-            # Find current active version
-            query = self.client.table("utm_prompts").select("version_number").eq("prompt_id", prompt_id).eq("is_active", True)
-            if self.tenant_id:
-                query = query.eq("tenant_id", self.tenant_id)
-            
+            # Check if prompt exists (NO tenant filter - prompts are global)
+            query = self.client.table("utm_prompts").select("prompt_id").eq("prompt_id", prompt_id)
             res = query.execute()
             
+            # Prepare data
+            data = {
+                "content": content,
+                "agent_id": agent_id,
+                "tech_stack": tech_stack,
+                "pattern_type": pattern_type,
+                "metadata": metadata or {},
+                "is_active": True
+            }
+            
             if res.data:
-                v = res.data[0]["version_number"]
-                self.client.table("utm_prompts").update({
-                    "content": content
-                }).eq("prompt_id", prompt_id).eq("version_number", v).execute()
+                # Update existing prompt (trigger will save old version to history)
+                self.client.table("utm_prompts").update(data).eq("prompt_id", prompt_id).execute()
+                print(f"DEBUG: Updated prompt '{prompt_id}'")
             else:
-                # If no active version exists, create v1 active
-                await self._auto_seed_prompt(prompt_id)
-                # Then update it just in case content differs from file
-                self.client.table("utm_prompts").update({
-                    "content": content
-                }).eq("prompt_id", prompt_id).eq("version_number", 1).execute()
+                # Insert new prompt
+                data["prompt_id"] = prompt_id
+                self.client.table("utm_prompts").insert(data).execute()
+                print(f"DEBUG: Inserted new prompt '{prompt_id}'")
             
             return True
         except Exception as e:
             print(f"Error saving prompt {prompt_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def list_models(self) -> List[Dict[str, Any]]:
@@ -1600,4 +1646,120 @@ class SupabasePersistence:
                 filtered.append(tech)
         return filtered
 
+    # --- Sidebar Metrics Helper Methods ---
 
+    async def get_quality_metrics_summary(self, project_id: str) -> Dict[str, Any]:
+        """
+        Aggregates quality metrics from utm_asset_columns for sidebar display.
+        Returns avg quality score, PII count, partitioned table count, etc.
+        """
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return {}
+            
+            # Get all asset columns with quality metrics
+            res = self.client.table("utm_asset_columns").select("*").eq("project_id", resolved_id).execute()
+            columns = res.data if res.data else []
+            
+            if not columns:
+                return {"avg_quality_score": 0, "pii_column_count": 0, "partitioned_table_count": 0}
+            
+            # Calculate averages
+            quality_scores = [col.get("quality_score", 0) for col in columns if col.get("quality_score")]
+            avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0
+            
+            # Count PII columns
+            pii_count = sum(1 for col in columns if col.get("has_pii", False))
+            
+            # Count unique tables with partitioning
+            partitioned_tables = set()
+            for col in columns:
+                if col.get("partition_key") or col.get("is_partition_key"):
+                    asset_id = col.get("asset_id")
+                    if asset_id:
+                        partitioned_tables.add(asset_id)
+            
+            return {
+                "avg_quality_score": round(avg_quality, 1),
+                "pii_column_count": pii_count,
+                "partitioned_table_count": len(partitioned_tables),
+                "total_columns": len(columns)
+            }
+        except Exception as e:
+            print(f"Error getting quality metrics summary: {e}")
+            return {}
+
+    async def get_project_tech_stats(self, project_id: str) -> Dict[str, Any]:
+        """
+        Returns aggregated technology statistics for a project.
+        Includes source_tech detection, target_tech, asset counts per tech.
+        """
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return {}
+            
+            # Get all assets
+            res = self.client.table("utm_objects").select("source_tech, target_tech").eq("project_id", resolved_id).execute()
+            assets = res.data if res.data else []
+            
+            if not assets:
+                return {"source_tech": "Unknown", "target_tech": "Unknown", "asset_count": 0}
+            
+            # Count source techs (most common)
+            source_techs = [a.get("source_tech") for a in assets if a.get("source_tech")]
+            most_common_source = max(set(source_techs), key=source_techs.count) if source_techs else "Unknown"
+            
+            # Get target tech from project metadata
+            project = await self.get_project_metadata(project_id)
+            target_tech = project.get("target_technology", "Unknown") if project else "Unknown"
+            
+            return {
+                "source_tech": most_common_source,
+                "target_tech": target_tech,
+                "asset_count": len(assets),
+                "source_tech_breakdown": {tech: source_techs.count(tech) for tech in set(source_techs)}
+            }
+        except Exception as e:
+            print(f"Error getting project tech stats: {e}")
+            return {}
+
+    async def get_code_validations(self, project_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves code validations from utm_code_validations table.
+        Returns validation results with is_valid, error_count, etc.
+        """
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return []
+            
+            res = self.client.table("utm_code_validations").select("*").eq("project_id", resolved_id).order("created_at", desc=True).limit(limit).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error getting code validations: {e}")
+            return []
+
+    async def get_governance_files(self, project_id: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves governance documentation files generated by Agent G.
+        Looks for files in solution_context with category='documentation' or similar.
+        """
+        try:
+            resolved_id = await self._resolve_uuid(project_id)
+            if not resolved_id:
+                return []
+            
+            # Check utm_solution_context for documentation entries
+            res = self.client.table("utm_solution_context").select("*").eq("project_id", resolved_id).ilike("context_type", "%documentation%").execute()
+            docs = res.data if res.data else []
+            
+            # Also check design registry for governance layer
+            res2 = self.client.table("utm_design_registry").select("*").eq("project_id", resolved_id).eq("layer", "governance").execute()
+            gov_nodes = res2.data if res2.data else []
+            
+            return docs + gov_nodes
+        except Exception as e:
+            print(f"Error getting governance files: {e}")
+            return []

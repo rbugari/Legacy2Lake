@@ -3,18 +3,19 @@ Transpile & Orchestration Router
 Handles code generation, transpilation, and migration orchestration.
 Migrated from main.py for better modularity.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import os
 import uuid
+import asyncio
 
-from routers.dependencies import get_db, get_identity
-from services.persistence_service import SupabasePersistence, PersistenceService
-from services.agent_c_service import AgentCService
-from services.agent_f_service import AgentFService
-from services.migration_orchestrator import MigrationOrchestrator
-from services.lock_service import LockService, ProcessLockError
+from apps.api.routers.dependencies import get_db, get_identity
+from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
+from apps.api.services.agent_c_service import AgentCService
+from apps.api.services.agent_f_service import AgentFService
+from apps.api.services.migration_orchestrator import MigrationOrchestrator
+from apps.api.services.lock_service import LockService, ProcessLockError
 
 router = APIRouter(prefix="/transpile", tags=["Transpilation & Orchestration"])
 
@@ -224,14 +225,79 @@ async def optimize_task_code(payload: OptimizeRequest, db: SupabasePersistence =
 
 # --- Full Migration Orchestration ---
 
+# Background task function
+async def _run_orchestration_background(
+    project_id: str,
+    limit: int,
+    lock_ids: Dict[str, str],
+    lock_service: LockService,
+    tenant_id: str,
+    username: str,
+    db_config: Dict[str, Any]
+):
+    """Runs the full orchestration in background."""
+    db = SupabasePersistence(tenant_id=tenant_id, client_id=db_config.get("client_id"))
+    project_uuid = project_id
+    
+    try:
+        # Update status to ORCHESTRATING
+        await db.update_project_status(project_uuid, "ORCHESTRATING")
+        await db.log_execution(project_uuid, "MIGRATION", "Starting Migration Orchestrator...", step="SYSTEM")
+        
+        # Check for cancellation
+        project = await db.get_project_metadata(project_uuid)
+        if project and project.get("cancellation_requested"):
+            await db.log_execution(project_uuid, "MIGRATION", "Process cancelled by user.", step="SYSTEM")
+            await db.update_project_status(project_uuid, "DRAFTING")
+            return
+        
+        # 1. Resolve Project Name
+        project_name = project_id
+        if "-" in project_id:
+            n = await db.get_project_name_by_id(project_id)
+            if n: 
+                project_name = n
+        
+        await db.log_execution(project_uuid, "MIGRATION", f"Instantiating MigrationOrchestrator for {project_name}", step="SYSTEM")
+        
+        orchestrator = MigrationOrchestrator(
+            project_name, 
+            project_uuid=project_id, 
+            tenant_id=tenant_id, 
+            client_id=db_config.get("client_id")
+        )
+        
+        await db.log_execution(project_uuid, "MIGRATION", "Running full migration (Agents C → F → G)...", step="SYSTEM")
+        result = await orchestrator.run_full_migration(limit=limit)
+        
+        await db.log_execution(project_uuid, "MIGRATION", f"Migration complete. Result: {result.get('status', 'success')}", step="SYSTEM")
+        
+        # Update status to DRAFTED on success
+        await db.update_project_status(project_uuid, "DRAFTED")
+        
+    except Exception as e:
+        await db.log_execution(project_uuid, "MIGRATION", f"ERROR: {str(e)}", step="SYSTEM")
+        await db.update_project_status(project_uuid, "DRAFTING")  # Revert on error
+        raise
+    finally:
+        # Release all locks
+        for process_type, lock_id in lock_ids.items():
+            try:
+                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                print(f"[ORCHESTRATION] Lock {lock_id} released for {process_type}")
+            except Exception as e:
+                print(f"WARNING: Failed to release {process_type} lock {lock_id}: {e}")
+
+
 @router.post("/orchestrate")
 async def trigger_orchestration(
     payload: Dict[str, Any], 
     request: Request,
+    background_tasks: BackgroundTasks,
     identity: dict = Depends(get_identity),
     db: SupabasePersistence = Depends(get_db)
 ):
-    """Triggers the full Migration Orchestrator (Agents C -> F -> G)."""
+    """Triggers the full Migration Orchestrator (Agents C -> F -> G) in background."""
     print(f"DEBUG: Entering trigger_orchestration with payload: {payload}")
     project_id = payload.get("project_id")
     limit = payload.get("limit", 0)
@@ -290,36 +356,33 @@ async def trigger_orchestration(
         )
     
     # === MAIN ORCHESTRATION LOGIC ===
-    try:    
-        # 1. Resolve Project Name
-        project_name = project_id
-        if "-" in project_id:
-            print(f"DEBUG: Resolving project name for ID: {project_id}")
-            n = await db.get_project_name_by_id(project_id)
-            print(f"DEBUG: Resolved project name: {n}")
-            if n: 
-                project_name = n
-
-        print(f"DEBUG: Instantiating MigrationOrchestrator for {project_name} (UUID: {project_id})")
-        orchestrator = MigrationOrchestrator(
-            project_name, 
-            project_uuid=project_id, 
-            tenant_id=db.tenant_id, 
-            client_id=db.client_id
+    # Update status to ORCHESTRATING and start background task
+    try:
+        await db.update_project_status(project_id, "ORCHESTRATING")
+        
+        # Prepare DB config for background task (thread-safe)
+        db_config = {
+            "client_id": db.client_id,
+            "tenant_id": tenant_id
+        }
+        
+        # Start background task
+        background_tasks.add_task(
+            _run_orchestration_background,
+            project_id,
+            limit,
+            lock_ids,
+            lock_service,
+            tenant_id,
+            username,
+            db_config
         )
-
-        print("DEBUG: Running full migration...")
-        result = await orchestrator.run_full_migration(limit=limit)
-        print("DEBUG: Migration complete.")
         
-        # === SUCCESS: Release all locks ===
-        for process_type, lock_id in lock_ids.items():
-            try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
-            except Exception as e:
-                print(f"WARNING: Failed to release {process_type} lock {lock_id}: {e}")
-        
-        return result
+        return {
+            "status": "RUNNING",
+            "message": "Migration orchestration started in background. Monitor logs for progress.",
+            "project_id": project_id
+        }
         
     except Exception as e:
         # === ERROR: Release all locks before re-raising ===

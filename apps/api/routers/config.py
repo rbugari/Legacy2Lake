@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
-from services.persistence_service import SupabasePersistence
-from routers.dependencies import get_db
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.routers.dependencies import get_db
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 

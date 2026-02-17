@@ -1,13 +1,18 @@
 "use client";
-import React, { useState, useEffect, useCallback } from 'react';
-import { Play, FileText, Database, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Play, FileText, Database, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X, Code, Shield, Zap } from 'lucide-react';
 import StageHeader from "../StageHeader";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchWithAuth } from '../../lib/auth-client';
+import ProcessProgress from '../ProcessProgress';
 import PromptsExplorer from '../PromptsExplorer';
 import DesignRegistryPanel from './DesignRegistryPanel';
 import TechnologyMixer from './TechnologyMixer';
+import CodeViewer from '../visualization/CodeViewer'; // V3.9
+import SchemaViewer from '../visualization/SchemaViewer'; // V3.9
+import QualityDashboard from '../visualization/QualityDashboard'; // V3.9
+import PerformanceDashboard from '../visualization/PerformanceDashboard'; // V3.9
 
 interface RefinementViewProps {
     projectId: string;
@@ -16,8 +21,8 @@ interface RefinementViewProps {
     isFullscreen?: boolean;
     onToggleFullscreen?: () => void;
     onReset?: () => void;
-    onBackToCurrent?: () => void;
-}
+    onBackToCurrent?: () => void;    activeSection: string;
+    onSectionChange: (section: string) => void;}
 
 interface FileNode {
     name: string;
@@ -27,11 +32,6 @@ interface FileNode {
     last_modified?: string | number;
 }
 
-const TABS = [
-    { id: 'orchestrator', label: 'Orchestration', icon: <Layers size={18} /> },
-    { id: 'artifacts', label: 'Artifacts', icon: <Database size={18} /> },
-];
-
 export default function RefinementView({
     projectId,
     onStageChange,
@@ -39,10 +39,12 @@ export default function RefinementView({
     isFullscreen,
     onToggleFullscreen,
     onReset,
-    onBackToCurrent
+    onBackToCurrent,
+    activeSection,
+    onSectionChange
 }: RefinementViewProps) {
-    const [activeTab, setActiveTab] = useState<any>("orchestrator");
-    const [isRunning, setIsRunning] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(false); // Initial data fetch
+    const [isRefinementRunning, setIsRefinementRunning] = useState(false); // Active refinement process
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
 
@@ -76,24 +78,63 @@ export default function RefinementView({
 
     const fetchRefinementLogs = useCallback(async () => {
         try {
-            const res = await fetchWithAuth(`projects/${projectId}/logs?type=refinement`);
+            // Fetch execution logs
+            const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=refinement`);
             const data = await res.json();
             if (data.logs) {
                 const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
                 setLogs(logLines);
             }
+
+            // Check project status to detect completion
+            const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
+            const statusData = await statusRes.json();
+            
+            // If status is REFINED and we're currently running, process is complete
+            if (statusData.status === "REFINED" && isRefinementRunning) {
+                console.log("[RefinementView] Refinement complete, stopping polling");
+                setIsRefinementRunning(false);
+                // Profile will be reloaded in separate useEffect
+            }
         } catch (e) {
-            console.error("Failed to load logs", e);
+            console.error("Failed to load refinement logs", e);
         }
-    }, [projectId]);
+    }, [projectId, isRefinementRunning]);
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        if (isRunning) {
-            interval = setInterval(fetchRefinementLogs, 2000);
+        if (isRefinementRunning) {
+            // Immediate fetch
+            fetchRefinementLogs();
+            // Then poll every 3 seconds
+            interval = setInterval(fetchRefinementLogs, 3000);
         }
-        return () => clearInterval(interval);
-    }, [isRunning, fetchRefinementLogs]);
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isRefinementRunning, fetchRefinementLogs]);
+
+    // Reload profile data when refinement completes (separate useEffect to avoid loops)
+    const prevRefinementRunning = useRef(false);
+    useEffect(() => {
+        const reloadProfileData = async () => {
+            try {
+                const stateRes = await fetchWithAuth(`projects/${projectId}/refinement/state`);
+                const stateData = await stateRes.json();
+                if (stateData.profile) {
+                    setProfile(stateData.profile);
+                }
+            } catch (e) {
+                console.error("Failed to reload profile", e);
+            }
+        };
+
+        if (prevRefinementRunning.current === true && isRefinementRunning === false) {
+            console.log("[RefinementView] Refinement completed, reloading profile data");
+            reloadProfileData();
+        }
+        prevRefinementRunning.current = isRefinementRunning;
+    }, [isRefinementRunning, projectId]);
 
     useEffect(() => {
         fetchRefinementLogs();
@@ -104,9 +145,9 @@ export default function RefinementView({
         const confirmMsg = "This action will execute the Refinement phase (Agents P, A, R, O). This incurs token costs and processing time.\n\nDo you want to continue?";
         if (!confirm(confirmMsg)) return;
 
-        setIsRunning(true);
+        setIsRefinementRunning(true);
         setIsFinished(false);
-        setLogs(["Starting Refinement Phase...", "Initializing Agents..."]);
+        setLogs(["Starting Refinement Phase in background..."]);
         try {
             const res = await fetchWithAuth(`refine/start`, {
                 method: 'POST',
@@ -114,17 +155,26 @@ export default function RefinementView({
             });
             const data = await res.json();
 
-            if (data.log) {
-                setLogs(data.log);
-            }
-            if (data.profile) {
-                setProfile(data.profile);
+            if (data.error) {
+                setLogs(prev => [...prev, `[ERROR] ${data.error}`]);
+                setIsRefinementRunning(false);
+            } else if (data.status === "RUNNING") {
+                // Background task started successfully
+                setLogs(prev => [...prev, data.message || "Refinement started in background. Monitor logs for progress."]);
+                // Polling will continue until status changes to REFINED
+            } else {
+                // Backwards compatibility: old synchronous response
+                if (data.log) {
+                    setLogs(data.log);
+                }
+                if (data.profile) {
+                    setProfile(data.profile);
+                }
+                setIsRefinementRunning(false);
             }
         } catch (e) {
             setLogs(prev => [...prev, `[Network Error] ${e}`]);
-        } finally {
-            setIsRunning(false);
-            fetchRefinementLogs();
+            setIsRefinementRunning(false);
         }
     };
 
@@ -154,7 +204,7 @@ export default function RefinementView({
             const data = await res.json();
 
             if (data.success) {
-                setIsRunning(false);
+                setIsRefinementRunning(false);
                 setLogs(prev => [...prev, "[SYSTEM] Process cancelled by user."]);
             } else {
                 setLogs(prev => [...prev, `[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`]);
@@ -166,13 +216,13 @@ export default function RefinementView({
     };
 
     useEffect(() => {
-        if (activeTab === 'artifacts') {
+        if (activeSection === 'diff') {
             fetchWithAuth(`projects/${projectId}/files`)
                 .then(res => res.json())
                 .then(data => setFileTree(data.children || []))
                 .catch(err => console.error("Failed to load file tree", err));
         }
-    }, [activeTab, projectId, logs]);
+    }, [activeSection, projectId, logs]);
 
     const findLegacyFile = (nodes: any[], targetBaseName: string): string | null => {
         for (const node of nodes) {
@@ -213,7 +263,7 @@ export default function RefinementView({
             const data = await res.json();
             setFileContent(data.content || "");
 
-            if (activeTab === 'artifacts') {
+            if (activeSection === 'diff') {
                 const origPath = resolveOriginalPath(path);
                 if (origPath) {
                     const resOrig = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(origPath)}`);
@@ -301,7 +351,7 @@ export default function RefinementView({
                 helpText="Final code refinement ensuring adherence to established architectural patterns."
                 onApprove={handleApprove}
                 approveLabel="Approve & Governance"
-                isApproveDisabled={isRunning || !isComplete}
+                isApproveDisabled={isRefinementRunning || !isComplete}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
                 onReset={onReset}
@@ -310,17 +360,17 @@ export default function RefinementView({
                 <div className="flex gap-2">
                     <button
                         onClick={handleRunRefinement}
-                        disabled={isRunning || isReadOnly}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRunning || isReadOnly
+                        disabled={isRefinementRunning || isReadOnly}
+                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all ${isRefinementRunning || isReadOnly
                             ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                             : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/20 dark:shadow-none"
                             }`}
                     >
-                        <Play size={12} className={isRunning ? "animate-spin" : ""} />
-                        {isRunning ? "Refining..." : "Refine & Modernize"}
+                        <Play size={12} className={isRefinementRunning ? "animate-spin" : ""} />
+                        {isRefinementRunning ? "Refining..." : "Refine & Modernize"}
                     </button>
 
-                    {isRunning && (
+                    {isRefinementRunning && (
                         <button
                             onClick={handleCancelRefinement}
                             className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
@@ -332,35 +382,15 @@ export default function RefinementView({
                 </div>
             </StageHeader>
 
-            <div className="flex bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4">
-                {TABS.map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-8 py-5 text-[10px] font-bold uppercase tracking-[0.2em] border-b-2 transition-all ${activeTab === tab.id
-                            ? 'border-purple-500 text-purple-500 bg-purple-500/5'
-                            : 'border-transparent text-[var(--text-tertiary)] hover:text-purple-500 hover:bg-purple-500/5'
-                            }`}
-                    >
-                        {tab.icon} <span>{tab.label}</span>
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex-1 p-8 overflow-hidden">
-                {activeTab === 'orchestrator' && (
+            {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
+            <div className="flex-1 overflow-hidden p-6">
+                {activeSection === 'status' && (
                     <div className="max-w-7xl mx-auto space-y-6 flex flex-col h-full">
-                        <div className="flex-1 bg-black text-green-400 rounded-xl p-6 font-mono text-sm overflow-y-auto shadow-inner border border-gray-800 min-h-0">
-                            <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
-                                <span className="font-bold text-gray-400">AGENT LOGS</span>
-                            </div>
-                            <div className="space-y-2">
-                                {logs.length === 0 && <span className="text-gray-600 italic">Waiting for command...</span>}
-                                {logs.map((line: string, i: number) => (
-                                    <div key={i} className="whitespace-pre-wrap border-l-2 border-transparent pl-2 hover:border-gray-700 transition-colors">{`> ${line}`}</div>
-                                ))}
-                            </div>
-                        </div>
+                        <ProcessProgress
+                            isRunning={isRefinementRunning}
+                            logs={logs}
+                            processName="Refinement Pipeline"
+                        />
 
                         {profile && (
                             <div className="grid grid-cols-2 gap-4 shrink-0">
@@ -377,7 +407,31 @@ export default function RefinementView({
                     </div>
                 )}
 
-                {activeTab === 'artifacts' && (
+                {activeSection === 'issues' && (
+                    <div className="h-full bg-white dark:bg-gray-900 rounded-xl overflow-hidden">
+                        <CodeViewer projectId={projectId} showHeader={true} />
+                    </div>
+                )}
+
+                {activeSection === 'validation' && (
+                    <div className="h-full bg-white dark:bg-gray-900 rounded-xl overflow-hidden">
+                        <SchemaViewer projectId={projectId} showHistory={true} />
+                    </div>
+                )}
+
+                {activeSection === 'quality' && (
+                    <div className="h-full bg-white dark:bg-gray-900 rounded-xl overflow-hidden">
+                        <QualityDashboard projectId={projectId} />
+                    </div>
+                )}
+
+                {activeSection === 'performance' && (
+                    <div className="h-full bg-white dark:bg-gray-900 rounded-xl overflow-hidden">
+                        <PerformanceDashboard projectId={projectId} />
+                    </div>
+                )}
+
+                {activeSection === 'diff' && (
                     <div className="flex h-full gap-4">
                         <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                             <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
@@ -425,7 +479,13 @@ export default function RefinementView({
                                 ) : selectedFile ? (
                                     <div className="flex-1 overflow-auto bg-[#1e1e1e]">
                                         <SyntaxHighlighter
-                                                language={selectedFile.endsWith('.py') ? 'python' : selectedFile.endsWith('.sql') ? 'sql' : selectedFile.endsWith('.json') ? 'json' : selectedFile.endsWith('.md') ? 'markdown' : 'text'}
+                                                language={(() => {
+                                                    if (selectedFile.endsWith('.py')) return 'python';
+                                                    if (selectedFile.endsWith('.sql')) return 'sql';
+                                                    if (selectedFile.endsWith('.json')) return 'json';
+                                                    if (selectedFile.endsWith('.md')) return 'markdown';
+                                                    return 'text';
+                                                })()}
                                                 style={vscDarkPlus}
                                                 customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
                                                 showLineNumbers={true}

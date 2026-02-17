@@ -51,9 +51,10 @@ class TopologyService:
                         files.append(n)
                 return files
             
-            # Find all .dtsx and .sql files
+            # Find all .dtsx files (migrable packages)
+            # SQL files are support/DDL files, NOT migration tasks
             all_files = get_all_files(items)
-            task_files = [f for f in all_files if f["name"].lower().endswith((".dtsx", ".sql"))]
+            task_files = [f for f in all_files if f["name"].lower().endswith(".dtsx")]
         except Exception as e:
             logger.error(f"Error listing packages for topology: {e}", "Topology")
         

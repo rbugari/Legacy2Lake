@@ -5,12 +5,17 @@ The **Discovery** phase is the entry point for artifact ingestion. It uploads so
 
 > **v3.5 Update**: Zero local disk storage. All artifacts are streamed directly to R2 with tenant-specific prefixes for complete isolation.
 
+> **v3.9 Integration**: Discovery connects to Triage visualization dashboards - uploaded artifacts feed into Quality, Schema, PII, and Partition analysis.
+
+> **v4.0 Enhancement**: Uploaded artifacts are automatically profiled by ForensicAnalyzer (Feature 2) during Triage stage for PII detection and quality scoring.
+
 ## 🎯 Objectives
 - **Cloud Upload**: Ingest source files (`.sql`, `.xml`, `.dtsx`, `.zip`) to R2 object storage
 - **File Inventory**: Create searchable catalog in `utm_file_inventory` for fast listing
 - **Technical Signatures**: Identify file types (Storage DDL vs Logic vs Orchestration)
 - **Tenant Isolation**: Ensure multi-tenant security with per-tenant R2 prefixes
 - **Generate Manifest**: Prepare `manifest.json` for Agent S technology detection
+- **Forensics Preparation**: Extract metadata for v3.9 visualization dashboards
 
 ## 👨‍💻 User Guide
 

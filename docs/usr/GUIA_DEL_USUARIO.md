@@ -1,6 +1,29 @@
-# Guía de Usuario: Legacy2Lake
+# Guía de Usuario: Legacy2Lake v3.9 GA
 
 Esta guía detalla el ciclo completo de vida dentro de la plataforma **Legacy2Lake**, desde la creación de una nueva solución hasta su despliegue en producción.
+
+**Última Actualización**: 13 de febrero, 2026  
+**Versión**: v3.9 GA (Visualización Integrada)
+
+---
+
+## ✨ Novedades V3.9 GA
+
+### Nuevos Dashboards de Visualización
+**En Triage (Fase 2)**: 4 dashboards avanzados
+- 📏 **Quality Dashboard**: Métricas de calidad en 6 dimensiones
+- 📑 **Schema Viewer**: Explorador interactivo de tablas/columnas
+- 🔒 **PII Heatmap**: Detección de datos sensibles (GDPR/CCPA)
+- ⚡ **Partition Recommendations**: Estrategias de optimización
+
+**En Drafting (Fase 3)**: Nueva pestaña Quality
+- Monitoreo de calidad durante generación de IR
+
+**En Refinement (Fase 4)**: 4 nuevas tabs de validación
+- 📝 **Code Review**: Comparación legacy vs moderno
+- 📑 **Schema Validation**: Verificación de integridad DDL
+- 🎯 **Quality Validation**: Chequeos end-to-end
+- 🚀 **Performance Metrics**: Eficiencia y optimizaciones
 
 ---
 
@@ -62,8 +85,13 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
 *   **Botón: "Generate Plan" / "Run Pipeline":**
     *   *Agente:* **Agente C (Arquitecto)** en modo borrador.
     *   *Acción:* Analiza cada script SQL y propone su equivalente en la nube (ej: "Este `CREATE PROCEDURE` será un `Job` de Databricks"). Genera un "Blueprint".
-*   **Tab: "Output Explorer":**
-    *   Permite ver los archivos de planificación generados (`plan.json` o borradores iniciales).
+*   **Tabs de Trabajo:**
+    1.  **Output Explorer:** Permite ver los archivos de planificación generados (`plan.json` o borradores iniciales).
+    2.  **Quality (NUEVO v3.9):** 🎨 Dashboard de calidad en tiempo real
+        *   **6 Métricas de Calidad:** Completitud, Consistencia, Precisión, Validez, Unicidad, Puntualidad
+        *   **Visualización:** Gauges circulares con código de colores (rojo/amarillo/verde)
+        *   **Propósito:** Detectar problemas de calidad durante la generación del IR (Intermediate Representation)
+        *   **Beneficio:** Permite ajustar el diseño antes de codificar
 *   **Botón: "Approve and Refine":**
     *   Valida el plan técnico. Al hacer clic, el sistema queda listo para la generación masiva de código.
 
@@ -76,15 +104,29 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
 ### Interfaz y Acciones:
 *   **Botón: "Refine & Modernize" (Play):**
     *   *Agentes:* Ejecuta en cadena a **Agente C (Coder)**, **Agente F (Fixer/Optimización)** y **Agente R (Reviewer)**.
-    *   *Acción:* Transpila el código legado a código nativo de nube (PySpark/Showflake) siguiendo la arquitectura "Medallion" (Bronze -> Silver -> Gold).
-*   **Tabs de Trabajo:**
+    *   *Acción:* Transpila el código legado a código nativo de nube (PySpark/Snowflake) siguiendo la arquitectura "Medallion" (Bronze -> Silver -> Gold).
+*   **Tabs de Trabajo (EXPANDIDO v3.9 - 2 → 6 tabs):**
     1.  **Orchestrator:** Muestra los logs en tiempo real de los agentes trabajando.
     2.  **Output Explorer:** Árbol de archivos con el código generado.
-    3.  **Workbench (Diff):** Herramienta comparativa.
-        *   *Panel Izquierdo:* Muestra el código **Legacy Original** (se busca automáticamente en Triage).
-        *   *Panel Derecho:* Muestra el código **Refinado** generado por la IA.
-        *   Usa esto para validar que la lógica de negocio se ha preservado.
-*   **Botón: "Approve Phase 3" (o 4):**
+    3.  **Code Review (NUEVO v3.9):** 🎨 Comparación lado a lado
+        *   **Panel Izquierdo:** Código **Legacy Original** (extraído automáticamente de Triage)
+        *   **Panel Derecho:** Código **Refinado** generado por IA con resaltado de sintaxis
+        *   **Características:** Diff visual, numeración de líneas, scroll sincronizado
+        *   **Propósito:** Validar que la lógica de negocio se preservó durante la modernización
+    4.  **Schema Validation (NUEVO v3.9):** 🎨 Explorador interactivo de DDL
+        *   **Visualización:** Árbol expandible de tablas y columnas con metadatos
+        *   **Contexto:** Muestra esquemas simulados de origen y destino
+        *   **Validaciones:** Integridad referencial, tipos de datos compatibles
+        *   **Propósito:** Verificar que todas las tablas están correctamente definidas
+    5.  **Quality Validation (NUEVO v3.9):** 🎨 Suite de validación de calidad
+        *   **6 Dimensiones:** Completitud, Consistencia, Precisión, Validez, Unicidad, Puntualidad
+        *   **Características:** Tracking de violaciones, tendencias históricas, alertas
+        *   **Propósito:** Asegurar calidad end-to-end del código generado
+    6.  **Performance Metrics (NUEVO v3.9):** 🎨 Dashboard de optimización
+        *   **Métricas:** Cache hit rates, paralelización, eficiencia de queries
+        *   **Visualización:** Gráficos de líneas, barras de progreso, KPIs
+        *   **Propósito:** Identificar cuellos de botella y oportunidades de optimización
+*   **Botón: "Approve Phase 4":**
     *   Bloquea el código generado como "Candidato a Producción" y avanza a certificación.
 
 ---

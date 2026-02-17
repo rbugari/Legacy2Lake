@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<DTS:Executable xmlns:DTS="www.microsoft.com/SqlServer/Dts" 
+                DTS:CreatorName="System" 
+                DTS:VersionID="1">
+  
+  <!-- Connection Managers -->
+  <DTS:ConnectionManagers>
+    <DTS:ConnectionManager 
+        DTS:ObjectName="SourceConnection" 
+        DTS:DTSID="{11111111-1111-1111-1111-111111111111}">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager>
+          <DTS:Property DTS:Name="ConnectionString">Data Source=SQL-PROD-SERVER;Initial Catalog=AdventureWorks;Provider=SQLNCLI11.1;Integrated Security=SSPI;</DTS:Property>
+        </DTS:ConnectionManager>
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+    
+    <DTS:ConnectionManager 
+        DTS:ObjectName="DestinationConnection" 
+        DTS:DTSID="{22222222-2222-2222-2222-222222222222}">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager>
+          <DTS:Property DTS:Name="ConnectionString">Data Source=DW-SQL-01;Initial Catalog=DataWarehouse_DW;Provider=SQLOLEDB;Integrated Security=SSPI;</DTS:Property>
+        </DTS:ConnectionManager>
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+  </DTS:ConnectionManagers>
+  
+  <!-- Executable (Data Flow Task) -->
+  <DTS:Executables>
+    <DTS:Executable DTS:DTSID="{33333333-3333-3333-3333-333333333333}">
+      <DTS:ObjectData>
+        <pipeline>
+          <components>
+            <component name="OLE DB Source" refId="1" contactInfo="OLE DB Source">
+              <properties>
+                <property name="SqlCommand">SELECT custid,contactname,city,country,address,phone,postalcode FROM Sales.Customers WHERE custid &gt; ?</property>
+              </properties>
+            </component>
+            <component name="OLE DB Destination" refId="2" contactInfo="OLE DB Destination">
+              <properties>
+                <property name="Table">dbo.Customers_DW</property>
+              </properties>
+            </component>
+          </components>
+        </pipeline>
+      </DTS:ObjectData>
+    </DTS:Executable>
+  </DTS:Executables>
+  
+</DTS:Executable>

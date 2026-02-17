@@ -4,12 +4,16 @@ from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 try:
+    from apps.api.utils.logger import logger
     from apps.api.services.persistence_service import SupabasePersistence
 except ImportError:
     try:
+        from utils.logger import logger
         from services.persistence_service import SupabasePersistence
     except ImportError:
         from .persistence_service import SupabasePersistence
+        # logger might be harder here, but uvicorn should have worked
+        from ..utils.logger import logger
 
 
 class AgentGService:
@@ -57,6 +61,7 @@ class AgentGService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         await db.save_prompt("agent_g_governance", content)
 
+    @logger.llm_debug("Agent G")
     async def generate_governance(self, project_name: str, mesh: Dict[str, Any], transformations: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generates technical documentation (Runbook) and Compliance Audit (JSON)."""
         system_prompt = await self._load_prompt()

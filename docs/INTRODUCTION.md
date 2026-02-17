@@ -1,8 +1,8 @@
 # Welcome to Legacy2Lake 🚀
 
-**Legacy2Lake** (v3.8) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
+**Legacy2Lake** (v4.0) is a **Cloud-Native, Multi-Tenant AI-Augmented Data Engineering Platform** that automates and optimizes the transition from legacy architectures (Traditional ETL) to modern Cloud Lakehouse ecosystems (ELT/ETLT).
 
-> **v3.8 Latest**: Adds **Process Locking System**, **Professional UI Components** (ProcessLockModal, ProcessExecutionModal, ReportsLibraryModal), **Governance Framework**, and **Centralized Reports Library**.
+> **v4.0 Current** (85% Complete): Implements **Zero-Hardcode Generation** (database-driven prompts), **Deep Forensic Triage** (field-level analysis with PII detection), **Real-Time Validation** (syntax checking during generation), **Parser Catalog** (dynamic technology registry), and **Unified Sidebar Architecture** (performance optimized).
 
 ## 1. The Vision: "Shift the T" 🧬
 

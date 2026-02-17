@@ -1,14 +1,59 @@
-# Quick Start Guide: v3.9 Multi-User Foundation
+# Quick Start Guide: v3.9 GA - Multi-User + Visualization
 
-**Target Start**: February 17, 2026  
-**Duration**: 3-4 weeks  
+**Completed**: February 13, 2026 ✅  
+**Duration**: 4 weeks (Jan 17 - Feb 13)  
 **Team**: Backend + Frontend + DevOps
+
+**Status**: ✅ **RELEASED TO PRODUCTION**
 
 ---
 
-## 📋 Week-by-Week Plan
+## 🎉 What Was Delivered
 
-### Week 1: Database Foundation (Feb 17-23)
+### Multi-User Foundation (Feb 10, 2026)
+- ✅ 4 user roles: ADMIN, MANAGER, COLLABORATOR, VIEWER
+- ✅ `utm_users` table separated from `utm_tenants`
+- ✅ User Management UI in Tenant Console (`/settings`)
+- ✅ Project-level access control via `utm_project_members`
+- ✅ Platform Admin Dashboard with All Users view
+- ✅ Password reset and Ghost Mode impersonation
+- ✅ Simplified data model (removed `client_id`, `org_name`)
+
+### Visualization Integration (Feb 13, 2026)
+- ✅ **Triage**: 4 dashboards (Quality, Schema, PII, Partitions)
+- ✅ **Drafting**: Quality sub-tab for IR monitoring
+- ✅ **Refinement**: 4 validation tabs (Code Review, Schema, Quality, Performance)
+- ✅ **Backend**: 10 new endpoints in `visualization.py` with mock fallback
+- ✅ **Infrastructure**: Enhanced `run.py` with full environment validation
+
+**Value Delivered**: $240K (60% of V3.9 roadmap)
+**Phase Coverage**: 4 of 6 phases (67%)
+
+---
+
+## 🚀 How to Use V3.9 GA
+
+### Launch System
+```bash
+python run.py
+```
+
+**The launcher now validates**:
+- ✅ Virtual environment (`.venv/Scripts/python.exe`)
+- ✅ Node.js and npm installed
+- ✅ `.env` file with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+- ✅ Ports 8085 and 3005 are clean
+
+### Access URLs
+- **Frontend**: http://localhost:3005
+- **Backend API**: http://localhost:8085
+- **API Docs**: http://localhost:8085/docs
+
+---
+
+## 📋 Original Week-by-Week Plan (COMPLETED)
+
+### Week 1: Database Foundation (Feb 17-23) ✅
 **Owner**: Backend Team + DBA
 
 **Tasks**:

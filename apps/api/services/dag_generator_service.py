@@ -8,8 +8,8 @@ Uses the dependency graph to generate executable workflows.
 from typing import List, Dict, Optional, Any
 import json
 from pathlib import Path
-from services.dependency_service import DependencyService
-from services.persistence_service import SupabasePersistence
+from apps.api.services.dependency_service import DependencyService
+from apps.api.services.persistence_service import SupabasePersistence
 
 class DagGeneratorService:
     def __init__(self, db_client, tenant_id: str = None):
@@ -25,7 +25,7 @@ class DagGeneratorService:
             if res.data:
                 project_name = res.data[0]['name']
         
-        from services.persistence_service import PersistenceService
+        from apps.api.services.persistence_service import PersistenceService
         return PersistenceService.ensure_solution_dir(project_name, tenant_id=self.tenant_id)
 
     async def generate_airflow_dag(self, project_id: str, dag_id: str = "legacy2lake_dag", save: bool = False) -> str:

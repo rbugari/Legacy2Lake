@@ -4,13 +4,13 @@ import asyncio
 from typing import Dict, Any, List
 
 # Import all agents
-from services.librarian_service import LibrarianService
-from services.topology_service import TopologyService
-from services.agent_c_service import AgentCService
-from services.agent_f_service import AgentFService
-from services.agent_g_service import AgentGService
+from apps.api.services.librarian_service import LibrarianService
+from apps.api.services.topology_service import TopologyService
+from apps.api.services.agent_c_service import AgentCService
+from apps.api.services.agent_f_service import AgentFService
+from apps.api.services.agent_g_service import AgentGService
 
-from services.persistence_service import PersistenceService, SupabasePersistence
+from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
 try:
     from apps.api.utils.logger import logger
 except ImportError:
@@ -240,7 +240,16 @@ class MigrationOrchestrator:
                 # Enrich with DB Metadata if available
                 asset_meta = next((a for a in db_assets if a.get("source_name") == pkg_name), {})
                 
+                # Sprint 13: Normalize tech_id for persistence
+                tech_id_raw = target_tech.lower()
+                if '(' in tech_id_raw:
+                    tech_id_raw = tech_id_raw.split('(')[0].strip()
+                tech_id_normalized = tech_id_raw.replace(' ', '_')
+                
                 task_def = {
+                    "asset_id": asset_meta.get("object_id") or asset_meta.get("id"),  # Sprint 13: Required for persistence
+                    "tech_id": tech_id_normalized,  # Sprint 13: For persistence
+                    "layer": "direct",  # v4.0: Direct translation (1:1 transpilation). For architectural patterns (Medallion/Data Vault), apply in Refinement phase.
                     "project_id": self.project_uuid,
                     "package_name": pkg_name,
                     "name": pkg_name, # Compatibility with Agent C expecting 'name'

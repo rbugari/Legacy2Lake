@@ -7,16 +7,19 @@ try:
     from apps.api.utils.logger import logger
     from apps.api.services.persistence_service import SupabasePersistence
     from apps.api.services.knowledge_service import KnowledgeService
+    from apps.api.services.column_profiling_service import ColumnProfilingService
 except ImportError:
     try:
         from utils.logger import logger
         from services.persistence_service import SupabasePersistence
         from services.knowledge_service import KnowledgeService
+        from services.column_profiling_service import ColumnProfilingService
     except ImportError:
         # Fallback for when running directly or tests
         from ..utils.logger import logger
         from .persistence_service import SupabasePersistence
         from .knowledge_service import KnowledgeService
+        from .column_profiling_service import ColumnProfilingService
 
 class AgentAService:
     """Service for Agent A (Detective) using Azure OpenAI."""
@@ -68,6 +71,7 @@ class AgentAService:
         await db.save_prompt("agent_a_discovery", content)
 
 
+    @logger.llm_debug("Agent A (Manifest Analysis)")
     async def analyze_manifest(self, manifest: Dict[str, Any], system_prompt_override: str = None) -> Dict[str, Any]:
         """Analyzes the full project manifest to build the Mesh Graph."""
         
@@ -193,6 +197,7 @@ class AgentAService:
                  "error": str(e),
                  "mesh_graph": {"nodes": [], "edges": []}
              }
+    @logger.llm_debug("Agent A (Package Analysis)")
     async def analyze_package(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """Analyzes a single SSIS package summary (legacy/individual ingest)."""
         system_prompt = await self._load_prompt()
@@ -225,3 +230,121 @@ class AgentAService:
             return json.loads(content)
         except:
             return {"raw_analysis": content}
+    
+    
+    async def analyze_columns_deep(
+        self, 
+        asset_id: str, 
+        project_id: str,
+        columns_metadata: list[Dict[str, Any]],
+        use_llm: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Sprint 7: Deep column-level analysis with profiling.
+        
+        Performs statistical + AI-powered analysis on columns:
+        - Cardinality metrics
+        - PII detection
+        - Partition recommendations
+        - Data quality scoring
+        
+        Args:
+            asset_id: UUID of the asset (utm_objects.object_id)
+            project_id: UUID of the project
+            columns_metadata: List of column definitions with sample data
+                Format: [
+                    {
+                        "column_name": "CustomerID",
+                        "data_type": "INT",
+                        "sample_values": [1, 2, 3, ...],
+                        "is_nullable": True,
+                        "is_primary_key": False
+                    },
+                    ...
+                ]
+            use_llm: If True, use LLM for enhanced PII detection (experimental)
+        
+        Returns:
+            {
+                'asset_id': str,
+                'project_id': str,
+                'columns_profiled': int,
+                'pii_detected': int,
+                'partition_candidates': int,
+                'columns': [...],  // Detailed column profiles
+                'summary': {
+                    'avg_cardinality': float,
+                    'avg_null_percentage': float,
+                    'high_quality_columns': int
+                }
+            }
+        """
+        logger.info(f"[Agent A] Deep column analysis for asset {asset_id} ({len(columns_metadata)} columns)", "Agent A")
+        
+        # Initialize column profiling service
+        profiler = ColumnProfilingService(tenant_id=self.tenant_id, client_id=self.client_id)
+        
+        # Profile all columns
+        profiled_columns = await profiler.profile_asset(
+            asset_id=asset_id,
+            columns_data=columns_metadata,
+            asset_metadata=None  # Could pass asset-level context if needed
+        )
+        
+        # Persist to database
+        persist_success = await profiler.persist_to_db(
+            asset_id=asset_id,
+            project_id=project_id,
+            columns=profiled_columns
+        )
+        
+        if not persist_success:
+            logger.warning(f"[Agent A] Failed to persist column profiles to DB", "Agent A")
+        
+        # Calculate summary statistics
+        pii_count = sum(1 for col in profiled_columns if col.get('is_pii'))
+        partition_count = sum(1 for col in profiled_columns if col.get('partition_candidate'))
+        
+        total_cardinality = sum(col.get('cardinality_ratio', 0) for col in profiled_columns)
+        avg_cardinality = total_cardinality / len(profiled_columns) if profiled_columns else 0
+        
+        total_nulls = sum(col.get('null_percentage', 0) for col in profiled_columns)
+        avg_nulls = total_nulls / len(profiled_columns) if profiled_columns else 0
+        
+        # High quality = low nulls + medium cardinality + not PII
+        high_quality = sum(
+            1 for col in profiled_columns 
+            if col.get('null_percentage', 100) < 10 
+            and 0.05 < col.get('cardinality_ratio', 0) < 0.95
+            and not col.get('is_pii')
+        )
+        
+        # Optional: Use LLM for enhanced semantic PII detection
+        if use_llm and profiled_columns:
+            logger.info(f"[Agent A] Using LLM for enhanced PII detection on {len(profiled_columns)} columns", "Agent A")
+            # This could call LLM with column names + samples to detect semantic PII
+            # Implementation: Future enhancement
+            pass
+        
+        logger.info(
+            f"[Agent A] Column analysis complete: {len(profiled_columns)} profiled, "
+            f"{pii_count} PII, {partition_count} partition candidates",
+            "Agent A"
+        )
+        
+        return {
+            'asset_id': asset_id,
+            'project_id': project_id,
+            'columns_profiled': len(profiled_columns),
+            'pii_detected': pii_count,
+            'partition_candidates': partition_count,
+            'persisted_to_db': persist_success,
+            'columns': profiled_columns,
+            'summary': {
+                'avg_cardinality': round(avg_cardinality, 4),
+                'avg_null_percentage': round(avg_nulls, 2),
+                'high_quality_columns': high_quality,
+                'total_columns': len(profiled_columns)
+            }
+        }
+

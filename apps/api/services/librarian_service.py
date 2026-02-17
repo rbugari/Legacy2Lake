@@ -4,7 +4,7 @@ import re
 import json
 import sqlglot
 from sqlglot import exp
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 try:
     from apps.api.config.platform_spec import PlatformSpec
 except ImportError:
@@ -22,12 +22,12 @@ except ImportError:
         from ..utils.logger import logger
 
 try:
-    from apps.api.services.persistence_service import PersistenceService
+    from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
 except ImportError:
     try:
-        from services.persistence_service import PersistenceService
+        from services.persistence_service import PersistenceService, SupabasePersistence
     except ImportError:
-        from .persistence_service import PersistenceService
+        from .persistence_service import PersistenceService, SupabasePersistence
 
 class LibrarianService:
     """
@@ -49,6 +49,39 @@ class LibrarianService:
         # Load platform spec using the dedicated class
         self.platform_spec_loader = PlatformSpec()
         self.platform_spec = self.platform_spec_loader.load_platform_spec()
+    
+    def _map_source_tech_to_dialect(self, source_tech: Optional[str]) -> Optional[str]:
+        """Maps project source_tech to valid SQLGlot dialect."""
+        if not source_tech:
+            return None
+        
+        tech_lower = source_tech.lower()
+        
+        # Explicit mapping to valid SQLGlot dialects
+        dialect_map = {
+            "microsoft ssis": "tsql",
+            "sql server": "tsql",
+            "sqlserver": "tsql",
+            "mssql": "tsql",
+            "t-sql": "tsql",
+            "tsql": "tsql",
+            "oracle": "oracle",
+            "mysql": "mysql",
+            "postgresql": "postgres",
+            "postgres": "postgres",
+            "databricks": "spark",
+            "apache spark": "spark",
+            "snowflake": "snowflake"
+        }
+        
+        mapped_dialect = dialect_map.get(tech_lower)
+        
+        if mapped_dialect:
+            logger.debug(f"Mapped source_tech '{source_tech}' → dialect '{mapped_dialect}'", "Librarian")
+        else:
+            logger.warning(f"Unknown source_tech '{source_tech}', will use auto-detection", "Librarian")
+        
+        return mapped_dialect
 
     async def scan_project(self) -> Dict[str, Any]:
         """Main entry point: Scans DDLs using StorageProvider."""
@@ -58,7 +91,7 @@ class LibrarianService:
         source_tech = None
         try:
              # Instantiate Persistence to get metadata
-             db = PersistenceService(tenant_id=self.tenant_id)
+             db = SupabasePersistence(tenant_id=self.tenant_id)
              # Resolve UUID if needed
              p_uuid = self.project_id
              if len(p_uuid) < 30: # If name provided, try to get ID, or rely on ensure_solution_dir logic
@@ -112,8 +145,8 @@ class LibrarianService:
                     # Pre-process content (remove GO, USE, etc.)
                     clean_ddl = self._preprocess_sql(ddl_content)
                     
-                    # Determine dialect from project config or heuristic
-                    dialect = source_tech.lower() if source_tech else None
+                    # Map source_tech to valid SQLGlot dialect
+                    dialect = self._map_source_tech_to_dialect(source_tech)
                     parsed_tables = self._parse_ddl(clean_ddl, dialect=dialect)
                     
                     for table_name, meta in parsed_tables.items():

@@ -1,9 +1,13 @@
 # Stage 6: Handover (Production-Ready Deployment Package)
 
 ## 📌 Overview
+
+> **v4.0 Note**: Handover packages include utm_prompts version history and utm_column_profiles forensic data for compliance documentation.
 **Handover** is the final delivery stage that packages certified code, deployment documentation, and configuration manifests into a production-ready **Certified Output Package (COP)**. This ZIP bundle can be handed off to DevOps teams or deployed directly to cloud environments.
 
 > **v3.5 Update**: **Secure signed URLs** with time-limited access. COP bundles are generated in-memory and delivered via temporary R2 download links.
+
+> **v3.9 GA Status**: ✅ **COMPLETE** - Visualization dashboards integrated (Feb 13, 2026). Real-time monitoring and performance tracking available across 4 phases (Triage, Drafting, Refinement, Certification).
 
 ## 🎯 Objectives
 - **Variable Injection**: Replace hardcoded values with CI/CD-ready placeholders
@@ -12,6 +16,7 @@
 - **Deployment Validation**: Include test queries and rollback scripts
 - **Secure Delivery**: Generate time-limited signed URL for download
 - **Archival**: Store COP in R2 for audit and version control
+- **Future (v3.9.1)**: Post-deployment observability dashboards
 
 ## 👨‍💻 User Guide
 

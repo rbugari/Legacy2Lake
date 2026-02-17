@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { Play, FileText, Folder, CheckCircle, Terminal, RefreshCw, FolderOpen, FileCode, Lock, ChevronRight, ChevronDown, Settings, Brain, Code, PanelLeftClose, PanelLeftOpen, X, Database } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
+import ProcessProgress from "../ProcessProgress";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import PromptsExplorer from "../PromptsExplorer";
@@ -8,6 +9,10 @@ import DesignRegistryPanel from "./DesignRegistryPanel";
 import TechnologyMixer from "./TechnologyMixer";
 import ProjectSettingsPanel from "./ProjectSettingsPanel";
 import ProcessLockModal from "../ProcessLockModal";
+import CodeViewer from "../visualization/CodeViewer";
+import SchemaViewer from "../visualization/SchemaViewer";
+import PerformanceDashboard from "../visualization/PerformanceDashboard"; // Sprint 12
+import QualityDashboard from "../visualization/QualityDashboard"; // Sprint 11 - V3.9
 
 // --- Types ---
 interface FileNode {
@@ -30,6 +35,8 @@ interface DraftingViewProps {
     onToggleFullscreen?: () => void;
     onReset?: () => void;
     onBackToCurrent?: () => void;
+    activeSection: string;
+    onSectionChange: (section: string) => void;
 }
 
 export default function DraftingView({
@@ -41,10 +48,12 @@ export default function DraftingView({
     isFullscreen,
     onToggleFullscreen,
     onReset,
-    onBackToCurrent
+    onBackToCurrent,
+    activeSection,
+    onSectionChange
 }: DraftingViewProps) {
-    const [activeTab, setActiveTab] = useState<"execution" | "files" | "config">("execution");
-    const [isRunning, setIsRunning] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(true); // Initial data fetch
+    const [isOrchestrationRunning, setIsOrchestrationRunning] = useState(false); // Active orchestration process
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
@@ -56,10 +65,10 @@ export default function DraftingView({
         { processType: '', lockedBy: '', message: '' }
     );
 
-    // Helper: Fetch Logs
-    const fetchLogs = async () => {
+    // Helper: Fetch Logs with status detection
+    const fetchOrchestrationLogs = useCallback(async () => {
         try {
-            // Release 3.5: Switch to robust DB-backed execution logs
+            // Fetch execution logs
             const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=migration`, {
                 headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
             });
@@ -67,21 +76,29 @@ export default function DraftingView({
             if (data.logs) {
                 const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
                 setLogs(logLines);
+            }
 
-                // Check for completion
-                if (data.logs.includes("Migration Complete.")) {
-                    setProgress(100);
-                    if (onCompletion && !isRunning) onCompletion(true); // Only trigger if not currently running to avoid races
-                }
+            // Check project status to detect completion
+            const statusRes = await fetchWithAuth(`discovery/status/${projectId}`, {
+                headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+            });
+            const statusData = await statusRes.json();
+            
+            // If status is DRAFTED and we're currently running, process is complete
+            if (statusData.status === "DRAFTED" && isOrchestrationRunning) {
+                console.log("[DraftingView] Orchestration complete, stopping polling");
+                setProgress(100);
+                setIsOrchestrationRunning(false);
+                // onCompletion will be called in separate useEffect to avoid re-render issues
             }
         } catch (e) {
             console.error("Failed to load logs", e);
         }
-    };
+    }, [projectId, activeTenantId, isOrchestrationRunning]);
 
     // Load base data on mount
     useEffect(() => {
-        fetchLogs();
+        fetchOrchestrationLogs();
 
         // Fetch Project Settings to sync migration limit
         const loadSettings = async () => {
@@ -94,16 +111,32 @@ export default function DraftingView({
             } catch (e) { console.error("Error syncing settings", e); }
         };
         loadSettings();
+        setIsInitialLoading(false);
     }, [projectId]);
 
-    // Poll logs when running
+    // Poll logs when orchestration is running (every 3 seconds)
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        if (isRunning) {
-            interval = setInterval(fetchLogs, 2000);
+        if (isOrchestrationRunning) {
+            // Immediate fetch
+            fetchOrchestrationLogs();
+            // Then poll every 3 seconds
+            interval = setInterval(fetchOrchestrationLogs, 3000);
         }
-        return () => clearInterval(interval);
-    }, [isRunning, projectId]);
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isOrchestrationRunning, fetchOrchestrationLogs]);
+
+    // Call onCompletion when orchestration finishes (separate useEffect to avoid re-render loops)
+    const prevOrchestrationRunning = useRef(false);
+    useEffect(() => {
+        if (prevOrchestrationRunning.current === true && isOrchestrationRunning === false && progress === 100) {
+            console.log("[DraftingView] Orchestration completed, calling onCompletion");
+            if (onCompletion) onCompletion(true);
+        }
+        prevOrchestrationRunning.current = isOrchestrationRunning;
+    }, [isOrchestrationRunning, progress, onCompletion]);
 
     // --- Tab 1: Execution Handlers ---
     const handleRunMigration = async () => {
@@ -111,9 +144,9 @@ export default function DraftingView({
         const confirmMsg = "Esta acción ejecutará la migración completa (Agentes A, B, C, F, G). Esto incurre en costos de tokens y tiempo de procesamiento.\n\n¿Deseas continuar?";
         if (!window.confirm(confirmMsg)) return;
 
-        setIsRunning(true);
+        setIsOrchestrationRunning(true);
         // Initial feedback
-        setLogs(["Creating Migration Orchestrator...", "Validating Governance Status: DRAFTING... OK"]);
+        setLogs(["Starting Migration Orchestrator in background..."]);
         setProgress(10);
 
         try {
@@ -134,7 +167,7 @@ export default function DraftingView({
                     message: data.detail?.message || data.message || 'Process is already running on this project'
                 });
                 setIsLockModalOpen(true);
-                setIsRunning(false);
+                setIsOrchestrationRunning(false);
                 return;
             }
             
@@ -143,17 +176,22 @@ export default function DraftingView({
             if (data.error) {
                 const errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error, null, 2);
                 setLogs(prev => [...prev, `[ERROR] ${errorMsg}`]);
+                setIsOrchestrationRunning(false);
+            } else if (data.status === "RUNNING") {
+                // Background task started successfully
+                setLogs(prev => [...prev, data.message || "Orchestration started in background. Monitor logs for progress."]);
+                // Polling will continue until status changes to DRAFTED
             } else {
-                // Success: Do one final log fetch to ensure we have the latest
-                await fetchLogs();
+                // Unexpected response format (backwards compatibility)
+                await fetchOrchestrationLogs();
                 setProgress(100);
+                setIsOrchestrationRunning(false);
                 if (onCompletion) onCompletion(true);
             }
         } catch (e) {
             const errorMsg = e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e);
             setLogs(prev => [...prev, `[Network Error] ${errorMsg}`]);
-        } finally {
-            setIsRunning(false);
+            setIsOrchestrationRunning(false);
         }
     };
 
@@ -215,7 +253,7 @@ export default function DraftingView({
                 helpText="Generation of optimized PySpark, dbt or Snowflake code based on the approved design."
                 onApprove={handleApprove}
                 approveLabel="Finalize & Refine"
-                isApproveDisabled={isRunning || progress < 100}
+                isApproveDisabled={isOrchestrationRunning || progress < 100}
                 isExecuting={isApproving}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
@@ -225,17 +263,17 @@ export default function DraftingView({
                 <div className="flex gap-2">
                     <button
                         onClick={handleRunMigration}
-                        disabled={isRunning || isReadOnly}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all active:scale-95 ${isRunning || isReadOnly
+                        disabled={isOrchestrationRunning || isReadOnly}
+                        className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl transition-all active:scale-95 ${isOrchestrationRunning || isReadOnly
                             ? "bg-gray-100 text-gray-400 cursor-not-allowed active:scale-100"
                             : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 dark:shadow-none"
                             }`}
                     >
-                        <Play size={12} className={isRunning ? "animate-spin" : ""} />
-                        {isRunning ? "Running..." : "Run Pipeline"}
+                        <Play size={12} className={isOrchestrationRunning ? "animate-spin" : ""} />
+                        {isOrchestrationRunning ? "Running..." : "Run Pipeline"}
                     </button>
 
-                    {isRunning && (
+                    {isOrchestrationRunning && (
                         <button
                             onClick={handleCancelMigration}
                             className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
@@ -247,35 +285,71 @@ export default function DraftingView({
                 </div>
             </StageHeader>
 
-            {/* Tab Navigation Area */}
-            <div className="flex bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4">
-                <TabButton
-                    active={activeTab === "execution"}
-                    onClick={() => setActiveTab("execution")}
-                    icon={<Terminal size={16} />}
-                    label="Orchestration"
-                />
-                <TabButton
-                    active={activeTab === "files"}
-                    onClick={() => setActiveTab("files")}
-                    icon={<FolderOpen size={16} />}
-                    label="Output Explorer"
-                />
-
-            </div>
-
-            {/* Content Area */}
+            {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
             <div className="flex-1 overflow-hidden p-6">
-                {activeTab === "execution" && (
-                    <ExecutionTab
-                        isRunning={isRunning}
-                        logs={logs}
-                        progress={progress}
-                        limit={migrationLimit}
-                        setLimit={setMigrationLimit}
-                    />
-                )}
-                {activeTab === "files" && <FileManagerTab projectId={projectId} activeTenantId={activeTenantId} />}
+                {/* Logs Section */}
+                {activeSection === "logs" && (
+                        <div className="h-full max-w-7xl mx-auto">
+                            <ProcessProgress
+                                isRunning={isOrchestrationRunning}
+                                logs={logs}
+                                processName="Drafting Pipeline"
+                            />
+                        </div>
+                    )}
+
+                    {/* Code Section */}
+                    {activeSection === "code" && (
+                        <div className="h-full">
+                            <CodeViewer projectId={projectId} showHeader={false} />
+                        </div>
+                    )}
+
+                    {/* Schema Section */}
+                    {activeSection === "schema" && (
+                        <div className="h-full">
+                            <SchemaViewer projectId={projectId} showHistory={true} />
+                        </div>
+                    )}
+
+                    {/* Performance Section */}
+                    {activeSection === "performance" && (
+                        <div className="h-full">
+                            <PerformanceDashboard projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* Quality Section */}
+                    {activeSection === "quality" && (
+                        <div className="h-full">
+                            <QualityDashboard projectId={projectId} compact={false} />
+                        </div>
+                    )}
+
+                    {/* Files/Output Explorer Section */}
+                    {activeSection === "files" && (
+                        <FileManagerTab projectId={projectId} activeTenantId={activeTenantId} />
+                    )}
+
+                    {/* Design Registry Section */}
+                    {activeSection === "registry" && (
+                        <DesignRegistryPanel projectId={projectId} />
+                    )}
+
+                    {/* Technology Mixer Section */}
+                    {activeSection === "mixer" && (
+                        <TechnologyMixer projectId={projectId} />
+                    )}
+
+                    {/* Settings Section */}
+                    {activeSection === "settings" && (
+                        <ProjectSettingsPanel projectId={projectId} />
+                    )}
+
+                    {/* Prompts Section */}
+                    {activeSection === "prompts" && (
+                        <PromptsExplorer />
+                    )}
             </div>
 
             {/* Process Lock Modal */}
@@ -286,64 +360,9 @@ export default function DraftingView({
                 lockedBy={lockDetails.lockedBy}
                 message={lockDetails.message}
             />
-        </div >
-    );
-}
-
-// --- Sub-Components ---
-
-function TabButton({ active, onClick, icon, label }: any) {
-    return (
-        <button
-            onClick={onClick}
-            className={`flex items-center gap-2 px-8 py-5 text-[10px] font-bold uppercase tracking-[0.2em] border-b-2 transition-all ${active
-                ? "border-emerald-500 text-emerald-500 bg-emerald-500/5"
-                : "border-transparent text-[var(--text-tertiary)] hover:text-emerald-500 hover:bg-emerald-500/5"
-                }`}
-        >
-            {icon} {label}
-        </button>
-    );
-}
-
-function ExecutionTab({ isRunning, logs, progress, limit }: any) {
-    return (
-        <div className="h-full flex flex-col gap-6 max-w-7xl mx-auto">
-            {/* Control Panel: Shows current persistence status */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex justify-between items-center gap-8">
-                <div className="flex-1">
-                    <h2 className="text-xl font-bold flex items-center gap-2"><Play className="text-emerald-500" /> Start Migration</h2>
-                    <p className="text-[var(--text-secondary)] text-sm mt-1">Execute the full pipeline: Librarian → Topology → Developer → Compliance.</p>
-                </div>
-
-                <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <div className="text-right">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Persistent Batch Limit</label>
-                        <span className="text-lg font-mono font-bold text-emerald-500">{limit === 0 ? "UNLIMITED" : limit}</span>
-                    </div>
-                    <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                        <Lock size={16} className="text-gray-400" />
-                    </div>
-                </div>
-            </div>
-
-            {/* Console Output */}
-            <div className="flex-1 bg-black text-green-400 rounded-xl p-4 font-mono text-sm overflow-y-auto shadow-inner border border-gray-800">
-                <div className="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
-                    <span className="font-bold text-gray-400">CONSOLE OUTPUT</span>
-                    {isRunning && <RefreshCw size={14} className="animate-spin" />}
-                </div>
-                <div className="space-y-1">
-                    {logs.length === 0 && <span className="text-gray-600 italic">Waiting for execution...</span>}
-                    {logs.map((line: string, i: number) => (
-                        <div key={i} className="whitespace-pre-wrap">{`> ${line}`}</div>
-                    ))}
-                </div>
-            </div>
         </div>
     );
 }
-
 
 // --- Tab 3: File Explorer with Preview ---
 

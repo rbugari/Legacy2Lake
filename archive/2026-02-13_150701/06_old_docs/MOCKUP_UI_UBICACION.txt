@@ -1,0 +1,175 @@
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         UTM - AgentC Visualization                      │
+│                         Project: DimCustomers.dtsx                      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  TABS PRINCIPALES (ya existen):                                         │
+│  ┌──────────┬──────────┬──────────┬──────────────┐                     │
+│  │ Console  │ Drafting │ Quality  │ Performance  │                     │
+│  └──────────┴──────────┴──────────┴──────────────┘                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  TAB "DRAFTING" - SUB-TABS (AQUÍ VAN LOS NUEVOS COMPONENTES):          │
+│                                                                         │
+│  ┌──────┬──────────┬─────────────┬─────────────┬──────┬────────┐      │
+│  │ Logs │ 🆕 Origin│ 🆕 Transform│ 🆕 Queries  │ Code │ Schema │      │
+│  └──────┴──────────┴─────────────┴─────────────┴──────┴────────┘      │
+│         (actual)      (NUEVO 1)     (NUEVO 2)    (NUEVO 3) (actuales) │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │ Contenido del sub-tab seleccionado:                              │ │
+│  │                                                                   │ │
+│  │  [Si selecciona "Origin"]                                        │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ 🔍 ORIGIN ANALYSIS                                       │   │ │
+│  │  ├──────────────────────────────────────────────────────────┤   │ │
+│  │  │ Source System: SQL Server (OLEDB)                       │   │ │
+│  │  │ Server: SERVER01                                         │   │ │
+│  │  │ Database: Northwind                                      │   │ │
+│  │  │ Package: DimCustomers.dtsx                               │   │ │
+│  │  │                                                           │   │ │
+│  │  │ 📊 Statistics:                                           │   │ │
+│  │  │   • Source Tables: 2 (Customers, Countries)             │   │ │
+│  │  │   • Total Rows: ~10,000 (estimated)                     │   │ │
+│  │  │   • Columns: 7 detected                                 │   │ │
+│  │  │                                                           │   │ │
+│  │  │ 🔗 Connections:                                          │   │ │
+│  │  │   [OLEDB_SourceConnection]                              │   │ │
+│  │  │     └─ Data Source: SERVER01\Northwind                 │   │ │
+│  │  │   [OLEDB_DestConnection]                                │   │ │
+│  │  │     └─ Data Source: DW01\DataWarehouse                 │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
+│  │                                                                   │ │
+│  │  [Si selecciona "Transform"]                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ 🔧 TRANSFORMATIONS DETECTED                             │   │ │
+│  │  ├──────────────────┬──────────────┬────────────────────────┤   │ │
+│  │  │ Type             │ Count        │ Details                │   │ │
+│  │  ├──────────────────┼──────────────┼────────────────────────┤   │ │
+│  │  │ 🔍 LOOKUP        │ 2            │ Countries, Regions     │   │ │
+│  │  │ 📝 DERIVED COL   │ 1            │ LoadDate               │   │ │
+│  │  │ 🔀 MERGE         │ 0            │ -                      │   │ │
+│  │  │ ⚙️  AGGREGATE    │ 0            │ -                      │   │ │
+│  │  │ 🔄 CONDITIONAL   │ 1            │ FilterActive           │   │ │
+│  │  │ 📊 DATA CONVERT  │ 3            │ custid, postalcode...  │   │ │
+│  │  ├──────────────────┴──────────────┴────────────────────────┤   │ │
+│  │  │ 🎯 Complexity Score: 42/100 (Medium)                    │   │ │
+│  │  │                                                           │   │ │
+│  │  │ ⚠️  Warnings:                                            │   │ │
+│  │  │   • Lookup without cache may impact performance         │   │ │
+│  │  │   • Derived column uses complex expression              │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
+│  │                                                                   │ │
+│  │  [Si selecciona "Queries"]                                       │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ 📜 SOURCE QUERIES                                        │   │ │
+│  │  ├──────────────────────────────────────────────────────────┤   │ │
+│  │  │ [SOURCE] OLE DB Source - Customers                       │   │ │
+│  │  │                                                           │   │ │
+│  │  │ SELECT                                                    │   │ │
+│  │  │     custid,                                               │   │ │
+│  │  │     contactname,                                          │   │ │
+│  │  │     city,                                                 │   │ │
+│  │  │     country,                                              │   │ │
+│  │  │     address,                                              │   │ │
+│  │  │     phone,                                                │   │ │
+│  │  │     postalcode                                            │   │ │
+│  │  │ FROM dbo.Customers                                        │   │ │
+│  │  │ WHERE active = 1                                          │   │ │
+│  │  │                                                           │   │ │
+│  │  │ ────────────────────────────────────────────────────────│   │ │
+│  │  │                                                           │   │ │
+│  │  │ [LOOKUP] Lookup - Countries                              │   │ │
+│  │  │                                                           │   │ │
+│  │  │ SELECT                                                    │   │ │
+│  │  │     country_code,                                         │   │ │
+│  │  │     country_name                                          │   │ │
+│  │  │ FROM dbo.Countries                                        │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
+│  │                                                                   │ │
+│  │  [Si selecciona "Code" - YA EXISTE]                              │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ # L2L MODERNIZATION TRACE: DimCustomers Bronze          │   │ │
+│  │  │ def execute_task(spark, config):                         │   │ │
+│  │  │     import pyspark.sql.functions as F                    │   │ │
+│  │  │     ...                                                   │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
+│  │                                                                   │ │
+│  │  [Si selecciona "Schema" - YA EXISTE]                            │ │
+│  │  ┌──────────────────────────────────────────────────────────┐   │ │
+│  │  │ Table: DimCustomers.dtsx                                 │   │ │
+│  │  │ Columns: 7                                               │   │ │
+│  │  │   • custid (INT)                                         │   │ │
+│  │  │   • contactname (STRING)                                 │   │ │
+│  │  │   • city (STRING)                                        │   │ │
+│  │  │   ...                                                    │   │ │
+│  │  └──────────────────────────────────────────────────────────┘   │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ FLUJO DEL USUARIO:                                                      │
+│                                                                         │
+│ 1. Usuario corre Discovery → Triage → Drafting                         │
+│                                                                         │
+│ 2. Va al tab "Drafting"                                                 │
+│                                                                         │
+│ 3. Ve 6 sub-tabs en este orden:                                        │
+│    ┌─────────────────────────────────────────────────────────────┐    │
+│    │ Logs → Origin → Transform → Queries → Code → Schema        │    │
+│    └─────────────────────────────────────────────────────────────┘    │
+│          ↓         ↓            ↓          ↓         ↓      ↓         │
+│       (actual) (NUEVO 1)    (NUEVO 2)  (NUEVO 3) (actual) (actual)   │
+│                                                                         │
+│ 4. Primero revisa "Origin" para ver qué detectó del SSIS origen        │
+│    → Ve conexiones, servidor, database, estadísticas                   │
+│                                                                         │
+│ 5. Luego "Transform" para ver complejidad y transformaciones            │
+│    → Ve 2 LOOKUPS, 1 Derived Column, score 42/100                     │
+│                                                                         │
+│ 6. Luego "Queries" para ver las queries SQL originales                 │
+│    → Ve el SELECT del origen y los LOOKUPS                             │
+│                                                                         │
+│ 7. Finalmente "Code" para ver el código PySpark generado               │
+│    → Ve el código que UTM generó a partir del análisis                │
+│                                                                         │
+│ 8. Y "Schema" para ver el esquema extraído                             │
+│    → Ve las 7 columnas detectadas                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ VALOR AGREGADO:                                                         │
+│                                                                         │
+│ ❌ ANTES (sin Origin/Transform/Queries):                               │
+│    "No sé qué analizó el sistema, solo veo código generado"           │
+│                                                                         │
+│ ✅ DESPUÉS (con nuevos sub-tabs):                                      │
+│    "Veo que detectó 2 conexiones OLEDB, identificó 2 LOOKUPS,         │
+│     extrajo las queries SQL originales, y generó código basado         │
+│     en ese análisis - ENTIENDO TODO EL PROCESO"                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ IMPLEMENTACIÓN TÉCNICA:                                                 │
+│                                                                         │
+│ DraftingView.tsx - línea ~350:                                          │
+│                                                                         │
+│ const [subTab, setSubTab] = useState("logs");                          │
+│                                                                         │
+│ <div className="flex gap-2">                                            │
+│   <button onClick={() => setSubTab("logs")}>Logs</button>              │
+│   <button onClick={() => setSubTab("origin")}>🔍 Origin</button>       │
+│   <button onClick={() => setSubTab("transform")}>🔧 Transform</button> │
+│   <button onClick={() => setSubTab("queries")}>📜 Queries</button>     │
+│   <button onClick={() => setSubTab("code")}>Code</button>              │
+│   <button onClick={() => setSubTab("schema")}>Schema</button>          │
+│ </div>                                                                  │
+│                                                                         │
+│ {subTab === "origin" && <OriginAnalysisPanel projectId={projectId} />} │
+│ {subTab === "transform" && <TransformationsMatrix projectId={...} />}  │
+│ {subTab === "queries" && <SourceQueriesViewer projectId={...} />}      │
+│ {subTab === "code" && <CodeViewer projectId={projectId} />}            │
+│ {subTab === "schema" && <SchemaViewer projectId={projectId} />}        │
+└─────────────────────────────────────────────────────────────────────────┘

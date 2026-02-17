@@ -1,6 +1,26 @@
-# Legacy2Lake Documentation Index (v3.9)
+# Legacy2Lake Documentation Index (v3.9 GA)
+
+> **Version:** v3.9 GA (February 13, 2026) ✅ **RELEASED**  
+> **Status:** Production Ready - Multi-User + Advanced Visualization Integration Complete
 
 Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures using advanced AI synthesis.
+
+## 🎉 What's New in v3.9 GA (Feb 13, 2026)
+
+**Multi-User Collaboration** (Feb 10):
+- ✔️ 4-role system (ADMIN, MANAGER, COLLABORATOR, VIEWER)
+- ✔️ User Management UI with password reset
+- ✔️ Project-level access control
+- ✔️ Platform Admin Dashboard with Ghost Mode
+
+**Visualization Integration** (Feb 13):
+- ✔️ **Triage Dashboards**: Quality, Schema, PII, Partitioning (4 tabs)
+- ✔️ **Drafting Quality**: Real-time monitoring during IR generation
+- ✔️ **Refinement Suite**: Code Review, Schema, Quality, Performance (4 validation tabs)
+- ✔️ 10 new visualization endpoints with graceful fallback
+- ✔️ Enhanced launcher (`run.py`) with environment validation
+
+**Value Delivered**: $240K of $400K V3.9 roadmap (60% complete)
 
 ## 🚀 Getting Started
 - **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
@@ -67,4 +87,5 @@ Legacy2Lake utilizes a 6-stage "Compiler Flow" to ensure logic is extracted corr
 - **Hyperscale Storage**: All artifacts stored in high-availability Cloudflare R2.
 
 ---
-*Legacy2Lake Documentation Framework v3.8 - Multi-Tenant Enterprise Edition*
+*Legacy2Lake Documentation Framework v3.9 GA - Multi-Tenant Enterprise Edition with Advanced Visualization*
+*Released: February 13, 2026*

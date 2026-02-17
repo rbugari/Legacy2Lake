@@ -3,12 +3,12 @@ Agents Router
 Handles prompt management and configuration for AI agents (A, C, F, G).
 Migrated from main.py for better modularity.
 """
-from routers.dependencies import get_db
-from services.persistence_service import SupabasePersistence
-from services.agent_a_service import AgentAService
-from services.agent_c_service import AgentCService
-from services.agent_f_service import AgentFService
-from services.agent_g_service import AgentGService
+from apps.api.routers.dependencies import get_db
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.services.agent_a_service import AgentAService
+from apps.api.services.agent_c_service import AgentCService
+from apps.api.services.agent_f_service import AgentFService
+from apps.api.services.agent_g_service import AgentGService
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 

@@ -8,10 +8,17 @@ from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 import os
 import io
+import json
 import zipfile
 
-from services.persistence_service import SupabasePersistence, PersistenceService
-from routers.dependencies import get_db, get_identity
+from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
+from apps.api.services.quick_assessment_service import QuickAssessmentService, QuickAssessmentResult
+from apps.api.services.table_impact_service import TableImpactService, TableSummary, TableDetail, DependencyDAG
+from apps.api.services.knowledge_packet_service import KnowledgePacketService, KnowledgePacket
+from apps.api.services.project_cleanup_service import ProjectCleanupService
+from apps.api.services.discovery_service import DiscoveryService
+from apps.api.routers.dependencies import get_db, get_identity
+from apps.api.utils.logger import logger
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -146,6 +153,454 @@ async def get_project_stats(project_id: str, db: SupabasePersistence = Depends(g
     return await db.get_project_stats(project_id)
 
 
+# --- Quick Assessment (Phase A) ---
+
+@router.post("/{project_id}/quick-assessment", response_model=QuickAssessmentResult)
+async def run_quick_assessment(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Runs Quick Assessment on project (Phase A).
+    
+    Performs hybrid evaluation (deterministic + optional LLM opinion):
+    - Classifies files by category (migrable, support, documentation, unrecognized)
+    - Calculates viability score (0-100)
+    - Assigns semaphore (green/yellow/red)
+    - Detects technologies
+    - Identifies blockers if red
+    - Gets optional LLM professional opinion
+    
+    Returns:
+        QuickAssessmentResult with complete evaluation
+    """
+    try:
+        service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
+        result = await service.assess(project_id)
+        
+        # Save result to database (updated_at auto-updated by trigger)
+        db.client.table("utm_projects").update({
+            "quick_assessment": result.dict()
+        }).eq("project_id", project_id).execute()
+        
+        return result
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Assessment failed: {str(e)}")
+
+
+@router.get("/{project_id}/quick-assessment")
+async def get_quick_assessment(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Retrieves saved Quick Assessment result for project.
+    
+    Returns:
+        Stored QuickAssessmentResult or 404 if not found
+    """
+    try:
+        response = db.client.table("utm_projects").select("quick_assessment").eq("project_id", project_id)
+        
+        if db.tenant_id:
+            response = response.eq("tenant_id", db.tenant_id)
+        
+        result = response.execute()
+        
+        if not result.data or not result.data[0].get("quick_assessment"):
+            raise HTTPException(
+                status_code=404,
+                detail="Quick Assessment not found. Run POST /{project_id}/quick-assessment first."
+            )
+        
+        return result.data[0]["quick_assessment"]
+    
+    except HTTPException:
+        raise
+
+
+@router.get("/{project_id}/file-inventory")
+async def get_file_inventory(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns file inventory from Discovery with SUGGESTED classification.
+    This happens BEFORE Triage creates utm_objects.
+    
+    Purpose: Usuario ve QUÉ hay, sistema SUGIERE cómo tratarlo, usuario AJUSTA.
+    
+    Returns:
+        {
+            "success": true,
+            "file_count": 50,
+            "files": [
+                {
+                    "name": "Load_Customer.dtsx",
+                    "path": "Triage/Load_Customer.dtsx",
+                    "size": 45678,
+                    "category": "migrable",
+                    "detected_tech": "ssis",
+                    "suggested_classification": "CORE",  # Sistema sugiere CORE para migrables
+                    "include": true  # Default: incluir migrables y soporte
+                },
+                {
+                    "name": "DB_Schema.sql",
+                    "category": "soporte",
+                    "suggested_classification": "SUPPORT",  # Soporte para contexto
+                    "include": true
+                },
+                {
+                    "name": "README.md",
+                    "category": "documentacion",
+                    "suggested_classification": "IGNORED",  # Docs no aportan a migración
+                    "include": false
+                }
+            ]
+        }
+    """
+    try:
+        # Get project name for manifest generation
+        project_uuid = project_id
+        project_name = project_id
+        
+        # Try to get project name from database
+        try:
+            response = db.client.table("utm_projects").select("name").eq("project_id", project_id)
+            if db.tenant_id:
+                response = response.eq("tenant_id", db.tenant_id)
+            result = response.execute()
+            if result.data and len(result.data) > 0:
+                project_name = result.data[0].get("name", project_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch project name: {e}")
+        
+        # Generate manifest (synchronous call)
+        manifest = DiscoveryService.generate_manifest(
+            project_id=project_name,
+            tenant_id=db.tenant_id,
+            user_context=None
+        )
+        
+        if not manifest or "file_inventory" not in manifest:
+            raise HTTPException(
+                status_code=404,
+                detail="No file inventory found. Upload files to Triage folder first."
+            )
+        
+        # Transform file_inventory with SUGGESTED classification
+        qa_service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
+        files = []
+        
+        for item in manifest["file_inventory"]:
+            file_category, detected_tech = qa_service._classify_file(item)
+            
+            # SUGGESTED classification logic:
+            # - migrable → CORE (analizar profundo para migrar)
+            # - soporte → SUPPORT (consultar para completar datos de CORE)
+            # - documentacion → IGNORED (no aporta conocimiento técnico)
+            # - no_reconocido → IGNORED (no se puede procesar)
+            
+            if file_category == "migrable":
+                suggested = "CORE"
+                include_default = True
+            elif file_category == "soporte":
+                suggested = "SUPPORT"
+                include_default = True
+            else:  # documentacion, no_reconocido
+                suggested = "IGNORED"
+                include_default = False
+            
+            files.append({
+                "name": item["name"],
+                "path": item["path"],
+                "size": item.get("size", 0),
+                "lines": item.get("lines", 0),
+                "category": file_category,  # migrable, soporte, documentacion, no_reconocido
+                "detected_tech": detected_tech,
+                "suggested_classification": suggested,  # CORE, SUPPORT, IGNORED
+                "classification": suggested,  # Default to suggested (usuario puede ajustar)
+                "include": include_default,
+                "signatures": item.get("signatures", [])
+            })
+        
+        return {
+            "success": True,
+            "file_count": len(files),
+            "files": files
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get file inventory: {str(e)}")
+
+
+@router.post("/{project_id}/pre-classification")
+async def save_pre_classification(
+    project_id: str,
+    payload: Dict[str, Any],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Guarda la clasificación ajustada por el usuario en Discovery.
+    
+    Payload:
+        {
+            "classification": {
+                "Triage/Load_Customer.dtsx": {
+                    "classification": "CORE",
+                    "include": true
+                },
+                "Triage/README.md": {
+                    "classification": "IGNORED",
+                    "include": false
+                }
+            }
+        }
+    
+    Este "mapa" se usará en Triage para optimizar la profundización.
+    """
+    try:
+        classification = payload.get("classification", {})
+        
+        # Guardar en project settings (método simple)
+        current_settings = await db.get_project_settings(project_id) or {}
+        current_settings["pre_classification"] = classification
+        await db.update_project_settings(project_id, current_settings)
+        
+        return {
+            "success": True,
+            "message": f"Pre-classification saved for {len(classification)} files"
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save pre-classification: {str(e)}")
+
+
+# --- Table Impact Analysis (Phase C) ---
+
+@router.post("/{project_id}/table-impacts/analyze")
+async def analyze_table_impacts(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Analyzes table impacts for all assets in project (Phase C).
+    
+    Extracts from each asset:
+    - Which tables it reads from (SELECT)
+    - Which tables it writes to (INSERT, UPDATE, DELETE, MERGE)
+    - Which columns are affected
+    - Access patterns (FULL_LOAD, INCREMENTAL, LOOKUP, etc.)
+    
+    Stores results in utm_table_impacts table.
+    
+    Returns:
+        Analysis summary with stats
+    """
+    try:
+        service = TableImpactService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id
+        )
+        
+        result = await service.analyze_impacts()
+        return result
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@router.get("/{project_id}/tables/summary", response_model=List[TableSummary])
+async def get_tables_summary(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns summary of all tables in project with impact counts.
+    
+    For each table shows:
+    - Number of readers (assets that SELECT from it)
+    - Number of writers (assets that INSERT/UPDATE/DELETE)
+    - Total impacts
+    - Operations detected
+    
+    Sorted by total impact count (descending).
+    
+    Returns:
+        List of TableSummary objects
+    """
+    try:
+        service = TableImpactService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id
+        )
+        
+        return await service.get_table_summary()
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get summary: {str(e)}")
+
+
+@router.get("/{project_id}/tables/{table_name}/detail", response_model=TableDetail)
+async def get_table_detail(
+    project_id: str,
+    table_name: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns detailed impacts on a specific table.
+    
+    Shows:
+    - All readers (assets that SELECT, with SQL and columns)
+    - All writers (assets that INSERT/UPDATE/DELETE, with operations and columns)
+    - Notes about potential conflicts (e.g., multiple writers on same columns)
+    
+    Args:
+        table_name: Full table name (schema.table or table)
+    
+    Returns:
+        TableDetail with readers and writers lists
+    """
+    try:
+        service = TableImpactService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id
+        )
+        
+        return await service.get_table_detail(table_name)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get detail: {str(e)}")
+
+
+@router.get("/{project_id}/dependency-dag", response_model=DependencyDAG)
+async def get_dependency_dag(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Builds asset dependency DAG based on table impacts.
+    
+    Logic:
+    - If Asset A writes to table X
+    - And Asset B reads from table X
+    - Then: B depends on A (A must execute before B)
+    
+    Returns:
+        DependencyDAG with:
+        - nodes: list of all assets
+        - edges: dependency relationships [{from, to, via}, ...]
+        - execution_order: [[level0], [level1], ...] topologically sorted
+        - cycles: any circular dependencies detected
+    """
+    try:
+        service = TableImpactService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id
+        )
+        
+        return await service.build_dependency_dag()
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build DAG: {str(e)}")
+
+
+# --- Knowledge Packet (Phase B - Librarian) ---
+
+@router.get("/{project_id}/assets/{asset_id}/knowledge", response_model=KnowledgePacket)
+async def get_asset_knowledge(
+    project_id: str,
+    asset_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns consolidated knowledge packet for a specific asset (Phase B).
+    
+    Consolidates data from 6 silos:
+    1. utm_objects.metadata (SSIS components)
+    2. utm_asset_columns (profiled columns with types)
+    3. schema_reference.json (DDL types from Discovery)
+    4. utm_origin_analysis_columns (Sprint 8.5 - source intelligence)
+    5. utm_column_mappings (explicit source→target mappings)
+    6. utm_solution_context (business rules and notes)
+    
+    Type resolution priority: DDL > profiled > metadata > "STRING"
+    
+    Key features:
+    - SSIS↔DDL cross-linking (matches SSIS table names with DDL schemas)
+    - PII detection (from profiling + heuristics)
+    - Source intelligence (SqlCommand, transformations, connections)
+    - Column-level metadata (types, nullability, PK/FK, cardinality)
+    
+    Returns:
+        KnowledgePacket with complete asset context for code generation
+    """
+    try:
+        service = KnowledgePacketService(
+            tenant_id=db.tenant_id,
+            project_id=project_id
+        )
+        
+        packet = await service.get_packet(asset_id)
+        return packet
+    
+    except ValueError as e:
+        # Asset not found
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build knowledge packet: {str(e)}")
+
+
+@router.get("/{project_id}/knowledge/scan")
+async def scan_project_knowledge(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Scans entire project and returns knowledge consolidation summary.
+    
+    Used by Triage Pipeline v2 (Phase D) to enrich manifest with:
+    - schema_reference.json metadata
+    - Asset type coverage (DDL types vs profiled vs fallback)
+    - PII detection summary
+    - Data quality indicators
+    
+    This endpoint is called after Discovery phase to provide
+    enriched context to Agent A during Triage.
+    
+    Returns:
+        {
+            "total_assets": 12,
+            "assets_with_ddl_types": 8,
+            "assets_with_profiled_types": 10,
+            "pii_columns_detected": 15,
+            "schema_reference": {...},
+            "summary": "8/12 assets have DDL types..."
+        }
+    """
+    try:
+        service = KnowledgePacketService(
+            tenant_id=db.tenant_id,
+            project_id=project_id
+        )
+        
+        scan_result = await service.scan_project(project_id)
+        return scan_result
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
+
+
 # --- Project Files ---
 
 @router.get("/{project_id}/files")
@@ -214,10 +669,62 @@ async def update_stage(project_id: str, payload: Dict[str, str], db: SupabasePer
 
 
 @router.post("/{project_id}/reset")
-async def reset_project(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Clears all assets, FS folders (except Triage), and resets stage/status."""
-    success = await db.reset_project_data(project_id)
-    return {"success": success}
+async def reset_project(
+    project_id: str, 
+    backup: bool = True,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Reset project to initial state (post-upload).
+    
+    What this does:
+    1. Creates ZIP backup of all generated files (optional)
+    2. Deletes all assets and clears generated code
+    3. Resets project to TRIAGE stage
+    
+    Args:
+        project_id: Project UUID or name
+        backup: If True, creates ZIP backup before cleanup (default: True)
+    
+    Returns:
+        Reset results with backup location
+    """
+    try:
+        # Resolve project UUID if name provided
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await db.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+        
+        # Create backup if requested
+        backup_path = None
+        if backup:
+            try:
+                cleanup_service = ProjectCleanupService(tenant_id=db.tenant_id, project_id=project_uuid)
+                backup_result = await cleanup_service._create_backup()
+                if backup_result.get("success"):
+                    backup_path = backup_result.get("backup_path")
+            except Exception as e:
+                logger.error(f"[Reset] Backup failed: {e}", "Reset")
+        
+        # Execute original reset logic (deletes all, resets to TRIAGE)
+        success = await db.reset_project_data(project_uuid)
+        
+        if not success:
+            return {
+                "success": False,
+                "message": "Reset failed: project not found or error occurred"
+            }
+        
+        return {
+            "success": True,
+            "message": "Project reset successfully. All assets deleted, status reset to TRIAGE.",
+            "backup_path": backup_path
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
 
 
 @router.patch("/{project_id}/settings")
@@ -474,6 +981,201 @@ async def upload_triage_files(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to upload files: {str(e)}")
+
+
+# --- Sidebar Metrics (Stage-Adaptive) ---
+
+@router.get("/{project_id}/sidebar-metrics")
+async def get_sidebar_metrics(
+    project_id: str,
+    stage: Optional[int] = None,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns stage-specific metrics for the sidebar navigation.
+    Stages: 0=Discovery, 1=Triage, 2=Drafting, 3=Refinement, 4=Governance
+    """
+    try:
+        # Get project metadata
+        project = await db.get_project_metadata(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Use provided stage or detect from project status
+        current_stage = stage if stage is not None else _detect_stage_from_status(project.get("status", "DISCOVERY"))
+        
+        metrics = {}
+        
+        # Stage 0: Discovery
+        if current_stage == 0:
+            files = await db.get_project_files_from_db(project_id)
+            metrics["fileCount"] = len(files)
+            metrics["uploadStatus"] = project.get("status", "DISCOVERY")
+        
+        # Stage 1: Triage
+        elif current_stage == 1:
+            # Quick Assessment
+            try:
+                qa_service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
+                qa_result = await qa_service.assess(project_id)
+                metrics["quickAssessment"] = {
+                    "score": qa_result.overall_score,
+                    "readability": qa_result.readability_score,
+                    "complexity": qa_result.complexity_score,
+                    "risk": qa_result.estimated_risk
+                }
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Quick assessment failed: {e}", "ProjectsRouter")
+                metrics["quickAssessment"] = {"score": 0, "readability": 0, "complexity": 0, "risk": "unknown"}
+            
+            # Assets and Tables
+            assets = await db.get_project_assets(project_id)
+            metrics["assetCount"] = len(assets)
+            
+            try:
+                impact_service = TableImpactService(project_id=project_id, tenant_id=db.tenant_id, client_id=db.client_id)
+                summary = await impact_service.get_table_summary()
+                metrics["tableCount"] = len(summary)
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Table impact failed: {e}", "ProjectsRouter")
+                metrics["tableCount"] = 0
+            
+            # Source/Target Tech
+            try:
+                tech_stats = await db.get_project_tech_stats(project_id)
+                metrics["sourceTech"] = tech_stats.get("source_tech", "Unknown")
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Tech stats failed: {e}", "ProjectsRouter")
+                metrics["sourceTech"] = "Unknown"
+            metrics["targetTech"] = project.get("target_technology", "Unknown")
+            
+            # Quality Metrics
+            try:
+                quality_stats = await db.get_quality_metrics_summary(project_id)
+                metrics["qualityScore"] = quality_stats.get("avg_quality_score", 0)
+                metrics["columnsWithPii"] = quality_stats.get("pii_column_count", 0)
+                metrics["partitionedTables"] = quality_stats.get("partitioned_table_count", 0)
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Quality metrics failed: {e}", "ProjectsRouter")
+                metrics["qualityScore"] = 0
+                metrics["columnsWithPii"] = 0
+                metrics["partitionedTables"] = 0
+        
+        # Stage 2: Drafting
+        elif current_stage == 2:
+            # Generation Progress
+            exec_logs = await db.get_execution_logs(project_id, phase="ORCHESTRATION")
+            metrics["generationProgress"] = _calculate_progress_from_logs(exec_logs)
+            metrics["currentAgent"] = _extract_current_agent(exec_logs)
+            
+            # Files Generated
+            layout = await db.get_project_layout(project_id)
+            nodes = layout.get("nodes", []) if layout else []
+            bronze_count = sum(1 for n in nodes if n.get("layer") == "bronze")
+            silver_count = sum(1 for n in nodes if n.get("layer") == "silver")
+            gold_count = sum(1 for n in nodes if n.get("layer") == "gold")
+            
+            metrics["filesGenerated"] = len(nodes)
+            metrics["bronzeNodes"] = bronze_count
+            metrics["silverNodes"] = silver_count
+            metrics["goldNodes"] = gold_count
+        
+        # Stage 3: Refinement
+        elif current_stage == 3:
+            # Refinement Status
+            exec_logs = await db.get_execution_logs(project_id, phase="REFINEMENT")
+            metrics["refinementStatus"] = project.get("status", "DRAFTED")
+            
+            # Code Quality
+            try:
+                validations = await db.get_code_validations(project_id)
+                issue_count = sum(1 for v in validations if not v.get("is_valid", True))
+                metrics["issueCount"] = issue_count
+                metrics["validationCount"] = len(validations)
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Validations failed: {e}", "ProjectsRouter")
+                metrics["issueCount"] = 0
+                metrics["validationCount"] = 0
+            
+            # Quality Delta (compare before/after)
+            try:
+                quality_stats = await db.get_quality_metrics_summary(project_id)
+                metrics["qualityDelta"] = quality_stats.get("quality_delta", 0)
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Quality delta failed: {e}", "ProjectsRouter")
+                metrics["qualityDelta"] = 0
+        
+        # Stage 4: Governance
+        elif current_stage == 4:
+            # Documentation Status
+            try:
+                governance_files = await db.get_governance_files(project_id)
+                metrics["docsGenerated"] = len(governance_files) > 0
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Governance files failed: {e}", "ProjectsRouter")
+                metrics["docsGenerated"] = False
+            metrics["bundleReady"] = project.get("status") == "COMPLETED"
+        
+        # Common metrics (all stages)
+        metrics["executionStatus"] = project.get("status", "DISCOVERY")
+        metrics["lastUpdate"] = project.get("updated_at")
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"[SidebarMetrics] Failed to fetch metrics: {e}", "ProjectsRouter")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch sidebar metrics: {str(e)}")
+
+
+def _detect_stage_from_status(status: str) -> int:
+    """Map project status to stage number."""
+    status_to_stage = {
+        "DISCOVERY": 0, "UPLOADING": 0,
+        "TRIAGE": 1, "PROCESSING": 1, "TRIAGED": 1,
+        "DRAFTING": 2, "ORCHESTRATING": 2, "DRAFTED": 2,
+        "REFINEMENT": 3, "REFINING": 3, "REFINED": 3,
+        "GOVERNANCE": 4, "DOCUMENTING": 4, "COMPLETED": 4
+    }
+    return status_to_stage.get(status.upper(), 0)
+
+
+def _calculate_progress_from_logs(logs: List[Dict]) -> int:
+    """Estimate progress percentage from execution logs."""
+    if not logs:
+        return 0
+    
+    # Count agent mentions (A, C, F, G)
+    agent_counts = {"A": 0, "C": 0, "F": 0, "G": 0}
+    for log in logs:
+        msg = log.get("log_message", "")
+        for agent in ["Agent-A", "Agent-C", "Agent-F", "Agent-G"]:
+            if agent in msg:
+                agent_counts[agent.split("-")[1]] += 1
+    
+    # Estimate: A=10%, C=50%, F=80%, G=95%
+    if agent_counts["G"] > 0:
+        return 95
+    elif agent_counts["F"] > 0:
+        return 80
+    elif agent_counts["C"] > 0:
+        return 50 + min(agent_counts["C"], 30)
+    elif agent_counts["A"] > 0:
+        return 10 + min(agent_counts["A"], 20)
+    return 5
+
+
+def _extract_current_agent(logs: List[Dict]) -> Optional[str]:
+    """Extract the most recent agent working from logs."""
+    if not logs:
+        return None
+    
+    latest = logs[0].get("log_message", "")
+    for agent in ["Agent-G", "Agent-F", "Agent-C", "Agent-A"]:
+        if agent in latest:
+            return agent
+    return None
 
 
 def _classify_file_type(ext: str) -> str:

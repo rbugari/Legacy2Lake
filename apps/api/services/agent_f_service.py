@@ -76,6 +76,9 @@ class AgentFService:
         project_id = project_id or task_info.get("project_id")
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
+        # --- LAYER EXTRACTION (v4.0 Two-Phase Architecture) ---
+        layer = task_info.get("layer", "direct")  # "direct", "bronze", "silver", "gold"
+        
         try:
             registry_raw = await db.get_design_registry(project_id) if project_id else []
             registry = KnowledgeService.flatten_knowledge(registry_raw)
@@ -93,6 +96,7 @@ class AgentFService:
         
         human_content = f"""
         COMPLIANCE CONTEXT:
+        LAYER MODE: {layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if layer == "direct" else f"Architectural Enhancement - {layer.upper()} Layer"})
         SOURCE TECHNOLOGY: {source_tech}
         TARGET TECHNOLOGY: {target_tech}
         
@@ -115,6 +119,10 @@ class AgentFService:
         ```python
         {generated_code}
         ```
+        
+        REMEMBER: Apply validation criteria based on LAYER MODE above.
+        - If layer=="direct": Validate functional equivalence, zero-hardcode, metadata usage. DO NOT require MERGE, audit columns, or Medallion structure.
+        - If layer in ["bronze","silver","gold"]: Enforce full architectural compliance (MERGE, audit columns, Medallion structure).
         """
  
         messages = [

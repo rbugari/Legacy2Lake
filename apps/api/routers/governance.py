@@ -3,7 +3,7 @@ Refinement & Governance Router
 Handles Phase 3 (Refinement) and Phase 4 (Governance) operations.
 Migrated from main.py for better modularity.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -12,13 +12,14 @@ import io
 import os
 import zipfile
 import uuid
+import asyncio
 
-from routers.dependencies import get_db, get_identity
-from services.persistence_service import SupabasePersistence, PersistenceService
-from services.agent_g_service import AgentGService
-from services.refinement.governance_service import GovernanceService
-from services.refinement.refinement_orchestrator import RefinementOrchestrator
-from services.lock_service import LockService, ProcessLockError
+from apps.api.routers.dependencies import get_db, get_identity
+from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
+from apps.api.services.agent_g_service import AgentGService
+from apps.api.services.refinement.governance_service import GovernanceService
+from apps.api.services.refinement.refinement_orchestrator import RefinementOrchestrator
+from apps.api.services.lock_service import LockService, ProcessLockError
 
 router = APIRouter(tags=["Refinement & Governance"])
 
@@ -38,10 +39,80 @@ class DocumentRequest(BaseModel):
 
 # --- Refinement Endpoints (Phase 3) ---
 
+# Background task function for refinement
+async def _run_refinement_background(
+    project_id: str,
+    lock_id: str,
+    lock_service: LockService,
+    tenant_id: str,
+    username: str,
+    db_config: Dict[str, Any]
+):
+    """Runs the refinement process in background."""
+    db = SupabasePersistence(tenant_id=tenant_id, client_id=db_config.get("client_id"))
+    project_uuid = project_id
+    
+    try:
+        # Update status to REFINING
+        await db.update_project_status(project_uuid, "REFINING")
+        await db.log_execution(project_uuid, "REFINEMENT", "Starting Refinement Phase...", step="SYSTEM")
+        
+        # Check for cancellation
+        project = await db.get_project_metadata(project_uuid)
+        if project and project.get("cancellation_requested"):
+            await db.log_execution(project_uuid, "REFINEMENT", "Process cancelled by user.", step="SYSTEM")
+            await db.update_project_status(project_uuid, "REFINEMENT")
+            return
+        
+        # 1. Resolve Project Name
+        project_name = project_id
+        if "-" in project_id:
+            n = await db.get_project_name_by_id(project_id)
+            if n: 
+                project_name = n
+        
+        await db.log_execution(project_uuid, "REFINEMENT", f"Instantiating RefinementOrchestrator for {project_name}", step="SYSTEM")
+        
+        # Update stage to REFINEMENT (Stage 3)
+        await db.update_project_stage(project_id, "3")
+        
+        orchestrator = RefinementOrchestrator(
+            project_name,
+            project_uuid=project_id,
+            tenant_id=tenant_id,
+            client_id=db_config.get("client_id")
+        )
+        
+        await db.log_execution(project_uuid, "REFINEMENT", "Running refinement (Profiler → Architect → Refactor → Ops)...", step="SYSTEM")
+        result = await orchestrator.run()
+        
+        # Update stage to GOVERNANCE (Stage 4) if successful
+        if result.get("success"):
+            await db.update_project_stage(project_id, "4")
+            await db.update_project_status(project_uuid, "REFINED")
+            await db.log_execution(project_uuid, "REFINEMENT", "Refinement complete. Project ready for Governance.", step="SYSTEM")
+        else:
+            await db.log_execution(project_uuid, "REFINEMENT", f"Refinement failed: {result.get('error', 'Unknown error')}", step="SYSTEM")
+            await db.update_project_status(project_uuid, "REFINEMENT")  # Revert on error
+        
+    except Exception as e:
+        await db.log_execution(project_uuid, "REFINEMENT", f"ERROR: {str(e)}", step="SYSTEM")
+        await db.update_project_status(project_uuid, "REFINEMENT")  # Revert on error
+        raise
+    finally:
+        # Release lock
+        try:
+            await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            print(f"[REFINEMENT] Lock {lock_id} released")
+        except Exception as e:
+            print(f"WARNING: Failed to release lock {lock_id}: {e}")
+
+
 @router.post("/refine/start")
 async def start_refinement_legacy(
     payload: dict, 
     request: Request,
+    background_tasks: BackgroundTasks,
     identity: dict = Depends(get_identity),
     db: SupabasePersistence = Depends(get_db)
 ):
@@ -51,17 +122,18 @@ async def start_refinement_legacy(
         raise HTTPException(status_code=400, detail="Missing project_id in payload")
     
     # Delegate to the standard endpoint logic
-    return await start_refinement(project_id, payload, request, identity, db)
+    return await start_refinement(project_id, payload, request, background_tasks, identity, db)
 
 @router.post("/projects/{project_id}/refinement/start")
 async def start_refinement(
     project_id: str, 
     payload: dict, 
     request: Request,
+    background_tasks: BackgroundTasks,
     identity: dict = Depends(get_identity),
     db: SupabasePersistence = Depends(get_db)
 ):
-    """Triggers the Refinement Phase (Profiler -> Architect -> Refactor -> Ops)."""
+    """Triggers the Refinement Phase (Profiler -> Architect -> Refactor -> Ops) in background."""
     
     # === PROCESS LOCKING ===
     lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
@@ -107,49 +179,34 @@ async def start_refinement(
     
     # === MAIN REFINEMENT LOGIC ===
     try:
-        project_name = project_id
-        if "-" in project_id:
-            n = await db.get_project_name_by_id(project_id)
-            if n: 
-                project_name = n
-
-        try:
-            # Update stage to REFINEMENT (Stage 3)
-            await db.update_project_stage(project_id, "3")
-            
-            orchestrator = RefinementOrchestrator(
-                project_name,
-                project_uuid=project_id,
-                tenant_id=db.tenant_id,
-                client_id=db.client_id
-            )
-            
-            result = await orchestrator.run()
-            
-            # Update stage to GOVERNANCE (Stage 4) if successful
-            if result.get("success"):
-                await db.update_project_stage(project_id, "4")
-                
-            # === SUCCESS: Release lock ===
-            if lock_id:
-                try:
-                    await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
-                except Exception as e:
-                    print(f"WARNING: Failed to release lock {lock_id}: {e}")
-            
-            return result
-            
-        except Exception as e:
-            # === ERROR: Release lock ===
-            if lock_id:
-                try:
-                    await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
-                except:
-                    pass
-            return {"success": False, "error": str(e)}
-            
+        # Update status to REFINING and start background task
+        await db.update_project_status(project_id, "REFINING")
+        
+        # Prepare DB config for background task (thread-safe)
+        db_config = {
+            "client_id": db.client_id,
+            "tenant_id": tenant_id
+        }
+        
+        # Start background task
+        background_tasks.add_task(
+            _run_refinement_background,
+            project_id,
+            lock_id,
+            lock_service,
+            tenant_id,
+            username,
+            db_config
+        )
+        
+        return {
+            "status": "RUNNING",
+            "message": "Refinement phase started in background. Monitor logs for progress.",
+            "project_id": project_id
+        }
+        
     except Exception as e:
-        # === OUTER ERROR: Release lock ===
+        # === ERROR: Release lock ===
         if lock_id:
             try:
                 await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
@@ -301,7 +358,7 @@ async def export_delivery(project_id: str, db: SupabasePersistence = Depends(get
     
     # 2. Use PackagingService to create COP structure
     try:
-        from services.packaging_service import PackagingService
+        from apps.api.services.packaging_service import PackagingService
         packager = PackagingService(project_id, tenant_id=effective_tenant_id, client_id=db.client_id)
         # prepares "root_dir" inside "_package_staging"
         package_root = await packager.prepare_bundle()

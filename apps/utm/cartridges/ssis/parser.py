@@ -73,10 +73,14 @@ class _LegacySSISLogic:
     def get_connection_managers(self) -> List[Dict[str, str]]:
         connections = []
         for conn in self.tree.xpath('//DTS:ConnectionManager', namespaces=self.namespaces):
+            # Extract connection string from child property (use conn.xpath, not self.tree.xpath)
+            conn_strings = conn.xpath('.//DTS:Property[@DTS:Name="ConnectionString"]/text()', namespaces=self.namespaces)
+            conn_string = str(conn_strings[0]) if conn_strings else ""
+            
             connections.append({
                 "name": conn.get(f'{{{self.namespaces["DTS"]}}}ObjectName'),
                 "id": conn.get(f'{{{self.namespaces["DTS"]}}}DTSID'),
-                "connection_string": self.tree.xpath(f'.//DTS:Property[@DTS:Name="ConnectionString"]/text()', namespaces=self.namespaces)
+                "connection_string": conn_string
             })
         return connections
 

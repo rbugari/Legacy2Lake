@@ -1,0 +1,2898 @@
+{
+  "summary": {
+    "total_endpoints": 125,
+    "total_api_calls": 0,
+    "total_issues": 125,
+    "critical_issues": 0,
+    "warnings": 125,
+    "info": 0
+  },
+  "issues_by_severity": {
+    "warning": [
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-a",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 30,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-a",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 37,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-c",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 47,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-c",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 54,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-f",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 64,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-f",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 71,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-g",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 81,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-g",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 88,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /ping-antigravity",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 104,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /login",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 110,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /tenants",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 193,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /tenants",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 203,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /tenants/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 250,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /tenants/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 282,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /change-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 292,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 329,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 349,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /users/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 436,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /users/[^/]+/reset-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 519,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /auth/users/[^/]+/reset-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 569,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /admin/impersonate",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 613,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /admin/stop-impersonate",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 654,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /admin/users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 668,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /technologies",
+        "affected_file": "apps\\api\\routers\\config.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /refine/start",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 41,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/refinement/start",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 56,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/refinement/state",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 161,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/status",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 196,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/governance",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/audit",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 228,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /governance/document",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/export/governance",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 265,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/export/delivery",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 291,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /export",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 11,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /import",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 16,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /activate",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 22,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /versions/[^/]+",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 28,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /download",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 34,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /prompts/enriched",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 46,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /acquire",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 84,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 147,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /check",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 175,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /force-release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /project/[^/]+",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /all",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 257,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/force-release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 286,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 27,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /create",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 42,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /[^/]+",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 102,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/assets",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 130,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/stats",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 143,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/files",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 151,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/files/content",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/layout",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 191,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/layout",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 198,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/stage",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 207,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reset",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 216,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /[^/]+/settings",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 223,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/settings",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 230,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/approve",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 240,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/unlock",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 254,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/cancel",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 262,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/logs",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 276,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/execution-logs",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 303,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/triage/files",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 334,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/triage/upload",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 435,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/members",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 36,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/members",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 85,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /[^/]+/members/[^/]+",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 161,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /[^/]+/members/[^/]+",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 198,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reports/triage",
+        "affected_file": "apps\\api\\routers\\reports.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reports/final",
+        "affected_file": "apps\\api\\routers\\reports.py",
+        "line_number": 65,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /config/technologies",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 33,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /prompts",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 47,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /validate",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 85,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /scout/assess",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 112,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /catalog",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 134,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /catalog",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 140,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /matrix",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /matrix",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 180,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /vault",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 203,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /vault/update",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 211,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /cartridges",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 251,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges/[^/]+/toggle",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 265,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges/[^/]+/config",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 273,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /cartridges/[^/]+",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 280,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /cartridges/[^/]+/knowledge",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 286,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PUT /cartridges/[^/]+/knowledge",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 313,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /origins",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 342,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /destinations",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 360,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agents",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 380,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PUT /agents/[^/]+",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 401,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /task",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 64,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /all",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 123,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /optimize",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 205,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /orchestrate",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 227,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /discovery/project/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 153,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /discovery/status/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 189,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/triage",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 210,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/sync-graph",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 619,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /projects/[^/]+/prompt",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 675,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /assets/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 682,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/context",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 689,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/context",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 707,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /assets/[^/]+/analyze-columns",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 722,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /assets/[^/]+/columns",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 790,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/pii-heatmap",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 833,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/partition-recommendations",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 876,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /python",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 152,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /sql",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 210,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /generate-tests",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 268,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /history/[^/]+",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 305,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /stats/[^/]+",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 331,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/generated-code",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/code",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 59,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/schema",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 102,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/schema",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/schema/versions",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/quality",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 255,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/quality",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 326,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/performance",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 369,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/origin-analysis",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 478,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/transformations",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 539,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/source-queries",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 615,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      }
+    ],
+    "critical": [],
+    "info": []
+  },
+  "issues_by_category": {
+    "unused_endpoint": [
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-a",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 30,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-a",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 37,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-c",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 47,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-c",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 54,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-f",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 64,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-f",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 71,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agent-g",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 81,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /agent-g",
+        "affected_file": "apps\\api\\routers\\agents.py",
+        "line_number": 88,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /ping-antigravity",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 104,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /login",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 110,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /tenants",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 193,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /tenants",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 203,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /tenants/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 250,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /tenants/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 282,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /change-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 292,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 329,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 349,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /users/[^/]+",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 436,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /users/[^/]+/reset-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 519,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /auth/users/[^/]+/reset-password",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 569,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /admin/impersonate",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 613,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /admin/stop-impersonate",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 654,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /admin/users",
+        "affected_file": "apps\\api\\routers\\auth.py",
+        "line_number": 668,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /technologies",
+        "affected_file": "apps\\api\\routers\\config.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /refine/start",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 41,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/refinement/start",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 56,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/refinement/state",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 161,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/status",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 196,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/governance",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/audit",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 228,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /governance/document",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/export/governance",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 265,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/export/delivery",
+        "affected_file": "apps\\api\\routers\\governance.py",
+        "line_number": 291,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /export",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 11,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /import",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 16,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /activate",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 22,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /versions/[^/]+",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 28,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /download",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 34,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /prompts/enriched",
+        "affected_file": "apps\\api\\routers\\lab.py",
+        "line_number": 46,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /acquire",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 84,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 147,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /check",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 175,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /force-release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /project/[^/]+",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /all",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 257,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/force-release",
+        "affected_file": "apps\\api\\routers\\locks.py",
+        "line_number": 286,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 27,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /create",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 42,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /[^/]+",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 102,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/assets",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 130,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/stats",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 143,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/files",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 151,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/files/content",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/layout",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 191,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/layout",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 198,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/stage",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 207,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reset",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 216,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /[^/]+/settings",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 223,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/settings",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 230,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/approve",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 240,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/unlock",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 254,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/cancel",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 262,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/logs",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 276,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/execution-logs",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 303,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/triage/files",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 334,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/triage/upload",
+        "affected_file": "apps\\api\\routers\\projects.py",
+        "line_number": 435,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /[^/]+/members",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 36,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/members",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 85,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /[^/]+/members/[^/]+",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 161,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /[^/]+/members/[^/]+",
+        "affected_file": "apps\\api\\routers\\project_members.py",
+        "line_number": 198,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reports/triage",
+        "affected_file": "apps\\api\\routers\\reports.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /[^/]+/reports/final",
+        "affected_file": "apps\\api\\routers\\reports.py",
+        "line_number": 65,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /config/technologies",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 33,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /prompts",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 47,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /validate",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 85,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /scout/assess",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 112,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /catalog",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 134,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /catalog",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 140,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /matrix",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /matrix",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 180,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /vault",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 203,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /vault/update",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 211,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /cartridges",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 234,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 251,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges/[^/]+/toggle",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 265,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /cartridges/[^/]+/config",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 273,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: DELETE /cartridges/[^/]+",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 280,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /cartridges/[^/]+/knowledge",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 286,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PUT /cartridges/[^/]+/knowledge",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 313,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /origins",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 342,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /destinations",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 360,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /agents",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 380,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PUT /agents/[^/]+",
+        "affected_file": "apps\\api\\routers\\system.py",
+        "line_number": 401,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /task",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 64,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /all",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 123,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /optimize",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 205,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /orchestrate",
+        "affected_file": "apps\\api\\routers\\transpile.py",
+        "line_number": 227,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /discovery/project/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 153,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /discovery/status/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 189,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/triage",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 210,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/sync-graph",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 619,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /projects/[^/]+/prompt",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 675,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: PATCH /assets/[^/]+",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 682,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /projects/[^/]+/context",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 689,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/context",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 707,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /assets/[^/]+/analyze-columns",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 722,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /assets/[^/]+/columns",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 790,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/pii-heatmap",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 833,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/partition-recommendations",
+        "affected_file": "apps\\api\\routers\\triage.py",
+        "line_number": 876,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /python",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 152,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /sql",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 210,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: POST /generate-tests",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 268,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /history/[^/]+",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 305,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /stats/[^/]+",
+        "affected_file": "apps\\api\\routers\\validation.py",
+        "line_number": 331,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/generated-code",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 18,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/code",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 59,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/schema",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 102,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/schema",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 171,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/schema/versions",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 209,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/quality",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 255,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/objects/[^/]+/quality",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 326,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/performance",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 369,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/origin-analysis",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 478,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/transformations",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 539,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      },
+      {
+        "severity": "warning",
+        "category": "unused_endpoint",
+        "description": "Backend endpoint not called by frontend: GET /projects/[^/]+/source-queries",
+        "affected_file": "apps\\api\\routers\\visualization.py",
+        "line_number": 615,
+        "suggestion": "Consider removing if truly unused, or implement frontend integration"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/agent-a",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 30,
+      "response_model": "PromptResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/agent-a",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 37,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/agent-c",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 47,
+      "response_model": "PromptResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/agent-c",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 54,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/agent-f",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 64,
+      "response_model": "PromptResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/agent-f",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 71,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/agent-g",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 81,
+      "response_model": "PromptResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/agent-g",
+      "router_file": "apps\\api\\routers\\agents.py",
+      "line_number": 88,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/ping-antigravity",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 104,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/login",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 110,
+      "response_model": "LoginResponse"
+    },
+    {
+      "method": "GET",
+      "path": "/tenants",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 193,
+      "response_model": "List"
+    },
+    {
+      "method": "POST",
+      "path": "/tenants",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 203,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/tenants/[^/]+",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 250,
+      "response_model": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/tenants/[^/]+",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 282,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/change-password",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 292,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 329,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 349,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/[^/]+",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 436,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/users/[^/]+/reset-password",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 519,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/auth/users/[^/]+/reset-password",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 569,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/admin/impersonate",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 613,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/admin/stop-impersonate",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 654,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users",
+      "router_file": "apps\\api\\routers\\auth.py",
+      "line_number": 668,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/technologies",
+      "router_file": "apps\\api\\routers\\config.py",
+      "line_number": 18,
+      "response_model": "List"
+    },
+    {
+      "method": "POST",
+      "path": "/refine/start",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 41,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/projects/[^/]+/refinement/start",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 56,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/refinement/state",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 161,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/status",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 196,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/governance",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 209,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/audit",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 228,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/governance/document",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 234,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/export/governance",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 265,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/export/delivery",
+      "router_file": "apps\\api\\routers\\governance.py",
+      "line_number": 291,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/export",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 11,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/import",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 16,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/activate",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 22,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/versions/[^/]+",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 28,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/download",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 34,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/prompts/enriched",
+      "router_file": "apps\\api\\routers\\lab.py",
+      "line_number": 46,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/acquire",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 84,
+      "response_model": "LockResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/release",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 147,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/check",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 175,
+      "response_model": "LockStatusResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/force-release",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 209,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/project/[^/]+",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 234,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/all",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 257,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/force-release",
+      "router_file": "apps\\api\\routers\\locks.py",
+      "line_number": 286,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 27,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/create",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 42,
+      "response_model": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/[^/]+",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 102,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/assets",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 130,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/stats",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 143,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/files",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 151,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/files/content",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 171,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/layout",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 191,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/layout",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 198,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/stage",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 207,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/reset",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 216,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/[^/]+/settings",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 223,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/settings",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 230,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/approve",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 240,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/unlock",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 254,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/cancel",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 262,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/logs",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 276,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/execution-logs",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 303,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/triage/files",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 334,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/triage/upload",
+      "router_file": "apps\\api\\routers\\projects.py",
+      "line_number": 435,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/[^/]+/members",
+      "router_file": "apps\\api\\routers\\project_members.py",
+      "line_number": 36,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/members",
+      "router_file": "apps\\api\\routers\\project_members.py",
+      "line_number": 85,
+      "response_model": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/[^/]+/members/[^/]+",
+      "router_file": "apps\\api\\routers\\project_members.py",
+      "line_number": 161,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/[^/]+/members/[^/]+",
+      "router_file": "apps\\api\\routers\\project_members.py",
+      "line_number": 198,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/reports/triage",
+      "router_file": "apps\\api\\routers\\reports.py",
+      "line_number": 18,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/[^/]+/reports/final",
+      "router_file": "apps\\api\\routers\\reports.py",
+      "line_number": 65,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/config/technologies",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 33,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/prompts",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 47,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/validate",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 85,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/scout/assess",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 112,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/catalog",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 134,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/catalog",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 140,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/matrix",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 171,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/matrix",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 180,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/vault",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 203,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/vault/update",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 211,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/cartridges",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 234,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/cartridges",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 251,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/cartridges/[^/]+/toggle",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 265,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/cartridges/[^/]+/config",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 273,
+      "response_model": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/cartridges/[^/]+",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 280,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/cartridges/[^/]+/knowledge",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 286,
+      "response_model": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/cartridges/[^/]+/knowledge",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 313,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/origins",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 342,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/destinations",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 360,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/agents",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 380,
+      "response_model": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/agents/[^/]+",
+      "router_file": "apps\\api\\routers\\system.py",
+      "line_number": 401,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/task",
+      "router_file": "apps\\api\\routers\\transpile.py",
+      "line_number": 64,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/all",
+      "router_file": "apps\\api\\routers\\transpile.py",
+      "line_number": 123,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/optimize",
+      "router_file": "apps\\api\\routers\\transpile.py",
+      "line_number": 205,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/orchestrate",
+      "router_file": "apps\\api\\routers\\transpile.py",
+      "line_number": 227,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/discovery/project/[^/]+",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 153,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/discovery/status/[^/]+",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 189,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/projects/[^/]+/triage",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 210,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/projects/[^/]+/sync-graph",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 619,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/[^/]+/prompt",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 675,
+      "response_model": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/assets/[^/]+",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 682,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/projects/[^/]+/context",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 689,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/context",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 707,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/assets/[^/]+/analyze-columns",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 722,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/assets/[^/]+/columns",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 790,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/pii-heatmap",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 833,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/partition-recommendations",
+      "router_file": "apps\\api\\routers\\triage.py",
+      "line_number": 876,
+      "response_model": ""
+    },
+    {
+      "method": "POST",
+      "path": "/python",
+      "router_file": "apps\\api\\routers\\validation.py",
+      "line_number": 152,
+      "response_model": "ValidateCodeResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/sql",
+      "router_file": "apps\\api\\routers\\validation.py",
+      "line_number": 210,
+      "response_model": "ValidateCodeResponse"
+    },
+    {
+      "method": "POST",
+      "path": "/generate-tests",
+      "router_file": "apps\\api\\routers\\validation.py",
+      "line_number": 268,
+      "response_model": "GenerateTestsResponse"
+    },
+    {
+      "method": "GET",
+      "path": "/history/[^/]+",
+      "router_file": "apps\\api\\routers\\validation.py",
+      "line_number": 305,
+      "response_model": "List"
+    },
+    {
+      "method": "GET",
+      "path": "/stats/[^/]+",
+      "router_file": "apps\\api\\routers\\validation.py",
+      "line_number": 331,
+      "response_model": "ValidationStatsResponse"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/generated-code",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 18,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/objects/[^/]+/code",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 59,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/schema",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 102,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/objects/[^/]+/schema",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 171,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/objects/[^/]+/schema/versions",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 209,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/quality",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 255,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/objects/[^/]+/quality",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 326,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/performance",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 369,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/origin-analysis",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 478,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/transformations",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 539,
+      "response_model": ""
+    },
+    {
+      "method": "GET",
+      "path": "/projects/[^/]+/source-queries",
+      "router_file": "apps\\api\\routers\\visualization.py",
+      "line_number": 615,
+      "response_model": ""
+    }
+  ],
+  "api_calls": []
+}

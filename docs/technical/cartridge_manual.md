@@ -1,8 +1,10 @@
-# Cartridge Developer Manual (Synthesis Layer) - v3.6
+# Cartridge Developer Manual (Synthesis Layer) - v4.0
 
-A **Cartridge** is an independent module that translates the Universal Intermediate Representation (IR) into executable source code for a specific platform. It uses **Jinja2 templates** to ensure code is clean, readable, and follows technology-specific best practices.
+A **Cartridge** is an independent module that translates the Universal Intermediate Representation (IR) into executable source code for a specific platform. It uses **Jinja2 templates** combined with **database-driven prompts** (utm_prompts) to ensure code is clean, readable, and follows technology-specific best practices.
 
-> **v3.6 Update**: CartridgeFactory.get_cartridge is now synchronous for stability. Compliance rules are fetched dynamically from `utm_system_catalog`.
+> **v4.0 Update**: Cartridges now load prompts from utm_prompts database table (Zero-Hardcode). Real-time validation via ValidationService (572 lines). Compliance rules fetched dynamically from `utm_system_catalog`.
+
+> **v4.0 Parser Catalog**: New utm_parser_catalog table enables database-driven parser configurations (10 technologies registered). CartridgeFactory remains synchronous (v3.6 stability fix).
 
 ## 1. Available Cartridges (v3.6)
 

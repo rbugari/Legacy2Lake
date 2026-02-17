@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from typing import Dict, Any
 import logging
 
-from services.report_service import report_service
-from services.persistence_service import SupabasePersistence
-from routers.dependencies import get_db
+from apps.api.services.report_service import report_service
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.routers.dependencies import get_db
 from fastapi.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/projects", tags=["Reports"])
@@ -107,7 +107,7 @@ async def generate_final_report(
 def _get_generated_outputs(project_id: str, tenant_id: str) -> list:
     """Helper to collect files for the final report"""
     try:
-        from services.persistence_service import PersistenceService
+        from apps.api.services.persistence_service import PersistenceService
         files = PersistenceService.get_project_files(project_id, tenant_id)
         
         if not files:

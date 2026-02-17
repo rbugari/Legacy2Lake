@@ -39,6 +39,10 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
     const [isApproved, setIsApproved] = useState(false);
     const [isApproving, setIsApproving] = useState(false);
 
+    // File Inventory & Pre-Classification (NEW)
+    const [fileInventory, setFileInventory] = useState<any[]>([]);
+    const [showClassification, setShowClassification] = useState(false);
+
     // Agent S Assessment Results
     const [assessment, setAssessment] = useState<{
         summary: string;
@@ -88,9 +92,6 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 return;
             }
 
-            // Extract file paths for Agent S
-            const file_list = filesData.files.map((f: any) => f.path);
-
             // Show file statistics
             const fileTypesSummary = Object.entries(filesData.file_types || {})
                 .map(([ext, count]) => `${ext}: ${count}`)
@@ -99,20 +100,19 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             setScanLogs(prev => [...prev,
             `✓ Found ${filesData.file_count} files in Triage folder`,
             `  Tech detected: ${fileTypesSummary}`,
-                "Analyzing file headers and dependencies..."
+                "Running Quick Assessment (v4.0 Zero-Hardcode)..."
             ]);
             setScanProgress(40);
 
-            // ✅ STEP 2: Call Agent S with real file list
-            const res = await fetchWithAuth("system/scout/assess", {
-                method: "POST",
-                body: JSON.stringify({ project_id: projectId, file_list })
+            // ✅ STEP 2: Call Quick Assessment (replaces Agent S in v4.0)
+            const res = await fetchWithAuth(`projects/${projectId}/quick-assessment`, {
+                method: "POST"
             });
             const data = await res.json();
 
             setScanProgress(70);
             setScanLogs(prev => [...prev,
-                "Forensic assessment in progress...",
+                "Analyzing viability and detecting blockers...",
                 "Mapping dependencies and gaps..."
             ]);
 
@@ -120,33 +120,48 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 setScanLogs(prev => [...prev, `❌ ERROR: ${data.error}`]);
             } else {
                 setAssessment({
-                    summary: data.assessment_summary || "Assessment complete",
-                    score: data.completeness_score || 0,
-                    gaps: data.detected_gaps || [],
-                    detectedTech: data.detected_technology || "UNKNOWN"
+                    summary: data.llm_opinion || `Viability: ${data.semaforo?.toUpperCase() || 'UNKNOWN'}`,
+                    score: data.score || 0,
+                    gaps: data.blockers || [],
+                    detectedTech: data.detected_techs?.[0] || "UNKNOWN"
                 });
 
                 setScanLogs(prev => [...prev,
-                `✓ Completeness Score: ${data.completeness_score}%`,
-                `✓ Detected ${data.detected_gaps?.length || 0} gaps`,
-                `✓ Detected tech: ${data.detected_technology || "UNKNOWN"}`,
+                `✓ Viability Score: ${data.score}% (${data.semaforo || 'unknown'})`,
+                `✓ Detected ${data.blockers?.length || 0} blockers`,
+                `✓ Detected tech: ${data.detected_techs?.[0] || "UNKNOWN"}`,
                     "Discovery Audit Complete."
                 ]);
 
                 // Trigger conflict if low score OR tech mismatch
-                const detectedNormalized = normalizeTech(data.detected_technology || "");
+                const detectedNormalized = normalizeTech(data.detected_techs?.[0] || "");
                 const sourceNormalized = normalizeTech(sourceTech);
 
-                const mismatch = data.detected_technology &&
+                const mismatch = data.detected_techs?.[0] &&
                     sourceTech !== "UNKNOWN" &&
                     detectedNormalized !== sourceNormalized;
 
                 // Only show conflict if there is a real mismatch and we have a decent score
                 // or if it's unknown but we detected something.
-                if (mismatch || (sourceTech === "UNKNOWN" && data.detected_technology)) {
+                if (mismatch || (sourceTech === "UNKNOWN" && data.detected_techs?.[0])) {
                     setShowConflict(true);
                 } else {
                     setShowConflict(false);
+                }
+
+                // ✅ NEW: Fetch file inventory for pre-classification
+                setScanLogs(prev => [...prev, "Loading file classification suggestions..."]);
+                try {
+                    const invRes = await fetchWithAuth(`projects/${projectId}/file-inventory`);
+                    const invData = await invRes.json();
+                    
+                    if (invData.success && invData.files) {
+                        setFileInventory(invData.files);
+                        setShowClassification(true);
+                        setScanLogs(prev => [...prev, `✓ Ready for classification: ${invData.file_count} files`]);
+                    }
+                } catch (err) {
+                    console.error("Failed to load file inventory:", err);
                 }
             }
         } catch (e) {
@@ -230,6 +245,66 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
         }
     };
 
+    // Pre-Classification Handlers
+    const handleFileClassification = (index: number, classification: string) => {
+        setFileInventory(prev => prev.map((file, idx) => 
+            idx === index ? { ...file, classification } : file
+        ));
+    };
+
+    const handleFileInclude = (index: number, include: boolean) => {
+        setFileInventory(prev => prev.map((file, idx) => 
+            idx === index ? { ...file, include } : file
+        ));
+    };
+
+    const bulkClassify = (classification: string) => {
+        setFileInventory(prev => prev.map(file => ({ ...file, classification })));
+    };
+
+    const bulkInclude = (include: boolean) => {
+        setFileInventory(prev => prev.map(file => ({ ...file, include })));
+    };
+
+    const bulkClassifyByCategory = () => {
+        // Auto-classify: migrable → CORE, soporte → SUPPORT, docs/unknown → IGNORED
+        setFileInventory(prev => prev.map(file => {
+            if (file.category === 'migrable') return { ...file, classification: 'CORE', include: true };
+            if (file.category === 'soporte') return { ...file, classification: 'SUPPORT', include: true };
+            return { ...file, classification: 'IGNORED', include: false };
+        }));
+    };
+
+    const handleStartTriage = async () => {
+        setIsApproving(true);
+
+        // Save pre-classification if user made any adjustments
+        if (showClassification && fileInventory.length > 0) {
+            try {
+                const classification: Record<string, any> = {};
+                fileInventory.forEach(file => {
+                    classification[file.path] = {
+                        classification: file.classification,
+                        include: file.include
+                    };
+                });
+
+                await fetchWithAuth(`projects/${projectId}/pre-classification`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ classification })
+                });
+
+                setScanLogs(prev => [...prev, `✓ Saved classification for ${Object.keys(classification).length} files`]);
+            } catch (err) {
+                console.error("Failed to save pre-classification:", err);
+                alert("Warning: Failed to save classification settings");
+            }
+        }
+
+        onStageChange(2);
+    };
+
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
@@ -237,12 +312,9 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 subtitle="Agent S: Forensic repository audit and gap detection"
                 icon={<Activity className="text-cyan-500" />}
                 helpText="Initial analysis to ensure technical consistency and fill tribal knowledge gaps before triage."
-                onApprove={async () => {
-                    setIsApproving(true);
-                    onStageChange(2);
-                }}
-                approveLabel="Start Triage"
-                isApproveDisabled={scanProgress < 100 || showConflict}
+                onApprove={handleStartTriage}
+                approveLabel={showClassification ? `Start Triage (${fileInventory.filter(f => f.include).length} files)` : "Start Triage"}
+                isApproveDisabled={scanProgress < 100 || showConflict || (showClassification && fileInventory.filter(f => f.include).length === 0)}
                 isExecuting={isApproving}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
@@ -466,6 +538,143 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                     </div>
 
                 </div>
+
+                {/* PRE-CLASSIFICATION GRID (NEW) */}
+                {showClassification && fileInventory.length > 0 && (
+                    <div className="col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                    <Database size={24} className="text-cyan-500" />
+                                    Pre-Classification
+                                </h2>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    Clasifica archivos ANTES del Triage para optimizar análisis: <strong>CORE</strong> = migrar profundo, <strong>SUPPORT</strong> = contexto para completar datos, <strong>IGNORED</strong> = saltar
+                                </p>
+                            </div>
+                            <div className="text-xs text-gray-500 bg-white/5 px-4 py-2 rounded-lg border border-white/5">
+                                <span className="font-bold text-cyan-500">{fileInventory.filter(f => f.include).length}</span> de <span className="font-bold">{fileInventory.length}</span> seleccionados
+                            </div>
+                        </div>
+
+                        {/* Classification Grid */}
+                        <div className="bg-black/40 border border-white/5 rounded-2xl overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-white/5 text-gray-400 uppercase text-xs">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Archivo</th>
+                                        <th className="px-4 py-3 text-left">Tipo Detectado</th>
+                                        <th className="px-4 py-3 text-left">Tamaño</th>
+                                        <th className="px-4 py-3 text-left">Clasificación</th>
+                                        <th className="px-4 py-3 text-center">Incluir</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {fileInventory.map((file, idx) => (
+                                        <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                            <td className="px-4 py-3 font-mono text-xs text-white max-w-xs truncate" title={file.name}>
+                                                {file.name}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                    file.category === 'migrable' ? 'bg-cyan-500/20 text-cyan-400' :
+                                                    file.category === 'soporte' ? 'bg-purple-500/20 text-purple-400' :
+                                                    file.category === 'documentacion' ? 'bg-gray-500/20 text-gray-400' :
+                                                    'bg-red-500/20 text-red-400'
+                                                }`}>
+                                                    {file.category || 'unknown'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-400 text-xs">
+                                                {(file.size / 1024).toFixed(1)} KB
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <select
+                                                    value={file.classification || 'CORE'}
+                                                    onChange={(e) => handleFileClassification(idx, e.target.value)}
+                                                    className={`bg-black/40 border rounded px-3 py-1.5 text-xs font-bold transition-colors ${
+                                                        file.classification === 'CORE' ? 'border-cyan-500/30 text-cyan-400' :
+                                                        file.classification === 'SUPPORT' ? 'border-purple-500/30 text-purple-400' :
+                                                        'border-gray-500/30 text-gray-400'
+                                                    }`}
+                                                >
+                                                    <option value="CORE">CORE (Migrar)</option>
+                                                    <option value="SUPPORT">SUPPORT (Contexto)</option>
+                                                    <option value="IGNORED">IGNORED (Saltar)</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={file.include !== false}
+                                                    onChange={(e) => handleFileInclude(idx, e.target.checked)}
+                                                    className="w-4 h-4 rounded bg-black/40 border-white/10 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Bulk Actions */}
+                        <div className="flex gap-3 flex-wrap">
+                            <button
+                                onClick={bulkClassifyByCategory}
+                                className="px-4 py-2 bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 rounded-lg text-xs font-bold hover:bg-cyan-600/30 transition-all"
+                            >
+                                ✨ Auto-Clasificar (Sugerencias)
+                            </button>
+                            <button
+                                onClick={() => bulkClassify('CORE')}
+                                className="px-4 py-2 bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 rounded-lg text-xs font-bold hover:bg-cyan-600/30 transition-all"
+                            >
+                                Marcar Todos CORE
+                            </button>
+                            <button
+                                onClick={() => bulkClassify('SUPPORT')}
+                                className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 text-purple-400 rounded-lg text-xs font-bold hover:bg-purple-600/30 transition-all"
+                            >
+                                Marcar Todos SUPPORT
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setFileInventory(prev => prev.map(file => ({
+                                        ...file,
+                                        include: file.classification !== 'IGNORED'
+                                    })));
+                                }}
+                                className="px-4 py-2 bg-amber-600/20 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-600/30 transition-all"
+                            >
+                                Excluir IGNORED
+                            </button>
+                            <button
+                                onClick={() => bulkInclude(true)}
+                                className="px-4 py-2 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition-all"
+                            >
+                                Seleccionar Todos
+                            </button>
+                            <button
+                                onClick={() => bulkInclude(false)}
+                                className="px-4 py-2 bg-red-600/20 border border-red-500/30 text-red-400 rounded-lg text-xs font-bold hover:bg-red-600/30 transition-all"
+                            >
+                                Deseleccionar Todos
+                            </button>
+                        </div>
+
+                        {/* Info Badge */}
+                        <div className="flex items-start gap-3 p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
+                            <ShieldCheck className="text-cyan-500 shrink-0 mt-0.5" size={16} />
+                            <p className="text-xs text-cyan-200/80 leading-relaxed">
+                                <strong>Optimización inteligente:</strong> El Triage profundizará SOLO en archivos marcados como "Incluir". 
+                                <strong className="text-cyan-400"> CORE</strong> = análisis exhaustivo para migración, 
+                                <strong className="text-purple-400"> SUPPORT</strong> = consulta para completar datos de los CORE, 
+                                <strong className="text-gray-400"> IGNORED</strong> = saltar (ahorro de tiempo y costos).
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

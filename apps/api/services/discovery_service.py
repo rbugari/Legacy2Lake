@@ -201,6 +201,25 @@ class DiscoveryService:
                         metadata["logical_medulla"] = medulla
                         metadata["connections"] = summary.get("connection_managers", [])
                         
+                        # Sprint 10: Extract column metadata from components
+                        columns = []
+                        for comp in meta_obj.components:
+                            # Extract from mappings (inputColumn/outputColumn)
+                            for mapping in comp.get("mappings", []):
+                                col_name = mapping.get("name") or mapping.get("target")
+                                if col_name and col_name not in [c["name"] for c in columns]:
+                                    columns.append({
+                                        "name": col_name,
+                                        "data_type": "STRING",  # Default, parser doesn't extract types
+                                        "nullable": True,
+                                        "is_primary_key": False,
+                                        "source_component": comp.get("name")
+                                    })
+                        
+                        if columns:
+                            metadata["columns"] = columns
+                            signatures.append(f"Schema: {len(columns)} columns detected")
+                        
                         # Invocations (semantic detection)
                         for comp in meta_obj.components:
                             if comp.get("intent") == "SOURCE":

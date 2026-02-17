@@ -112,22 +112,57 @@ export default function HandoverView({
         setVariables(variables.filter((_, i) => i !== idx));
     };
 
-    const handleExport = (type: 'delivery' | 'governance') => {
+    const handleExport = async (type: 'delivery' | 'governance') => {
         setIsExporting(true);
-        // Trigger download via API
-        const exportUrl = `${API_BASE_URL}/projects/${projectId}/export/${type}`;
+        try {
+            const exportUrl = `/projects/${projectId}/export/${type}`;
 
-        // Use a hidden iframe or standard navigation to trigger download
-        window.location.href = exportUrl;
+            // Use fetchWithAuth to include authentication headers
+            const response = await fetchWithAuth(exportUrl);
 
-        // Reset state after a short delay
-        setTimeout(() => {
-            setIsExporting(false);
-            const name = type === 'delivery'
+            if (!response.ok) {
+                let errorMsg = 'Failed to generate export bundle';
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.detail || errorData.message || errorMsg;
+                } catch (e) {
+                    // Ignore JSON parse error
+                }
+                throw new Error(errorMsg);
+            }
+
+            // Get filename from Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = type === 'delivery'
                 ? (projectName ? `Legacy2Lake_Delivery_${projectName}.zip` : "Legacy2Lake_Delivery.zip")
                 : (projectName ? `Legacy2Lake_Solution_${projectName}.zip` : "Legacy2Lake_Solution.zip");
-            alert(`${type === 'delivery' ? 'Delivery' : 'Governance'} Bundle Ready! Downloading ${name}...`);
-        }, 2000);
+            
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            // Convert to blob and trigger download
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            alert(`${type === 'delivery' ? 'Delivery' : 'Governance'} Bundle downloaded successfully!`);
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert(`Failed to export: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     return (

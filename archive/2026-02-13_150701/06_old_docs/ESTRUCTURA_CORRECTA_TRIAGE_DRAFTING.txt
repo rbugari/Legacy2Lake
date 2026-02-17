@@ -1,0 +1,208 @@
+┌─────────────────────────────────────────────────────────────────────────┐
+│              ESTRUCTURA CORRECTA: TRIAGE vs DRAFTING                    │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🔍 TAB "TRIAGE" - ANÁLISIS DEL ORIGEN (lo que ENCONTRÓ)                │
+│                                                                         │
+│ Tabs actuales:                                                          │
+│   • Graph          - Topología de paquetes SSIS                        │
+│   • Grid           - Vista de lista de assets                          │
+│   • Mapping        - Mapeo de columnas                                 │
+│   • Manual Input   - Contexto adicional del usuario                    │
+│   • Execution      - Logs de ejecución del triage                      │
+│   • File Explorer  - Archivos del proyecto                             │
+│                                                                         │
+│ 🆕 Tabs NUEVOS a agregar (análisis del SSIS origen):                   │
+│   • 🔍 Origin Analysis    - Conexiones, servidor, database del SSIS    │
+│   • 🔧 Transformations    - Matriz de transformaciones detectadas      │
+│   • 📜 Source Queries     - Queries SQL originales del paquete         │
+│                                                                         │
+│ Nueva estructura propuesta (10 tabs):                                  │
+│ ┌────────┬──────┬────────┬───────────┬────────────┬─────────┐         │
+│ │ Graph  │ Grid │ Origin │ Transform │ Queries    │ Mapping │  ...    │
+│ └────────┴──────┴────────┴───────────┴────────────┴─────────┘         │
+│   (exist)  (exist) (NUEVO)   (NUEVO)    (NUEVO)     (exist)           │
+│                                                                         │
+│ Orden lógico recomendado:                                              │
+│ 1. Graph          - Ver topología general                              │
+│ 2. Grid           - Ver lista de paquetes                              │
+│ 3. 🆕 Origin      - Ver análisis de conexiones origen                  │
+│ 4. 🆕 Transform   - Ver transformaciones detectadas                    │
+│ 5. 🆕 Queries     - Ver queries SQL originales                          │
+│ 6. Mapping        - Ajustar mapeo de columnas                          │
+│ 7. Manual Input   - Agregar contexto adicional                         │
+│ 8. Execution      - Ver logs de ejecución                              │
+│ 9. File Explorer  - Ver archivos del proyecto                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 💻 TAB "DRAFTING" - CÓDIGO GENERADO (lo que PRODUJO)                   │
+│                                                                         │
+│ Sub-tabs actuales:                                                      │
+│   • Logs    - Console output del proceso de generación                 │
+│   • Code    - Código PySpark generado                                  │
+│   • Schema  - Esquema extraído del código generado                     │
+│                                                                         │
+│ ✅ ESTOS SE QUEDAN IGUAL - Son el resultado final de la generación     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🎯 LÓGICA DEL FLUJO:                                                    │
+│                                                                         │
+│ 1. DISCOVERY: Escanea archivos, encuentra 7 paquetes SSIS              │
+│    ↓                                                                    │
+│ 2. TRIAGE: Analiza cada paquete SSIS en profundidad                    │
+│    ├─ Lee conexiones OLEDB/ODBC                                        │
+│    ├─ Extrae queries SQL (SELECT, WHERE, JOINs)                        │
+│    ├─ Detecta transformaciones (LOOKUP, Derived Column, Merge)         │
+│    ├─ Calcula complejidad (score 0-100)                                │
+│    └─ Construye topología de data flow                                 │
+│    ↓                                                                    │
+│    👉 USUARIO VE RESULTADOS EN TAB "TRIAGE":                           │
+│       • Origin Tab: "Encontré 2 conexiones OLEDB a SERVER01"           │
+│       • Transform Tab: "Detecté 2 LOOKUPS y 1 Derived Column"          │
+│       • Queries Tab: "Queries SQL originales extraídas"                │
+│    ↓                                                                    │
+│ 3. DRAFTING: Usa el análisis de Triage para generar código             │
+│    ├─ Toma las conexiones → Genera config de Spark                     │
+│    ├─ Toma las queries → Genera DataFrame reads                        │
+│    ├─ Toma las transformations → Genera joins/lookups                  │
+│    └─ Produce código PySpark completo                                  │
+│    ↓                                                                    │
+│    👉 USUARIO VE RESULTADOS EN TAB "DRAFTING":                         │
+│       • Code Tab: "Código PySpark generado basado en análisis"         │
+│       • Schema Tab: "7 columnas extraídas del código"                  │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 📊 EJEMPLO CONCRETO: DimCustomers.dtsx                                 │
+│                                                                         │
+│ TRIAGE (Análisis del SSIS original):                                   │
+│ ┌─────────────────────────────────────────────────────────────────┐   │
+│ │ 🔍 Origin Analysis                                              │   │
+│ │ ─────────────────────────────────────────────────────────────── │   │
+│ │ Source System: SQL Server (OLEDB)                              │   │
+│ │ Server: SERVER01                                                │   │
+│ │ Database: Northwind                                             │   │
+│ │ Package: DimCustomers.dtsx                                      │   │
+│ │                                                                 │   │
+│ │ 🔗 Connections Detected:                                        │   │
+│ │   [OLEDB_Source] → Data Source=SERVER01;Database=Northwind     │   │
+│ │   [OLEDB_Dest]   → Data Source=DW01;Database=DataWarehouse     │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│ ┌─────────────────────────────────────────────────────────────────┐   │
+│ │ 🔧 Transformations Detected                                     │   │
+│ │ ─────────────────────────────────────────────────────────────── │   │
+│ │ Type              Count    Details                              │   │
+│ │ ════════════════  ═════    ═══════════════════════════════════  │   │
+│ │ SOURCE            1        OLE DB Source - Customers            │   │
+│ │ LOOKUP            2        Countries, Regions                   │   │
+│ │ DERIVED_COLUMN    1        Add LoadDate                         │   │
+│ │ CONDITIONAL       1        Filter Active Customers              │   │
+│ │ DESTINATION       1        OLE DB Destination - DimCustomers    │   │
+│ │                                                                 │   │
+│ │ 🎯 Complexity Score: 42/100 (Medium)                            │   │
+│ │                                                                 │   │
+│ │ ⚠️  Recommendations:                                             │   │
+│ │   • Consider caching Lookup data for better performance        │   │
+│ │   • Derived column expression is complex, review for accuracy  │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│ ┌─────────────────────────────────────────────────────────────────┐   │
+│ │ 📜 Source Queries Extracted                                     │   │
+│ │ ─────────────────────────────────────────────────────────────── │   │
+│ │ [SOURCE] OLE DB Source - Customers                              │   │
+│ │ ```sql                                                          │   │
+│ │ SELECT                                                          │   │
+│ │     custid,                                                     │   │
+│ │     contactname,                                                │   │
+│ │     city,                                                       │   │
+│ │     country,                                                    │   │
+│ │     address,                                                    │   │
+│ │     phone,                                                      │   │
+│ │     postalcode                                                  │   │
+│ │ FROM dbo.Customers                                              │   │
+│ │ WHERE active = 1                                                │   │
+│ │ ```                                                             │   │
+│ │                                                                 │   │
+│ │ [LOOKUP] Lookup - Countries                                     │   │
+│ │ ```sql                                                          │   │
+│ │ SELECT country_code, country_name                               │   │
+│ │ FROM dbo.Countries                                              │   │
+│ │ ```                                                             │   │
+│ │                                                                 │   │
+│ │ [LOOKUP] Lookup - Regions                                       │   │
+│ │ ```sql                                                          │   │
+│ │ SELECT region_id, region_name                                   │   │
+│ │ FROM dbo.Regions                                                │   │
+│ │ ```                                                             │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│ ──────────────────────────────────────────────────────────────────────  │
+│                                                                         │
+│ DRAFTING (Código PySpark generado BASADO en el análisis):              │
+│ ┌─────────────────────────────────────────────────────────────────┐   │
+│ │ 💻 Generated Code                                               │   │
+│ │ ─────────────────────────────────────────────────────────────── │   │
+│ │ ```python                                                       │   │
+│ │ def execute_task(spark, config):                                │   │
+│ │     # Extraído de "Origin Tab" → Conexión OLEDB                │   │
+│ │     df_customers = spark.read.format("jdbc") \                  │   │
+│ │         .option("url", "jdbc:sqlserver://SERVER01") \           │   │
+│ │         .option("dbtable", "dbo.Customers") \                   │   │
+│ │         .load()                                                 │   │
+│ │                                                                 │   │
+│ │     # Extraído de "Queries Tab" → WHERE active = 1             │   │
+│ │     df_filtered = df_customers.filter("active = 1")             │   │
+│ │                                                                 │   │
+│ │     # Extraído de "Transform Tab" → 2 LOOKUPS                  │   │
+│ │     df_countries = spark.read.option("table", "Countries")...   │   │
+│ │     df_result = df_filtered.join(df_countries, ...)            │   │
+│ │                                                                 │   │
+│ │     # Extraído de "Transform Tab" → Derived Column LoadDate    │   │
+│ │     df_result = df_result.withColumn("LoadDate", current_date())│  │
+│ │     ...                                                         │   │
+│ │ ```                                                             │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ ✅ VALOR PARA EL USUARIO:                                               │
+│                                                                         │
+│ ❌ ANTES (sin tabs de análisis en Triage):                             │
+│    Usuario: "Corrí Triage pero no veo qué encontró del SSIS,          │
+│              solo veo un gráfico y después código generado"            │
+│                                                                         │
+│ ✅ DESPUÉS (con 3 tabs nuevos en Triage):                              │
+│    Usuario: "En TRIAGE veo que encontró 2 conexiones OLEDB,           │
+│              detectó 2 LOOKUPS y 1 Derived Column, extrajo            │
+│              las queries SQL originales con WHERE active = 1,          │
+│              y asignó complejidad 42/100.                              │
+│              Luego en DRAFTING veo que generó código PySpark           │
+│              BASADO en todo ese análisis.                              │
+│              AHORA ENTIENDO EL PROCESO COMPLETO! 🎯"                   │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🚀 IMPLEMENTACIÓN:                                                      │
+│                                                                         │
+│ PASO 1: Backend - Persistir datos Sprint 8                             │
+│   → Modificar agent_c_service.py                                       │
+│   → Extraer y guardar: conexiones, transformaciones, queries, score    │
+│   → UPDATE utm_objects con columnas Sprint 8                           │
+│                                                                         │
+│ PASO 2: Backend - APIs                                                 │
+│   → GET /projects/{id}/origin-analysis                                 │
+│   → GET /projects/{id}/transformations                                 │
+│   → GET /projects/{id}/source-queries                                  │
+│                                                                         │
+│ PASO 3: Frontend - Agregar tabs en TriageView.tsx                      │
+│   → Agregar 'origin', 'transform', 'queries' a TABS array             │
+│   → Crear componentes OriginAnalysisPanel.tsx                          │
+│   → Crear componentes TransformationsMatrix.tsx                        │
+│   → Crear componentes SourceQueriesViewer.tsx                          │
+│                                                                         │
+│ Tiempo estimado: 2-3 horas                                             │
+└─────────────────────────────────────────────────────────────────────────┘

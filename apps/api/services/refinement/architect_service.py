@@ -30,6 +30,11 @@ class ArchitectService:
         Segments Code into Medallion Architecture (Bronze/Silver/Gold).
         Generates config.py and utils.py.
         """
+        print(f"[ARCHITECT DEBUG] === refine_project() INVOKED ===")
+        print(f"[ARCHITECT DEBUG] project_id: {project_id}")
+        print(f"[ARCHITECT DEBUG] project_name: {project_name}")
+        print(f"[ARCHITECT DEBUG] profile_metadata keys: {profile_metadata.keys() if profile_metadata else 'None'}")
+        
         if log is None: log = []
         
         storage = PersistenceService.get_storage()
@@ -103,13 +108,19 @@ class ArchitectService:
 
         # 2. Process each analyzed file
         files_to_process = profile_metadata.get("analyzed_files", [])
+        print(f"[ARCHITECT DEBUG] files_to_process: {files_to_process}")
+        print(f"[ARCHITECT DEBUG] About to process {len(files_to_process)} files")
         self._log(log, f"Processing {len(files_to_process)} source files with {cartridge.get_file_extension()} extension...")
         
         for filename in files_to_process:
+            print(f"[ARCHITECT DEBUG] === Processing file: {filename} ===")
             file_key = f"{input_dir.rstrip('/')}/{filename}"
+            print(f"[ARCHITECT DEBUG] file_key: {file_key}")
             
             original_code = storage.read_file(file_key)
+            print(f"[ARCHITECT DEBUG] original_code length: {len(original_code) if original_code else 0}")
             if not original_code:
+                print(f"[ARCHITECT DEBUG] ❌ File not found in R2: {filename}")
                 self._log(log, f"WARNING: File skipped (not found in R2): {filename}", level="Architect", model="System")
                 continue
             
@@ -130,23 +141,54 @@ class ArchitectService:
             base_filename = f"{clean_name}"
 
             # 1. Bronze Layer
+            print(f"[ARCHITECT DEBUG] Generating bronze for {filename}...")
             bronze_code = cartridge.generate_bronze(table_metadata)
+            print(f"[ARCHITECT DEBUG] Bronze code length: {len(bronze_code) if bronze_code else 0}")
             bronze_key = f"{bronze_prefix}/{base_filename}_bronze{ext}"
-            storage.save_file(bronze_key, bronze_code)
-            refined_files["bronze"].append(bronze_key)
+            print(f"[ARCHITECT DEBUG] Saving bronze to: {bronze_key}")
+            try:
+                storage.save_file(bronze_key, bronze_code)
+                print(f"[ARCHITECT DEBUG] ✅ Bronze saved successfully")
+                refined_files["bronze"].append(bronze_key)
+            except Exception as e:
+                print(f"[ARCHITECT DEBUG] ❌ Bronze save FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
             
             # 2. Silver Layer
+            print(f"[ARCHITECT DEBUG] Generating silver for {filename}...")
             silver_code = cartridge.generate_silver(table_metadata)
+            print(f"[ARCHITECT DEBUG] Silver code length: {len(silver_code) if silver_code else 0}")
             silver_key = f"{silver_prefix}/{base_filename}_silver{ext}"
-            storage.save_file(silver_key, silver_code)
-            refined_files["silver"].append(silver_key)
+            print(f"[ARCHITECT DEBUG] Saving silver to: {silver_key}")
+            try:
+                storage.save_file(silver_key, silver_code)
+                print(f"[ARCHITECT DEBUG] ✅ Silver saved successfully")
+                refined_files["silver"].append(silver_key)
+            except Exception as e:
+                print(f"[ARCHITECT DEBUG] ❌ Silver save FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
             
             # 3. Gold Layer
+            print(f"[ARCHITECT DEBUG] Generating gold for {filename}...")
             gold_code = cartridge.generate_gold(table_metadata)
+            print(f"[ARCHITECT DEBUG] Gold code length: {len(gold_code) if gold_code else 0}")
             gold_key = f"{gold_prefix}/{base_filename}_gold{ext}"
-            storage.save_file(gold_key, gold_code)
-            refined_files["gold"].append(gold_key)
+            print(f"[ARCHITECT DEBUG] Saving gold to: {gold_key}")
+            try:
+                storage.save_file(gold_key, gold_code)
+                print(f"[ARCHITECT DEBUG] ✅ Gold saved successfully")
+                refined_files["gold"].append(gold_key)
+            except Exception as e:
+                print(f"[ARCHITECT DEBUG] ❌ Gold save FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
 
+            print(f"[ARCHITECT DEBUG] === Completed processing {filename} ===")
             self._log(log, f"Refined {filename} into Bronze, Silver, and Gold layers.")
             
 
@@ -171,6 +213,12 @@ class ArchitectService:
             refined_files["orchestration"] = [orch_key]
             self._log(log, f"Generated Orchestration: {orch_filename}{orch_ext}")
 
+        print(f"[ARCHITECT DEBUG] === refine_project() COMPLETED ===")
+        print(f"[ARCHITECT DEBUG] refined_files: {refined_files}")
+        print(f"[ARCHITECT DEBUG] Total bronze: {len(refined_files.get('bronze', []))}")
+        print(f"[ARCHITECT DEBUG] Total silver: {len(refined_files.get('silver', []))}")
+        print(f"[ARCHITECT DEBUG] Total gold: {len(refined_files.get('gold', []))}")
+        
         return {
             "status": "COMPLETED",
             "refined_files": refined_files,

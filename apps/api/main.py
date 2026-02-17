@@ -7,7 +7,14 @@ import time
 import asyncio
 import warnings
 import ssl
+import traceback
 from datetime import datetime
+import logging
+
+# Ensure apps/api is on sys.path for legacy imports (services.*, routers.*)
+api_root = os.path.dirname(os.path.abspath(__file__))
+if api_root not in sys.path:
+    sys.path.insert(0, api_root)
 
 # CRITICAL: Disable SSL verification BEFORE any imports
 os.environ['PYTHONHTTPSVERIFY'] = '0'
@@ -41,9 +48,9 @@ try:
         return _original_start_tls(self, *args, **kwargs)
     
     httpcore._backends.sync.SyncStream.start_tls = _patched_start_tls
-    print("✅ SSL verification disabled via httpcore monkey-patch")
+    print("[OK] SSL verification disabled via httpcore monkey-patch")
 except Exception as e:
-    print(f"⚠️  Could not monkey-patch httpcore: {e}")
+    print(f"[WARN] Could not monkey-patch httpcore: {e}")
 
 # Fix for Windows asyncio subprocess support
 if sys.platform == 'win32':
@@ -71,11 +78,13 @@ from apps.api.routers.governance import router as governance_router
 from apps.api.routers.lab import router as lab_router
 from apps.api.routers.reports import router as reports_router
 from apps.api.routers.locks import router as locks_router
+from apps.api.routers.visualization import router as visualization_router  # Sprint 13: Visualization endpoints
+from apps.api.routers.prompts import router as prompts_router  # v4.0: Zero-Hardcode Core
 from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
     title="Legacy2Lake API", 
-    version="3.8.1",  # Sprint 6: Rate Limiting + Audit Log
+    version="3.9.0",  # Sprint 13: Visualization + Full Debug Logging
     description="Refactored Core API for Cloud-Native Multi-Tenant Architecture with Formalized Governance"
 )
 
@@ -84,6 +93,29 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
+    print("\n" + "=" * 60)
+    print("🚀 Legacy2Lake API Starting...")
+    print("=" * 60)
+    
+    # Check if DEBUG_MODE is enabled
+    debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+    print(f"🔍 DEBUG_MODE: {'ENABLED ✅' if debug_mode else 'DISABLED ❌'}")
+    
+    if debug_mode:
+        print("   • All LLM calls will be logged")
+        print("   • Agent inputs/outputs visible")
+        print("   • DB queries tracked")
+        print("   • Full request/response details")
+    else:
+        print("   ⚠️  Set DEBUG_MODE=true for verbose logging")
+    
+    print("=" * 60 + "\n")
+    sys.stdout.flush()
+    
+    # Test logger writes to file
+    logger.info("🚀 BACKEND STARTED - Logger Active", "Startup")
+    logger.info(f"📁 Log file: {logger.log_file if hasattr(logger, 'log_file') else 'N/A'}", "Startup")
+    
     # Initialize audit log service with Supabase client
     try:
         supabase_client = get_supabase_client()
@@ -103,13 +135,28 @@ async def request_logging_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     
+    # Log incoming request with custom logger
+    logger.info(f"→ {request.method} {request.url.path}", "HTTP")
+    
     start_time = time.perf_counter()
     client_id = request.headers.get("X-Client-ID", "anonymous")
+    tenant_id = request.headers.get("X-Tenant-ID", "none")
     
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.error(f"ERROR in {request.method} {request.url.path}: {str(e)}", "HTTP")
+        logger.error(traceback.format_exc(), "HTTP")
+        raise
     
     duration_ms = (time.perf_counter() - start_time) * 1000
-    if request.url.path != "/health" and request.url.path != "/ping":
+    
+    # Log response with custom logger
+    status_icon = "✅" if response.status_code < 400 else "❌"
+    logger.info(f"{status_icon} {response.status_code} ({duration_ms:.0f}ms) [tenant:{tenant_id[:8]}...]", "HTTP")
+    
+    # Also use structured logger for non-health endpoints
+    if request.url.path not in ["/health", "/ping"]:
         logger.http_log(
             method=request.method,
             path=request.url.path,
@@ -117,6 +164,7 @@ async def request_logging_middleware(request: Request, call_next):
             duration_ms=duration_ms,
             client_id=client_id
         )
+    
     return response
 
 # Configure CORS as the OUTERMOST middleware (Added last)
@@ -166,6 +214,8 @@ app.include_router(agents_router)
 app.include_router(lab_router)
 app.include_router(reports_router)
 app.include_router(locks_router)
+app.include_router(visualization_router)  # Sprint 13: Visualization endpoints
+app.include_router(prompts_router)  # v4.0: Zero-Hardcode Core - Prompt management
 app.include_router(config.router)
 app.include_router(system.router, prefix="/system")
 

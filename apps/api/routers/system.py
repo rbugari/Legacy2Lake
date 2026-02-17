@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 
-from routers.dependencies import get_db
-from services.persistence_service import SupabasePersistence, PersistenceService
-from services.knowledge_service import KnowledgeService
+from apps.api.routers.dependencies import get_db
+from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
+from apps.api.services.knowledge_service import KnowledgeService
 from apps.api.utils.logger import logger
 
 router = APIRouter(tags=["System & Administration"])
@@ -92,7 +92,7 @@ async def validate_prompt(payload: dict, db: SupabasePersistence = Depends(get_d
     if not agent_id or not user_input:
         raise HTTPException(status_code=400, detail="agent_id and user_input required")
         
-    from services.agent_a_service import AgentAService
+    from apps.api.services.agent_a_service import AgentAService
     agent = AgentAService(tenant_id=db.tenant_id, client_id=db.client_id)
     llm = await agent._get_llm()
     
@@ -108,26 +108,6 @@ async def validate_prompt(payload: dict, db: SupabasePersistence = Depends(get_d
     
     response = await llm.ainvoke(messages)
     return {"success": True, "response": response.content}
-
-@router.post("/scout/assess")
-async def run_scout_assessment(payload: dict, db: SupabasePersistence = Depends(get_db)):
-    """Runs a forensic assessment of project files using Agent S."""
-    project_id = payload.get("project_id")
-    file_list = payload.get("file_list")
-    
-    if not project_id or not file_list:
-        raise HTTPException(status_code=400, detail="project_id and file_list required")
-        
-    from services.agent_s_service import AgentSService
-    scout = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
-    
-    try:
-        # Agent S returns the assessment JSON
-        report = await scout.assess_repository(file_list)
-        return report
-    except Exception as e:
-        logger.error(f"Agent S assessment failed for project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Model Catalog ---
 

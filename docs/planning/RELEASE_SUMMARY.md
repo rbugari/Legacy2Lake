@@ -1,51 +1,48 @@
-# Release Plan - Executive Summary (SIMPLIFIED)
+# Release Plan - Executive Summary
 
-## 🎯 Strategic Vision: v3.8 → v4.0
+## 🎯 Strategic Vision: v3.9 GA ✅ → v4.0
 
 **From**: Single-user tenants  
-**To**: Simple Multi-User + Autonomous AI
+**To**: Multi-User ✅ + Zero-Hardcode Core (v4.0)
 
-**Philosophy**: Keep it simple, ship fast, focus on v4.0 AI Revolution
+**Philosophy**: Keep it simple, ship fast, deliver value
 
 ---
 
-## 📅 Timeline Overview (SIMPLIFIED)
+## 📅 Timeline Overview
 
 ```
-FEB 2026         MAR-APR 2026           Q3 2026
+FEB 2026         LATE MAR 2026          Q2 2026
 ─────────────────┼──────────────────────┼────────────
-   v3.8 ✅        │    v3.9 SIMPLE       │   v4.0
-  CURRENT        │   Multi-User Básico  │    AI
-                 │   (Solo Esencial)    │ Revolution
-                 │                      │
-                 │     4 weeks          │  8-10 weeks
+   v3.9 GA ✅     │    v4.0 CORE         │   v5.0+
+  COMPLETED      │  Zero-Hardcode       │  Future
+  (Feb 13)       │                      │
+                 │     ~4 weeks         │  TBD
 ```
 
-**Total Time to v4.0**: 12-14 weeks (3.5 months, NO 4)
-
-**Big Change**: Eliminamos v3.10 y v3.11 (YAGNI - You Ain't Gonna Need It)
+**v3.9 GA COMPLETE**: Feb 13, 2026 - Multi-User + Visualization ($240K value)  
+**v4.0 Target**: Late March 2026 - Zero-Hardcode Core (~4 weeks)
 
 ---
 
 ## 🚀 Release Breakdown
 
-### **v3.9 - Multi-User SIMPLIFICADO** (Marzo 2026)
-**Tagline**: "Equipos Pequeños, Control Simple"
+### **v3.9 GA - ✅ COMPLETADO** (Febrero 13, 2026)
+**Tagline**: "Multi-User + Visualization Integration"
 
-**Problem**: 
-- ❌ 1 Tenant = 1 User (no team collaboration)
-- ❌ Can't share projects within organization
-
-**Solution (SIMPLIFICADA)**:
-- ✅ 1 Tenant = N Users (típicamente 2-5)
-- ✅ Invite team members
-- ✅ Everyone sees all tenant projects (no per-project sharing)
-- ✅ **SOLO 3 ROLES**: ADMIN, COLLABORATOR, VIEWER (no 5 roles)
+**Delivered**: 
+- ✔️ Multi-User Foundation (4 roles: ADMIN, MANAGER, COLLABORATOR, VIEWER)
+- ✔️ Project-level access control via `utm_project_members`
+- ✔️ Platform Admin Dashboard with Ghost Mode
+- ✔️ Visualization Integration: 10 endpoints, 4 dashboards
+- ✔️ Coverage: 4 of 6 phases (Triage, Drafting, Refinement, Certification)
+- ✔️ Value: $240K (60% of v3.9 roadmap)
 
 **Database Changes**:
 ```
 NEW:  utm_users (separate user identity)
 NEW:  utm_user_invitations
+NEW:  utm_project_members (project-level access)
 MOD:  utm_tenants (now = organization)
 MOD:  utm_projects (add created_by_user_id)
 MOD:  utm_process_locks (track user email)

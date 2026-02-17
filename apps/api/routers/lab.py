@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 import os
 from typing import Dict, Any, List, Optional
-from routers.dependencies import get_db
-from services.persistence_service import SupabasePersistence
-from services.prompt_lab_service import PromptLabService
+from apps.api.routers.dependencies import get_db
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.services.prompt_lab_service import PromptLabService
 
 router = APIRouter(prefix="/lab", tags=["Lab"])
 

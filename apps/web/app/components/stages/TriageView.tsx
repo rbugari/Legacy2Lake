@@ -12,16 +12,31 @@ import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, FileUp, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, FileUp, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap, Server } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { fetchWithAuth } from '../../lib/auth-client';
+import ProcessProgress from '../ProcessProgress';
 
 import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
+import OriginAnalysisPanel from '../visualization/OriginAnalysisPanel'; // Sprint 8.5
+import TransformationsMatrix from '../visualization/TransformationsMatrix'; // Sprint 8.5
+import SourceQueriesViewer from '../visualization/SourceQueriesViewer'; // Sprint 8.5
+import QualityDashboard from '../visualization/QualityDashboard'; // Sprint 11
+import SchemaViewer from '../visualization/SchemaViewer'; // Sprint 13
+import PIIHeatmap from '../visualization/PIIHeatmap'; // Sprint 11 - Advanced Triage
+import PartitionRecommendations from '../visualization/PartitionRecommendations'; // Sprint 11 - Advanced Triage
 
 // Tab Definitions
 const TABS = [
     { id: 'graph', label: 'Graph', icon: <Layout size={14} />, group: 'Views' },
     { id: 'grid', label: 'Grid', icon: <List size={14} />, group: 'Views' },
+    { id: 'schema', label: 'Schema', icon: <Database size={14} />, group: 'Views' }, // Sprint 13
+    { id: 'origin', label: 'Origin', icon: <Server size={14} />, group: 'Analysis' }, // Sprint 8.5
+    { id: 'transform', label: 'Transform', icon: <Zap size={14} />, group: 'Analysis' }, // Sprint 8.5
+    { id: 'queries', label: 'Queries', icon: <FileCode size={14} />, group: 'Analysis' }, // Sprint 8.5
+    { id: 'quality', label: 'Quality', icon: <Shield size={14} />, group: 'Analysis' }, // Sprint 11
+    { id: 'pii', label: 'PII Heatmap', icon: <ShieldAlert size={14} />, group: 'Analysis' }, // Sprint 11 Advanced
+    { id: 'partitions', label: 'Partitions', icon: <Layers size={14} />, group: 'Analysis' }, // Sprint 11 Advanced
     { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Views' },
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
     { id: 'logs', label: 'Execution', icon: <FileText size={14} />, group: 'Config' },
@@ -37,7 +52,9 @@ export default function TriageView({
     isFullscreen,
     onToggleFullscreen,
     onReset,
-    onBackToCurrent
+    onBackToCurrent,
+    activeSection,
+    onSectionChange
 }: {
     projectId: string,
     activeTenantId?: string,
@@ -47,15 +64,17 @@ export default function TriageView({
     isFullscreen?: boolean,
     onToggleFullscreen?: () => void,
     onReset?: () => void,
-    onBackToCurrent?: () => void
+    onBackToCurrent?: () => void,
+    activeSection: string,
+    onSectionChange: (section: string) => void
 }) {
     // Safety check: prioritize Prop ReadOnly (from parent) but keep internal state for fallback
     const isReadOnly = propReadOnly ?? false;
-    const [activeTab, setActiveTab] = useState('graph');
 
     // Data State
     const [assets, setAssets] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isInitialLoading, setIsInitialLoading] = useState(true); // Only for initial load
+    const [isTriageRunning, setIsTriageRunning] = useState(false); // For active triage/regenerate processes
 
     // Graph State
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
@@ -76,6 +95,7 @@ export default function TriageView({
     // Heatmap State
     const [activeHeatmap, setActiveHeatmap] = useState<'none' | 'pii' | 'criticality' | 'volume'>('none');
     const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
+    const [selectedAssetForSchema, setSelectedAssetForSchema] = useState<string | null>(null); // Sprint 13
 
     // Technology State
     const [sourceTech, setSourceTech] = useState<string | undefined>();
@@ -270,7 +290,7 @@ export default function TriageView({
         } catch (error) {
             console.error("Init error:", error);
         } finally {
-            setIsLoading(false);
+            setIsInitialLoading(false);
         }
     }, [projectId]);
 
@@ -292,9 +312,10 @@ export default function TriageView({
             fetchProject();
             fetchLayout();
         } else {
-            setIsLoading(false);
+            setIsInitialLoading(false);
         }
-    }, [projectId, fetchProject, fetchLayout]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectId]); // Only re-run when projectId changes, not when callbacks change
 
     // Update parent stats whenever assets change
     const lastSidebarStatsReported = useRef("");
@@ -456,27 +477,60 @@ export default function TriageView({
             if (data.logs) {
                 setTriageLog(data.logs);
             }
+            
+            // Check project status to detect completion
+            const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
+            const statusData = await statusRes.json();
+            
+            // If status changed to TRIAGED, stop polling
+            if (statusData.status === "TRIAGED" && isTriageRunning) {
+                console.log("DEBUG: Triage completed, stopping polling...");
+                
+                // Stop polling - data will reload via useEffect when isTriageRunning changes
+                setIsTriageRunning(false);
+                onSectionChange('grid'); // Switch to grid view to show results
+                
+                console.log("DEBUG: Polling stopped, component will reload data");
+            }
         } catch (e) {
             console.error("Failed to load logs", e);
         }
-    }, [projectId]);
+    }, [projectId, isTriageRunning]); // Removed fetchProject, fetchLayout dependencies
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        if (isLoading) {
-            // Poll more frequently during active loading
-            interval = setInterval(fetchTriageLogs, 2000);
+        if (isTriageRunning) {
+            // Poll logs every 5 seconds during active triage process
+            fetchTriageLogs(); // Fetch immediately
+            interval = setInterval(fetchTriageLogs, 5000); // Then every 5s
         }
         return () => clearInterval(interval);
-    }, [isLoading, fetchTriageLogs]);
+    }, [isTriageRunning, fetchTriageLogs]);
 
-    // Fetch Files
+    // Reload data when triage completes (isTriageRunning changes from true to false)
+    const prevTriageRunning = useRef(false);
+    useEffect(() => {
+        // Only reload if we just finished running (transition from true to false)
+        if (prevTriageRunning.current === true && isTriageRunning === false) {
+            console.log("DEBUG: Triage just completed, reloading project data...");
+            fetchProject();
+            fetchLayout();
+        }
+        prevTriageRunning.current = isTriageRunning;
+    }, [isTriageRunning, fetchProject, fetchLayout]);
+
+    // Fetch Files - Load initially and when section changes to files
     const fetchFiles = useCallback(async () => {
         setLoadingFiles(true);
         try {
             const res = await fetchWithAuth(`projects/${projectId}/triage/files`);
             const data = await res.json();
-            if (data.files) setTriageFiles(data.files);
+            console.log('[TriageView] Files loaded:', data);
+            if (data.files) {
+                setTriageFiles(data.files);
+            } else if (data.success && data.file_count === 0) {
+                setTriageFiles([]);
+            }
         } catch (e) {
             console.error("Failed to load files", e);
         } finally {
@@ -484,11 +538,17 @@ export default function TriageView({
         }
     }, [projectId]);
 
+    // Load files immediately when component mounts
     useEffect(() => {
-        if (activeTab === 'files') {
+        fetchFiles();
+    }, [fetchFiles]);
+
+    // Reload files when activeSection changes to files
+    useEffect(() => {
+        if (activeSection === 'files') {
             fetchFiles();
         }
-    }, [activeTab, fetchFiles]);
+    }, [activeSection]);
 
     const handleViewFile = async (file: any) => {
         setViewingFile(file);
@@ -567,16 +627,17 @@ export default function TriageView({
         }
 
         console.log("DEBUG: Starting Triage process...");
-        setIsLoading(true);
-        setActiveTab('logs'); // Show logs initially to see progress
-        setTriageLog("Initializing Triage Agent..."); // Reset log
+        setIsTriageRunning(true);
+        onSectionChange('logs'); // Show logs initially to see progress
+        setTriageLog("Initializing Triage process in background..."); // Reset log
 
         try {
             const res = await fetchWithAuth(`projects/${projectId}/triage`, {
                 method: 'POST',
                 body: JSON.stringify({
                     system_prompt: systemPrompt,
-                    user_context: userContext
+                    user_context: userContext,
+                    pre_classification: {} // Pass pre-classification from Discovery if needed
                 })
             });
             const data = await res.json();
@@ -585,38 +646,33 @@ export default function TriageView({
             if (data.error) {
                 console.error("Triage error from API:", data.error);
                 alert(`Analysis error: ${data.error}`);
-                if (data.log) setTriageLog(data.log);
+                setIsTriageRunning(false);
                 return;
             }
 
-            if (data.assets) {
-                setAssets(data.assets);
+            // NEW: Background task started, polling will handle progress
+            if (data.status === "RUNNING") {
+                console.log("DEBUG: Triage started in background, polling for progress...");
+                setTriageLog(`✅ ${data.message || "Triage process started in background"}\n\nFetching logs...`);
+                // Polling is active via useEffect, will auto-reload when status changes to TRIAGED
+            } else if (data.status === "COMPLETED" || data.assets) {
+                // Fallback: synchronous response (backward compatibility)
+                console.log("DEBUG: Received synchronous triage response");
+                if (data.assets) setAssets(data.assets);
+                if (data.nodes) setNodes(enrichNodes(data.nodes));
+                if (data.edges) setEdges(data.edges);
+                if (data.log) setTriageLog(data.log);
+                
+                await fetchProject();
+                await fetchLayout();
+                onSectionChange('grid');
+                setIsTriageRunning(false);
             }
-            if (data.nodes) {
-                setNodes(enrichNodes(data.nodes));
-            }
-            if (data.edges) {
-                setEdges(data.edges);
-            }
-            // data.log is final summary, but we are polling now.
-            // We can do one final fetch to be sure.
-            await fetchTriageLogs();
-
-            // FIX: Auto-refresh data after triage completes
-            console.log("DEBUG: Auto-refreshing project data after triage...");
-            await fetchProject();  // Refresh project metadata
-            await fetchLayout();   // Refresh graph layout
-            
-            // Switch to assets tab to show results
-            setActiveTab('assets');
-            console.log("DEBUG: Triage data refreshed and switched to assets tab");
 
         } catch (e) {
             console.error("Triage failed", e);
             alert("Connection error running triage. Please verify backend server is running.");
-        } finally {
-            console.log("DEBUG: Triage process finished.");
-            setIsLoading(false);
+            setIsTriageRunning(false);
         }
     };
 
@@ -624,7 +680,7 @@ export default function TriageView({
     const handleReset = async () => {
         if (!window.confirm("Are you sure you want to reset the project? All triage results and current design will be lost.")) return;
 
-        setIsLoading(true);
+        setIsTriageRunning(true);
         try {
             const res = await fetchWithAuth(`projects/${projectId}/reset`, {
                 method: 'POST'
@@ -640,7 +696,7 @@ export default function TriageView({
             console.error("Reset failed", e);
             alert("Error resetting project.");
         } finally {
-            setIsLoading(false);
+            setIsTriageRunning(false);
         }
     };
 
@@ -657,7 +713,7 @@ export default function TriageView({
             const data = await res.json();
 
             if (data.success) {
-                setIsLoading(false);
+                setIsTriageRunning(false);
                 setTriageLog(prev => prev + "\n[SYSTEM] Process cancelled by user.");
             } else {
                 setTriageLog(prev => prev + `\n[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`);
@@ -678,7 +734,7 @@ export default function TriageView({
                     helpText="Classification of source objects into Medallion layers and complexity assessment."
                     onApprove={handleApprove}
                     approveLabel="Start Drafting"
-                    isApproveDisabled={isLoading || assets.length === 0}
+                    isApproveDisabled={isTriageRunning || assets.length === 0}
                     isExecuting={isApproving}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={onToggleFullscreen}
@@ -688,14 +744,14 @@ export default function TriageView({
                     <div className="flex gap-2">
                         <button
                             onClick={handleRunTriage}
-                            disabled={isLoading}
+                            disabled={isTriageRunning}
                             className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-secondary transition-all shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95"
                         >
-                            {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                            {isLoading ? "Processing..." : "Run Analysis"}
+                            {isTriageRunning ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
+                            {isTriageRunning ? "Processing..." : "Run Analysis"}
                         </button>
 
-                        {isLoading && (
+                        {isTriageRunning && (
                             <button
                                 onClick={handleCancelTriage}
                                 className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
@@ -741,7 +797,7 @@ export default function TriageView({
                             ))}
                         </div>
                     </div>
-                    {isLoading && (
+                    {isTriageRunning && (
                         <div className="flex items-center gap-3">
                             <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
                             <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest">Architect Analyzing Flow...</span>
@@ -749,37 +805,12 @@ export default function TriageView({
                     )}
                 </div>
                 */}
-                {/* Tab Navigation - Grouped Structure */}
-                <div className="flex items-center gap-8 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-[#0a0a0a] px-8 py-3 overflow-x-auto no-scrollbar">
-                    {['Views', 'Config'].map(group => (
-                        <div key={group} className="flex items-center gap-3">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-tertiary)] vertical-text opacity-50 pl-2">
-                                {group}
-                            </span>
-                            <div className="flex bg-gray-50 dark:bg-black/20 p-1.5 rounded-2xl border border-gray-100 dark:border-white/5">
-                                {TABS.filter(t => t.group === group).map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all whitespace-nowrap ${activeTab === tab.id
-                                            ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20 active:scale-95'
-                                            : 'text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/5'
-                                            }`}
-                                    >
-                                        <span className={activeTab === tab.id ? 'text-white' : 'text-gray-400'}>{tab.icon}</span>
-                                        <span>{tab.label}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Tab Content */}
+                
+                {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
                 <div className="flex-1 overflow-hidden relative">
 
                     {/* FILES TAB (NEW) */}
-                    {activeTab === 'files' && (
+                    {activeSection === 'files' && (
                         <div className="h-full w-full p-8 overflow-y-auto">
                             <div className="max-w-4xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center">
@@ -808,10 +839,16 @@ export default function TriageView({
                                     </div>
                                 </div>
 
-                                {triageFiles.length === 0 ? (
+                                {loadingFiles ? (
+                                    <div className="p-12 text-center">
+                                        <RefreshCw size={32} className="mx-auto text-cyan-500 mb-4 animate-spin" />
+                                        <p className="text-gray-500 font-bold">Loading files...</p>
+                                    </div>
+                                ) : triageFiles.length === 0 ? (
                                     <div className="p-12 text-center border border-dashed border-white/10 rounded-2xl">
                                         <FolderOpen size={48} className="mx-auto text-gray-600 mb-4" />
                                         <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">No files found in Triage folder</p>
+                                        <p className="text-gray-600 text-xs mt-2">Upload SSIS packages or source files to begin</p>
                                     </div>
                                 ) : (
                                     <div className="grid gap-3">
@@ -868,8 +905,81 @@ export default function TriageView({
                         </div>
                     )}
 
+                    {/* ORIGIN ANALYSIS TAB */}
+                    {activeSection === 'origin' && (
+                        <div className="h-full w-full overflow-hidden">
+                            <OriginAnalysisPanel projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* TRANSFORMATIONS MATRIX TAB */}
+                    {activeSection === 'transform' && (
+                        <div className="h-full w-full overflow-hidden">
+                            <TransformationsMatrix projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* SOURCE QUERIES TAB */}
+                    {activeSection === 'queries' && (
+                        <div className="h-full w-full overflow-hidden">
+                            <SourceQueriesViewer projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* QUALITY DASHBOARD TAB */}
+                    {activeSection === 'quality' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                            <QualityDashboard projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* SCHEMA VIEWER TAB */}
+                    {activeSection === 'schema' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                            {selectedAssetForSchema ? (
+                                <div className="space-y-4">
+                                    <button
+                                        onClick={() => setSelectedAssetForSchema(null)}
+                                        className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                                    >
+                                        ← Back to Asset Selection
+                                    </button>
+                                    <SchemaViewer 
+                                        projectId={projectId} 
+                                        objectId={selectedAssetForSchema}
+                                        showHistory={true}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-2xl flex items-center justify-center mb-6">
+                                        <Database size={40} className="text-gray-400" />
+                                    </div>
+                                    <h3 className="text-xl font-bold mb-2">Select an Asset</h3>
+                                    <p className="text-gray-500 max-w-md">
+                                        Go to <span className="font-bold text-cyan-600">Grid</span> tab and click the <Database size={14} className="inline" /> icon next to any asset to view its schema structure.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* PII HEATMAP TAB */}
+                    {activeSection === 'pii' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                            <PIIHeatmap projectId={projectId} />
+                        </div>
+                    )}
+
+                    {/* PARTITION RECOMMENDATIONS TAB */}
+                    {activeSection === 'partitions' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                            <PartitionRecommendations projectId={projectId} />
+                        </div>
+                    )}
+
                     {/* 1. GRAPH TAB */}
-                    {activeTab === 'graph' && (
+                    {activeSection === 'graph' && (
                         <div className="h-full w-full flex relative">
                             {/* Drag Source Sidebar (Small Grid) */}
                             {!isReadOnly && (
@@ -892,7 +1002,7 @@ export default function TriageView({
                                             <DiscoveryDashboard assets={assets} nodes={nodes} />
                                         </div>
 
-                                        {isLoading ? (
+                                        {isInitialLoading ? (
                                             <div className="p-12 text-center">
                                                 <div className="w-6 h-6 border-2 border-cyan-500 border-b-transparent rounded-full animate-spin mx-auto mb-3" />
                                                 <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Scanning...</span>
@@ -1068,7 +1178,7 @@ export default function TriageView({
                     )}
 
                     {/* 2. GRID TAB */}
-                    {activeTab === 'grid' && (
+                    {activeSection === 'grid' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
                             <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-[var(--text-primary)]">
                                 <List className="text-blue-500" /> Package Inventory
@@ -1114,12 +1224,22 @@ export default function TriageView({
                                                         <button
                                                             onClick={() => {
                                                                 setSelectedAssetForContext(asset.id);
-                                                                setActiveTab('mapping');
+                                                                onSectionChange('mapping');
                                                             }}
                                                             className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
                                                             title="Column Mapping"
                                                         >
                                                             <Database size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedAssetForSchema(asset.id);
+                                                                onSectionChange('schema');
+                                                            }}
+                                                            className="p-1 text-gray-400 hover:text-cyan-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                                            title="View Schema"
+                                                        >
+                                                            <Layers size={12} />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -1213,7 +1333,7 @@ export default function TriageView({
 
 
                     {/* 3. MAPPING TAB */}
-                    {activeTab === 'mapping' && (
+                    {activeSection === 'mapping' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
                             <div className="max-w-7xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -1244,7 +1364,7 @@ export default function TriageView({
                                             Select an asset from the Grid or Graph to edit its column mapping.
                                         </p>
                                         <button
-                                            onClick={() => setActiveTab('grid')}
+                                            onClick={() => onSectionChange('grid')}
                                             className="mt-6 px-4 py-2 bg-primary text-white rounded-lg font-bold text-xs shadow-lg shadow-primary/20"
                                         >
                                             Go to Grid
@@ -1258,7 +1378,7 @@ export default function TriageView({
 
 
                     {/* 4. USER INPUT TAB */}
-                    {activeTab === 'context' && (
+                    {activeSection === 'context' && (
                         <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                             <div className="max-w-7xl mx-auto space-y-10">
                                 {/* Global Context */}
@@ -1336,21 +1456,23 @@ export default function TriageView({
                     )}
 
                     {/* 5. LOGS TAB */}
-                    {activeTab === 'logs' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-950 text-gray-300 font-mono text-sm leading-relaxed">
-                            <div className="max-w-5xl mx-auto">
-                                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-white">
-                                    <FileText className="text-primary" /> Agent Execution Log
+                    {activeSection === 'logs' && (
+                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+                            <div className="max-w-5xl mx-auto space-y-4">
+                                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
+                                    <FileText className="text-primary" /> Triage Execution
                                 </h2>
-                                <div className="bg-black/50 p-6 rounded-xl border border-gray-800 shadow-inner whitespace-pre-wrap">
-                                    {triageLog}
-                                </div>
+                                <ProcessProgress
+                                    isRunning={isTriageRunning}
+                                    logs={triageLog.split('\n').filter(l => l.trim())}
+                                    processName="Triage Analysis"
+                                />
                             </div>
                         </div>
                     )}
 
-                </div>
-            </div>
+                    </div> {/* Close tab content div (flex-1 overflow-hidden relative) */}
+                </div> {/* Close flex container (sidebar + content) */}
 
             {/* Release 1.1: Context Sidebar Overlay */}
             {
@@ -1427,6 +1549,6 @@ export default function TriageView({
                     </div>
                 )
             }
-        </ReactFlowProvider >
+        </ReactFlowProvider>
     );
 }

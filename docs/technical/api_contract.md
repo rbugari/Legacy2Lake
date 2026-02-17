@@ -1,8 +1,8 @@
-# API Contract (Backend-Frontend) - v3.5
+# API Contract (Backend-Frontend) - v4.0
 
 This document describes the communication interface between the Frontend (React) and Backend (FastAPI), detailing main endpoints, orchestration flows, and how AI engines integrate.
 
-> **v3.5 Update**: All endpoints now include `tenant_id` context via Supabase RLS. Files served from Cloudflare R2 using signed URLs.
+> **v4.0 Update**: All endpoints include `tenant_id` context via Supabase RLS. New endpoints for prompts, validation, forensics, and parser catalog. Files served from Cloudflare R2 using signed URLs.
 
 ## v3.2 New Endpoints
 

@@ -52,41 +52,41 @@ class CartridgeFactory:
             print(f"[CartridgeFactory] DEBUG: Matched 'dbt', importing DbtCartridge...")
             from .dbt_cartridge import DbtCartridge
             print(f"[CartridgeFactory] DEBUG: DbtCartridge imported successfully")
-            return DbtCartridge(project_id, registry)
+            return DbtCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
             
         elif target in ["snowflake"]:
             print(f"[CartridgeFactory] DEBUG: Matched 'snowflake', importing SnowflakeCartridge...")
             from .snowflake_cartridge import SnowflakeCartridge
             print(f"[CartridgeFactory] DEBUG: SnowflakeCartridge imported successfully")
-            return SnowflakeCartridge(project_id, registry)
+            return SnowflakeCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         elif target in ["fabric", "ms_fabric", "microsoft_fabric"]:
             from .ms_fabric_cartridge import MSFabricCartridge
-            return MSFabricCartridge(project_id, registry)
+            return MSFabricCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         elif target in ["gcp", "google", "bigquery"]:
             from .gcp_cartridge import GCPCartridge
-            return GCPCartridge(project_id, registry)
+            return GCPCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         elif target in ["aws", "amazon", "redshift"]:
             from .aws_cartridge import AWSCartridge
-            return AWSCartridge(project_id, registry)
+            return AWSCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         elif target in ["salesforce", "sf", "sfdc"]:
             from .sf_cartridge import SFCartridge
-            return SFCartridge(project_id, registry)
+            return SFCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         elif target in ["sql", "ansi_sql"]:
             # Placeholder for Pure SQL
-            return PySparkCartridge(project_id, registry)
+            return PySparkCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
             
         elif target == "both":
             # Special mode: We use PySparkCartridge but we expect the prompt 
             # (which includes the registry) to trigger dual generation.
             # In a more advanced version, we might return a MultiCartridge.
             print(f"[CartridgeFactory] DEBUG: Matched 'both', using PySparkCartridge for dual mode")
-            return PySparkCartridge(project_id, registry)
+            return PySparkCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
         else:
             print(f"[CartridgeFactory] DEBUG: No match for target='{target}', defaulting to PySparkCartridge")
-            return PySparkCartridge(project_id, registry)
+            return PySparkCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id

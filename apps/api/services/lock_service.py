@@ -136,7 +136,7 @@ class LockService:
         user_id: Optional[str] = None
     ) -> bool:
         """
-        Releases a process lock.
+        Releases a process lock by DELETING it.
         
         Args:
             lock_id: Specific lock ID to release (preferred)
@@ -149,19 +149,15 @@ class LockService:
         """
         try:
             if lock_id:
-                # Release by lock_id
-                query = self.db.client.table('utm_process_locks').update({
-                    'status': 'completed'
-                }).eq('lock_id', lock_id).eq('status', 'active')
+                # Release by lock_id - DELETE instead of UPDATE to avoid unique constraint issues
+                query = self.db.client.table('utm_process_locks').delete().eq('lock_id', lock_id).eq('status', 'active')
                 
                 if user_id:
                     query = query.eq('locked_by_user_id', user_id)
                     
             elif project_id and process_type:
-                # Release by project + process type
-                query = self.db.client.table('utm_process_locks').update({
-                    'status': 'completed'
-                }).eq('project_id', project_id).eq('process_type', process_type).eq('status', 'active')
+                # Release by project + process type - DELETE instead of UPDATE
+                query = self.db.client.table('utm_process_locks').delete().eq('project_id', project_id).eq('process_type', process_type).eq('status', 'active')
                 
                 if user_id:
                     query = query.eq('locked_by_user_id', user_id)
@@ -203,7 +199,7 @@ class LockService:
         admin_user_id: str
     ) -> bool:
         """
-        Admin-only: Force release a lock.
+        Admin-only: Force release a lock by DELETING it.
         
         Args:
             project_id: Project ID
@@ -214,9 +210,8 @@ class LockService:
             True if successful
         """
         try:
-            result = self.db.client.table('utm_process_locks').update({
-                'status': 'released'
-            }).eq('project_id', project_id).eq('process_type', process_type).eq('status', 'active').execute()
+            # DELETE instead of UPDATE to avoid constraint issues
+            result = self.db.client.table('utm_process_locks').delete().eq('project_id', project_id).eq('process_type', process_type).eq('status', 'active').execute()
             
             if result.data:
                 logger.warning(f"Lock force-released by admin {admin_user_id}: {project_id}/{process_type}")

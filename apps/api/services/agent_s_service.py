@@ -62,6 +62,7 @@ class AgentSService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         await db.save_prompt("agent_s_scout", content)
 
+    @logger.llm_debug("Agent S")
     async def assess_repository(self, file_list: List[str], system_prompt_override: str = None) -> Dict[str, Any]:
         """Performs forensic assessment of the provided file list."""
         system_prompt = system_prompt_override or await self._load_prompt()

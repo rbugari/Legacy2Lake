@@ -11,12 +11,35 @@ class ShiftLogger:
     def __init__(self):
         # Read from environment, default to False
         self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+        
+        # Create logs directory if it doesn't exist
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Open log file in append mode with immediate flush
+        self.log_file = os.path.join(log_dir, "http_traffic.log")
+        self._file_handle = None
+        try:
+            self._file_handle = open(self.log_file, "a", encoding="utf-8", buffering=1)
+        except Exception as e:
+            print(f"[WARN] Could not open log file: {e}")
 
     def log(self, message: str, level: str = "INFO", component: str = "System"):
         """Standard log format: [TIMESTAMP] [LEVEL] [COMPONENT] Message"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] [{level}] [{component}] {message}")
+        log_line = f"[{timestamp}] [{level}] [{component}] {message}"
+        
+        # Write to stdout
+        print(log_line)
         sys.stdout.flush()
+        
+        # Write to file (immediate flush for tail -f visibility)
+        if self._file_handle:
+            try:
+                self._file_handle.write(log_line + "\n")
+                self._file_handle.flush()
+            except Exception:
+                pass
 
     def info(self, message: str, component: str = "System"):
         self.log(message, "INFO", component)

@@ -33,6 +33,8 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchWithAuth } from '../../lib/auth-client';
 import DesignRegistryPanel from './DesignRegistryPanel';
 import OrchestrationPanel from './OrchestrationPanel';
+import QualityDashboard from '../visualization/QualityDashboard';
+import PerformanceDashboard from '../visualization/PerformanceDashboard';
 
 interface GovernanceViewProps {
     projectId: string;
@@ -53,7 +55,7 @@ export default function GovernanceView({
 }: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality">("report");
+    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality" | "performance">("report"); // [SPRINT 13] Added performance tab
     const [isPushing, setIsPushing] = useState(false);
     const [auditReport, setAuditReport] = useState<any>(null);
     const [isAuditing, setIsAuditing] = useState(false);
@@ -201,6 +203,12 @@ export default function GovernanceView({
                     >
                         <Shield size={14} /> Data Quality
                     </button>
+                    <button
+                        onClick={() => setActiveTab("performance")}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "performance" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
+                    >
+                        <Zap size={14} /> Performance
+                    </button>
                 </div>
 
                 <button
@@ -221,60 +229,12 @@ export default function GovernanceView({
                         <OrchestrationPanel projectId={projectId} />
                     </div>
                 ) : activeTab === "quality" ? (
-                    <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-xl">
-                        <div className="flex items-center gap-6 mb-8">
-                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl">
-                                <ShieldCheck size={32} className="text-emerald-500" />
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-bold mb-2">Automated Data Quality Contracts</h2>
-                                <p className="text-gray-500 max-w-2xl">
-                                    Contracts derived from your Column Mappings. This feature is <strong>optional</strong>; if no rules are defined, no contracts will be generated.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                                    <FileText size={18} className="text-blue-500" />
-                                    Great Expectations (JSON)
-                                </h3>
-                                <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-blue-600 dark:text-blue-400 overflow-hidden">
-                                    <SyntaxHighlighter language="json" style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '12px' }}>
-                                        {`{
-  "expectation_suite_name": "orders.warning",
-  "expectations": [
-    {
-      "expectation_type": "expect_column_values_to_not_be_null",
-      "kwargs": { "column": "email" }
-    }
-  ]
-}`}
-                                    </SyntaxHighlighter>
-                                </div>
-                                <p className="text-xs text-gray-400 italic">
-                                    * Included in export if rules are detected.
-                                </p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                                    <Database size={18} className="text-orange-500" />
-                                    Soda Core (YAML)
-                                </h3>
-                                <div className="p-4 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 font-mono text-xs text-orange-600 dark:text-orange-400 overflow-hidden">
-                                    <SyntaxHighlighter language="yaml" style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '12px' }}>
-                                        {`checks for orders:
-  - missing_count(email) = 0
-  - invalid_percent(phone) < 5%`}
-                                    </SyntaxHighlighter>
-                                </div>
-                                <p className="text-xs text-gray-400 italic">
-                                    * Generated alongside GX suites.
-                                </p>
-                            </div>
-                        </div>
+                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
+                        <QualityDashboard projectId={projectId} />
+                    </div>
+                ) : activeTab === "performance" ? (
+                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
+                        <PerformanceDashboard projectId={projectId} />
                     </div>
                 ) : (
                     <>

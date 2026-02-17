@@ -11,7 +11,8 @@ import RefinementView from "../components/stages/RefinementView";
 import HandoverView from "../components/stages/HandoverView";
 import WorkflowToolbar from "../components/WorkflowToolbar";
 import LogsSidePanel from "../components/LogsSidePanel";
-import WorkspaceSidebar from "../components/WorkspaceSidebar";
+import StageSidebar from "../components/navigation/StageSidebar";
+import { getSectionsForStage } from "../config/sidebar-sections";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 import WorkspaceShield from "../components/WorkspaceShield";
 import ReportsLibraryModal from "../components/ReportsLibraryModal";
@@ -50,6 +51,7 @@ function WorkspaceContent() {
 
     // New Global UI State
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [activeSection, setActiveSection] = useState<string>(''); // Sprint 14: Unified section management
 
     const handleStatsUpdate = useCallback((stats: any) => {
         setSidebarStats(stats);
@@ -62,6 +64,34 @@ function WorkspaceContent() {
             return;
         }
     }, [id]);
+
+    // Initialize activeSection when stage changes - Sprint 14
+    // Uses projectStage (real stage) not activeView (inspection mode)
+    useEffect(() => {
+        const sections = getSectionsForStage(projectStage);
+        if (sections.length === 0) return;
+        
+        // Get all valid section IDs (including nested children)
+        const allSectionIds: string[] = [];
+        sections.forEach(section => {
+            allSectionIds.push(section.id);
+            if (section.children) {
+                section.children.forEach(child => {
+                    allSectionIds.push(child.id);
+                });
+            }
+        });
+        
+        // If current activeSection doesn't exist in current stage, reset to first available
+        if (!allSectionIds.includes(activeSection)) {
+            // Prefer first child if section has children, otherwise use section id
+            const firstSection = sections[0];
+            const firstId = firstSection.children && firstSection.children.length > 0 
+                ? firstSection.children[0].id 
+                : firstSection.id;
+            setActiveSection(firstId);
+        }
+    }, [projectStage]);
 
     // Mock data for Stage 3
     const [originalCode, setOriginalCode] = useState("-- SQL Legacy Code\nSELECT * FROM Sales WHERE Date > '2023-01-01'");
@@ -82,6 +112,13 @@ function WorkspaceContent() {
         fetchWithAuth(`projects/${id}`)
             .then(res => res.json())
             .then(data => {
+                console.log('[WorkspacePage] Project data loaded:', {
+                    projectId: id,
+                    stage: data.stage,
+                    status: data.status,
+                    name: data.name
+                });
+                
                 if (data.name) setProjectName(data.name);
                 if (data.repo_url) setRepoUrl(data.repo_url);
                 if (data.stage) {
@@ -265,17 +302,11 @@ function WorkspaceContent() {
         <ReactFlowProvider>
             <div className="flex h-screen bg-[#050505] text-[var(--text-primary)] overflow-hidden">
                 {isSidebarOpen && (
-                    <WorkspaceSidebar
-                        projectName={projectName || id}
-                        origin={sourceTech}
-                        destination={targetTech}
-                        activeStage={projectStage}
-                        stats={sidebarStats}
-                        onAction={(action) => {
-                            if (action === 'config') setShowConfig(true);
-                            if (action === 'export') window.open(`${API_BASE_URL}/projects/${id}/export`);
-                            if (action === 'reset') handleResetProject();
-                        }}
+                    <StageSidebar
+                        stage={projectStage}
+                        projectId={id}
+                        activeSection={activeSection}
+                        onSectionChange={setActiveSection}
                     />
                 )}
 
@@ -414,6 +445,8 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
                         {activeView === 3 && (
@@ -427,6 +460,8 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
                         {activeView === 4 && (
@@ -438,6 +473,8 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
                         {activeView === 5 && (

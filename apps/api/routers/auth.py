@@ -5,9 +5,9 @@ import bcrypt
 from typing import Optional, List
 from datetime import datetime
 
-from services.persistence_service import SupabasePersistence
-from services.email_service import EmailService
-from routers.dependencies import require_admin, require_manager, get_identity
+from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.services.email_service import EmailService
+from apps.api.routers.dependencies import require_admin, require_manager, get_identity
 import secrets
 import string
 

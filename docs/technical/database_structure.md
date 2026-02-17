@@ -1,15 +1,28 @@
 # Estructura de la Base de Datos (Supabase / PostgreSQL)
 
-**Version:** v3.9 (Multi-User Architecture)  
-**Last Updated:** 2026-02-10
+**Version:** v4.0 (Zero-Hardcode Architecture)  
+**Last Updated:** 2026-02-17  
+**Sprint:** Sprint 14 Phase 2 (85% complete)
 
 Este documento detalla la estructura física actual de la base de datos, incluyendo todas las tablas, columnas y tipos de datos. Esta referencia es ideal para generar Diagramas Entidad-Relación (ER).
 
+> **v4.0 Major Update**: 6 nuevas tablas agregadas (utm_prompts, utm_prompts_history, utm_column_profiles, utm_generation_outcomes, utm_parser_catalog, utm_source_tech_catalog). Total: 22 tablas core.
+
 ---
 
-## ⚠️ v3.9 Breaking Changes Summary
+## ⚠️ v4.0 Breaking Changes Summary
 
-**Architectural Shift**: Separación completa de identidad de usuario de organización (tenant).
+**Zero-Hardcode Architecture**: Todos los prompts migrados de archivos a base de datos con versionamiento automático.
+
+### New Tables (v4.0):
+- ✅ **`utm_prompts`**: Global prompts con versionamiento automático (14 activos)
+- ✅ **`utm_prompts_history`**: Historia inmutable de versiones anteriores
+- ✅ **`utm_column_profiles`**: Análisis forense a nivel de campo (22 columnas, 6 índices)
+- ✅ **`utm_generation_outcomes`**: Analytics de generación de código para ML
+- ✅ **`utm_parser_catalog`**: Configuraciones de parsers dinámicos (10 tecnologías)
+- ✅ **`utm_source_tech_catalog`**: Definiciones de tecnologías (15+ registrados)
+
+### v3.9 Legacy Changes:
 
 ### Removed Tables:
 - ❌ **`utm_clients`**: Eliminado en migración 024. Concepto consolidado en `utm_tenants`.

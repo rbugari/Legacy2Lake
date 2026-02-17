@@ -25,6 +25,9 @@ solutions/
 *.sqlite
 *.db
 
+# Temporary launcher files
+_start_backend.bat
+
 # Audit Logs (large files)
 logs/*.jsonl
 

@@ -1,9 +1,13 @@
 # Stage 5: Certification (AI-Driven Quality Assurance & Governance)
 
 ## 📌 Overview
+
+> **v4.0 Note**: Certification stage integrates with utm_generation_outcomes analytics for quality trend analysis.
 **Certification** is the automated quality gate that ensures generated code meets enterprise standards before deployment. **Agent G (Governor)** audits code for security, performance, compliance, and best practices, then generates a certification package.
 
 > **v3.5 Update**: **Parallel batch processing** - Agent G scans hundreds of files simultaneously from R2, generating compliance scores in minutes.
+
+> **v3.9 GA Status**: ✅ **COMPLETE** - Visualization dashboards integrated (Feb 13, 2026). Deployment readiness dashboards available in Refinement phase with 4 validation tabs.
 
 ## 🎯 Objectives
 - **Security Audit**: Detect PII exposure, SQL injection risks, hardcoded credentials
@@ -12,6 +16,7 @@
 - **Compliance Scoring**: Generate 0-100 certification score
 - **Documentation**: Auto-generate Modernization Runbook and lineage diagrams
 - **Bundle Packaging**: Create ready-to-deploy COP (Certified Output Package) bundle
+- **Future (v3.9.1)**: Deployment readiness dashboards with resource provisioning, test results, rollback safety
 
 ## 👨‍💻 User Guide
 
