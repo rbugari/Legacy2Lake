@@ -124,6 +124,7 @@ class PromptLabService:
             lookup_names.append(reverse_map[agent_name])
             
         try:
+            # 2.1 Try by prompt_id first (original logic)
             res = self.db.client.table("utm_prompts")\
                 .select("content")\
                 .eq("is_active", True)\
@@ -133,6 +134,21 @@ class PromptLabService:
             
             if res.data:
                 return res.data[0]["content"]
+                
+            # 2.2 Fallback: Try by agent_id (v4.0 logic)
+            # Find the original agent name (e.g. agent-s)
+            agent_id = next((k for k, v in self.AGENT_MAP.items() if v == agent_name), agent_name)
+            
+            res = self.db.client.table("utm_prompts")\
+                .select("content")\
+                .eq("agent_id", agent_id)\
+                .eq("is_active", True)\
+                .limit(1)\
+                .execute()
+            
+            if res.data:
+                return res.data[0]["content"]
+
         except Exception as e:
             logger.error(f"Error loading prompt from DB for {agent_name}: {e}", "PromptLabService")
         

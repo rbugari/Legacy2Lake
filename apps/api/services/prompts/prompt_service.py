@@ -125,12 +125,12 @@ class PromptService:
                 .select("*")
                 .eq("prompt_id", prompt_id)
                 .eq("is_active", True)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             
-            if response.data:
-                prompt = Prompt(response.data)
+            if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
+                prompt = Prompt(response.data[0])
                 self._cache_prompt(prompt_id, prompt)
                 return prompt
             else:
@@ -444,6 +444,98 @@ class PromptService:
             )
             raise
     
+    async def get_prompt_override(
+        self,
+        project_id: str,
+        prompt_id: str
+    ) -> Optional[str]:
+        """
+        Get project-specific prompt override
+        
+        Args:
+            project_id: Project identifier
+            prompt_id: System prompt identifier
+            
+        Returns:
+            Override content or None if not found
+        """
+        try:
+            response = (
+                self.db.client
+                .table("utm_prompt_overrides")
+                .select("content")
+                .eq("project_id", project_id)
+                .eq("prompt_id", prompt_id)
+                .limit(1)
+                .execute()
+            )
+            
+            if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
+                return response.data[0].get("content")
+            return None
+                
+        except Exception as e:
+            logger.error(
+                f"[PromptService] Error loading override for {prompt_id} in project {project_id}: {e}",
+                "PromptService"
+            )
+            return None
+
+    async def save_prompt_override(
+        self,
+        project_id: str,
+        prompt_id: str,
+        content: str
+    ) -> bool:
+        """
+        Save project-specific prompt override (UPSERT)
+        
+        Args:
+            project_id: Project identifier
+            prompt_id: System prompt identifier
+            content: User instructions
+            
+        Returns:
+            True if saved successfully
+        """
+        try:
+            # Check if override exists
+            response = (
+                self.db.client
+                .table("utm_prompt_overrides")
+                .select("override_id")
+                .eq("project_id", project_id)
+                .eq("prompt_id", prompt_id)
+                .execute()
+            )
+            
+            data = {
+                "project_id": project_id,
+                "prompt_id": prompt_id,
+                "content": content,
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
+                # Update
+                self.db.client.table("utm_prompt_overrides").update(data).eq("project_id", project_id).eq("prompt_id", prompt_id).execute()
+            else:
+                # Insert
+                self.db.client.table("utm_prompt_overrides").insert(data).execute()
+                
+            logger.info(
+                f"[PromptService] Saved override for {prompt_id} in project {project_id}",
+                "PromptService"
+            )
+            return True
+                
+        except Exception as e:
+            logger.error(
+                f"[PromptService] Error saving override for {prompt_id}: {e}",
+                "PromptService"
+            )
+            return False
+
     async def get_prompt_history(
         self,
         prompt_id: str,

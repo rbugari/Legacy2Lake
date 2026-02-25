@@ -120,10 +120,10 @@ def validate_tenant_id(request: Request, tenant_id: Optional[str]) -> str:
     # Validate UUID format (strict RFC 4122 validation)
     try:
         # Attempt to parse as UUID - raises ValueError if invalid
-        parsed_uuid = uuid.UUID(tenant_id, version=4)
+        parsed_uuid = uuid.UUID(tenant_id)
         
-        # Additional check: ensure lowercase hex format matches
-        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$', re.IGNORECASE)
+        # Additional check: ensure standard lowercase hex format matches (any version)
+        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
         if not uuid_pattern.match(tenant_id):
             raise ValueError("UUID format validation failed")
         
@@ -235,7 +235,8 @@ async def get_db(identity: dict = Depends(get_identity)) -> SupabasePersistence:
     return SupabasePersistence(
         tenant_id=identity.get("tenant_id"), 
         user_id=identity.get("user_id"),
-        client_id=identity.get("client_id")
+        client_id=identity.get("client_id"),
+        role=identity.get("role")
     )
 
 
@@ -274,3 +275,61 @@ async def require_manager(identity: dict = Depends(get_identity)):
             detail="Forbidden: Manager or Admin access required"
         )
     return identity
+
+
+async def check_project_permission(
+    user_id: str, 
+    project_id: str, 
+    tenant_id: str,
+    db_client: Client,
+    required_roles: list = ["MANAGER", "COLLABORATOR", "VIEWER"]
+) -> bool:
+    """
+    Check if a user has permission to access a specific project.
+    
+    Returns True if:
+    - User is ADMIN (global role in utm_users)
+    - User is MANAGER (tenant-level role, has access to all projects)
+    - User is COLLABORATOR or VIEWER in utm_project_members for this project
+    
+    Args:
+        user_id: The user's ID
+        project_id: The project ID to check
+        tenant_id: The tenant ID
+        db_client: Supabase client
+        required_roles: List of project roles that grant permission
+    
+    Returns:
+        bool: True if user has permission, False otherwise
+    """
+    if not user_id or not tenant_id:
+        print(f"[check_project_permission] Missing identity: user_id={user_id}, tenant_id={tenant_id}")
+        return False
+        
+    try:
+        # Check global user role
+        user_res = db_client.table("utm_users").select("role").eq("user_id", user_id).eq("tenant_id", tenant_id).execute()
+        if user_res.data:
+            user_role = user_res.data[0].get("role", "VIEWER")
+            # ADMIN has access to everything
+            if user_role == "ADMIN":
+                return True
+            # MANAGER has access to all projects in their tenant
+            if user_role == "MANAGER":
+                return True
+        
+        # Check project-specific role in utm_project_members
+        member_res = db_client.table("utm_project_members").select("role").eq(
+            "project_id", project_id
+        ).eq("user_id", user_id).execute()
+        
+        if member_res.data:
+            project_role = member_res.data[0].get("role", "VIEWER")
+            return project_role in required_roles
+        
+        return False
+        
+    except Exception as e:
+        # Log error but don't expose details
+        print(f"[check_project_permission] Error: {e}")
+        return False

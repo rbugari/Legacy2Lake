@@ -35,7 +35,7 @@ export default function LoginPage() {
             }
 
             if (data.success) {
-                login(data.tenant_id, data.display_name, data.role, username);
+                login(data.user_id, data.tenant_id, data.display_name, data.role, username);
             } else {
                 setError("Unexpected response from server");
             }

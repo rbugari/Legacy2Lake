@@ -90,11 +90,11 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-8">
             {/* Feature 1 */}
-            <div className="group relative bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 rounded-2xl p-8 hover:border-cyan-500/40 transition-all">
+            <div className="group relative bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 rounded-2xl p-8 hover:border-cyan-500/40 transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-cyan-500/20">
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative">
-                <div className="w-14 h-14 bg-cyan-500/20 rounded-xl flex items-center justify-center mb-6">
-                  <Cpu size={28} className="text-cyan-400" />
+                <div className="w-14 h-14 bg-cyan-500/20 rounded-xl flex items-center justify-center mb-6 overflow-hidden">
+                  <Cpu size={28} className="text-cyan-400 group-hover:scale-110 transition-transform duration-500" />
                 </div>
                 <h3 className="text-2xl font-bold mb-4">AI-Powered Agents</h3>
                 <p className="text-gray-400 leading-relaxed">
@@ -104,11 +104,11 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 2 */}
-            <div className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-2xl p-8 hover:border-purple-500/40 transition-all">
+            <div className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-2xl p-8 hover:border-purple-500/40 transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-purple-500/20">
               <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative">
-                <div className="w-14 h-14 bg-purple-500/20 rounded-xl flex items-center justify-center mb-6">
-                  <Zap size={28} className="text-purple-400" />
+                <div className="w-14 h-14 bg-purple-500/20 rounded-xl flex items-center justify-center mb-6 overflow-hidden">
+                  <Zap size={28} className="text-purple-400 group-hover:scale-110 transition-transform duration-500" />
                 </div>
                 <h3 className="text-2xl font-bold mb-4">Technology Expertise</h3>
                 <p className="text-gray-400 leading-relaxed">
@@ -118,11 +118,11 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 3 */}
-            <div className="group relative bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 rounded-2xl p-8 hover:border-emerald-500/40 transition-all">
+            <div className="group relative bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 rounded-2xl p-8 hover:border-emerald-500/40 transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-emerald-500/20">
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative">
-                <div className="w-14 h-14 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-6">
-                  <Shield size={28} className="text-emerald-400" />
+                <div className="w-14 h-14 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-6 overflow-hidden">
+                  <Shield size={28} className="text-emerald-400 group-hover:scale-110 transition-transform duration-500" />
                 </div>
                 <h3 className="text-2xl font-bold mb-4">Compliance Ready</h3>
                 <p className="text-gray-400 leading-relaxed">
@@ -148,19 +148,19 @@ export default function LandingPage() {
 
           <div className="space-y-6">
             {[
-              { stage: "1. Discovery", icon: Database, desc: "Upload your legacy repository. Agent S scans and catalogs all assets." },
-              { stage: "2. Triage", icon: Code, desc: "Classify objects as CORE, SUPPORT, or IGNORED. Define load strategies and PII flags." },
+              { stage: "1. Discovery", icon: Database, desc: "Upload your legacy repository. Agent S scans and catalogs all assets. Only metadata and code are analyzed—your actual data remains completely untouched." },
+              { stage: "2. Triage", icon: Code, desc: "Classify objects as CORE, SUPPORT, or IGNORED. Define load strategies and automatically uncover underlying PII risks." },
               { stage: "3. Drafting", icon: Cpu, desc: "Code Generator produces cloud-native code with technology-specific best practices." },
               { stage: "4. Refinement", icon: Zap, desc: "Compliance Auditor applies cartridges for self-correction and optimization." },
               { stage: "5. Certification", icon: Shield, desc: "Compliance scoring (COP) and validation against quality gates." },
               { stage: "6. Handover", icon: Cloud, desc: "Download production-ready artifacts with deployment guides." },
             ].map((item, idx) => (
-              <div key={idx} className="flex items-start gap-6 bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all">
+              <div key={idx} className="group flex items-start gap-6 bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all hover:translate-x-2 cursor-pointer">
                 <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <item.icon size={24} className="text-white" />
+                  <item.icon size={24} className="text-white group-hover:scale-110 transition-transform" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold mb-2">{item.stage}</h3>
+                  <h3 className="text-xl font-bold mb-2 text-white group-hover:text-cyan-400 transition-colors">{item.stage}</h3>
                   <p className="text-gray-400">{item.desc}</p>
                 </div>
               </div>
@@ -181,10 +181,10 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
             <Link
               href="/dashboard"
-              className="px-10 py-5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-xl font-bold text-xl transition-all shadow-2xl shadow-cyan-600/40 flex items-center justify-center gap-2"
+              className="group px-10 py-5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-xl font-bold text-xl transition-all shadow-2xl shadow-cyan-600/40 flex items-center justify-center gap-2"
             >
               Create Your First Project
-              <ArrowRight size={24} />
+              <ArrowRight size={24} className="group-hover:translate-x-2 transition-transform" />
             </Link>
           </div>
         </div>
@@ -199,13 +199,13 @@ export default function LandingPage() {
               alt="Legacy2Lake"
               width={150}
               height={30}
-              className="h-6 w-auto opacity-60"
+              className="h-6 w-auto opacity-60 hover:opacity-100 transition-opacity"
             />
           </div>
           <div className="flex gap-8 text-sm text-gray-400">
-            <Link href="/help" className="hover:text-white transition-colors">Documentation</Link>
-            <Link href="/help/philosophy" className="hover:text-white transition-colors">About</Link>
-            <Link href="/dashboard" className="hover:text-white transition-colors">Console</Link>
+            <Link href="/help" className="hover:text-cyan-400 transition-colors">Documentation</Link>
+            <Link href="/help/philosophy" className="hover:text-cyan-400 transition-colors">About</Link>
+            <Link href="/dashboard" className="hover:text-cyan-400 transition-colors">Console</Link>
           </div>
           <div className="text-sm text-gray-500">
             © {new Date().getFullYear()} Legacy2Lake Platform. All rights reserved.

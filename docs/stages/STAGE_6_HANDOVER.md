@@ -60,7 +60,7 @@ Before generating the final bundle, review the **Variables Table**:
 
 ### 3. Generate Runbook
 
-Click **"Generate Modernization Runbook"** to create deployment guide:
+Open the left **Sidebar** and click **"View Runbook"** (or Generate) to create the deployment guide:
 
 **Runbook Sections**:
 1. **Executive Summary**: Project scope, migration statistics
@@ -90,8 +90,9 @@ Click **"Generate Modernization Runbook"** to create deployment guide:
 
 ### 4. Export COP Bundle
 
-1. **Click "Export Delivery Package"**
-2. **Bundle Generation**: System creates ZIP in-memory (~30 seconds for 100 files)
+1. **Open Sidebar**: Go to the **Export Options** section in the left sidebar.
+2. **Click "Export Delivery"**
+3. **Bundle Generation**: System creates ZIP in-memory (~30 seconds for 100 files)
 3. **R2 Upload**: COP stored at:
    ```
    tenant-{id}/projects/{pid}/packages/cop_{timestamp}.zip

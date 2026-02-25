@@ -10,7 +10,7 @@ import GovernanceView from "../components/stages/GovernanceView";
 import RefinementView from "../components/stages/RefinementView";
 import HandoverView from "../components/stages/HandoverView";
 import WorkflowToolbar from "../components/WorkflowToolbar";
-import LogsSidePanel from "../components/LogsSidePanel";
+import UnifiedLogViewer from "../components/UnifiedLogViewer";
 import StageSidebar from "../components/navigation/StageSidebar";
 import { getSectionsForStage } from "../config/sidebar-sections";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
@@ -39,8 +39,8 @@ function WorkspaceContent() {
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
     // Split State: projectStage (Backend) vs activeView (UI)
-    const [projectStage, setProjectStage] = useState(1);
-    const [activeView, setActiveView] = useState(1);
+    const [projectStage, setProjectStage] = useState(0);
+    const [activeView, setActiveView] = useState(0);
     const [isInitializing, setIsInitializing] = useState(true);
 
     const [selectedNode, setSelectedNode] = useState<any>(null);
@@ -65,12 +65,13 @@ function WorkspaceContent() {
         }
     }, [id]);
 
-    // Initialize activeSection when stage changes - Sprint 14
-    // Uses projectStage (real stage) not activeView (inspection mode)
+    // Initialize activeSection when activeView changes - Sprint 14
+    // Uses activeView (what user is viewing) not projectStage (real stage)
+    // This allows sidebar to sync when user clicks toolbar buttons
     useEffect(() => {
-        const sections = getSectionsForStage(projectStage);
+        const sections = getSectionsForStage(activeView);
         if (sections.length === 0) return;
-        
+
         // Get all valid section IDs (including nested children)
         const allSectionIds: string[] = [];
         sections.forEach(section => {
@@ -81,17 +82,17 @@ function WorkspaceContent() {
                 });
             }
         });
-        
+
         // If current activeSection doesn't exist in current stage, reset to first available
         if (!allSectionIds.includes(activeSection)) {
             // Prefer first child if section has children, otherwise use section id
             const firstSection = sections[0];
-            const firstId = firstSection.children && firstSection.children.length > 0 
-                ? firstSection.children[0].id 
+            const firstId = firstSection.children && firstSection.children.length > 0
+                ? firstSection.children[0].id
                 : firstSection.id;
             setActiveSection(firstId);
         }
-    }, [projectStage]);
+    }, [activeView]); // Changed from projectStage to activeView
 
     // Mock data for Stage 3
     const [originalCode, setOriginalCode] = useState("-- SQL Legacy Code\nSELECT * FROM Sales WHERE Date > '2023-01-01'");
@@ -118,7 +119,7 @@ function WorkspaceContent() {
                     status: data.status,
                     name: data.name
                 });
-                
+
                 if (data.name) setProjectName(data.name);
                 if (data.repo_url) setRepoUrl(data.repo_url);
                 if (data.stage) {
@@ -187,8 +188,8 @@ function WorkspaceContent() {
 
     const handleNodeClick = async (node: any) => {
         setSelectedNode(node);
-        // If in stage 3, load the code for this node
-        if (activeView === 3) {
+        // If in stage 2 (Drafting), load the code for this node
+        if (activeView === 2) {
             setIsTranspiling(true);
             setSuggestions([]); // Clear previous suggestions
             setOriginalCode(`-- Loading source for ${node.data.label}...`);
@@ -277,8 +278,8 @@ function WorkspaceContent() {
             if (res.ok) {
                 alert("✅ Project reset successfully!");
                 // Clear state
-                setProjectStage(1);
-                setActiveView(1);
+                setProjectStage(0);
+                setActiveView(0);
                 window.location.reload(); // Hard refresh to clear all local states
             } else {
                 const data = await res.json();
@@ -301,9 +302,10 @@ function WorkspaceContent() {
     return (
         <ReactFlowProvider>
             <div className="flex h-screen bg-[#050505] text-[var(--text-primary)] overflow-hidden">
+                {/* Sidebar rendered for all stages */}
                 {isSidebarOpen && (
                     <StageSidebar
-                        stage={projectStage}
+                        stage={activeView}
                         projectId={id}
                         activeSection={activeSection}
                         onSectionChange={setActiveSection}
@@ -424,7 +426,7 @@ function WorkspaceContent() {
                         )}
 
 
-                        {activeView === 1 && (
+                        {activeView === 0 && (
                             <DiscoveryView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
@@ -432,12 +434,15 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
-                        {activeView === 2 && (
+                        {activeView === 1 && (
                             <TriageView
                                 projectId={id}
                                 activeTenantId={ghostTenantId || undefined}
+                                projectStage={projectStage}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                                 onStatsUpdate={handleStatsUpdate}
@@ -449,10 +454,11 @@ function WorkspaceContent() {
                                 onSectionChange={setActiveSection}
                             />
                         )}
-                        {activeView === 3 && (
+                        {activeView === 2 && (
                             <DraftingView
                                 projectId={id}
                                 activeTenantId={ghostTenantId || undefined}
+                                projectStage={projectStage}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                                 onCompletion={(completed) => setIsStageComplete(completed)}
@@ -464,9 +470,10 @@ function WorkspaceContent() {
                                 onSectionChange={setActiveSection}
                             />
                         )}
-                        {activeView === 4 && (
+                        {activeView === 3 && (
                             <RefinementView
                                 projectId={id}
+                                projectStage={projectStage}
                                 onStageChange={(s: number) => handleApproveStage(s)}
                                 isReadOnly={activeView < projectStage}
                                 isFullscreen={!isSidebarOpen}
@@ -477,7 +484,7 @@ function WorkspaceContent() {
                                 onSectionChange={setActiveSection}
                             />
                         )}
-                        {activeView === 5 && (
+                        {activeView === 4 && (
                             <GovernanceView
                                 projectId={id}
                                 onStageChange={(s: number) => handleApproveStage(s)}
@@ -485,9 +492,11 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
-                        {activeView === 6 && (
+                        {activeView === 5 && (
                             <HandoverView
                                 projectId={id}
                                 projectName={projectName || undefined}
@@ -496,17 +505,23 @@ function WorkspaceContent() {
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
+                                activeSection={activeSection}
+                                onSectionChange={setActiveSection}
                             />
                         )}
 
                     </div >
 
                     {/* Global Diagnostics Sidebar */}
-                    <LogsSidePanel
-                        projectId={id}
-                        isOpen={showLogs}
-                        onClose={() => setShowLogs(false)}
-                    />
+                    {showLogs && (
+                        <UnifiedLogViewer
+                            mode="history"
+                            projectId={id}
+                            variant="side"
+                            onClose={() => setShowLogs(false)}
+                            autoRefresh={true}
+                        />
+                    )}
 
                     {/* Global Configuration Drawer */}
                     <SolutionConfigDrawer

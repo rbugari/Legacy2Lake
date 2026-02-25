@@ -282,7 +282,8 @@ async def get_file_inventory(
         manifest = DiscoveryService.generate_manifest(
             project_id=project_name,
             tenant_id=db.tenant_id,
-            user_context=None
+            user_context=None,
+            source_folder=PersistenceService.STAGE_SOURCE
         )
         
         if not manifest or "file_inventory" not in manifest:
@@ -678,16 +679,19 @@ async def reset_project(
     Reset project to initial state (post-upload).
     
     What this does:
-    1. Creates ZIP backup of all generated files (optional)
-    2. Deletes all assets and clears generated code
-    3. Resets project to TRIAGE stage
+    1. Creates ZIP backup of all generated files in drafting/refinement/certification/handover (optional)
+    2. Deletes ONLY generated stages (preserves original Triage files)
+    3. Clears generated code from database
+    4. Resets project to DISCOVERY stage
+    
+    IMPORTANT: Original uploaded files in Triage folder are PRESERVED.
     
     Args:
         project_id: Project UUID or name
         backup: If True, creates ZIP backup before cleanup (default: True)
     
     Returns:
-        Reset results with backup location
+        Reset results with backup location and detailed cleanup info
     """
     try:
         # Resolve project UUID if name provided
@@ -697,34 +701,105 @@ async def reset_project(
             if resolved:
                 project_uuid = resolved
         
-        # Create backup if requested
-        backup_path = None
-        if backup:
-            try:
-                cleanup_service = ProjectCleanupService(tenant_id=db.tenant_id, project_id=project_uuid)
-                backup_result = await cleanup_service._create_backup()
-                if backup_result.get("success"):
-                    backup_path = backup_result.get("backup_path")
-            except Exception as e:
-                logger.error(f"[Reset] Backup failed: {e}", "Reset")
+        # Use ProjectCleanupService for complete reset
+        cleanup_service = ProjectCleanupService(tenant_id=db.tenant_id, project_id=project_uuid)
+        result = await cleanup_service.reset_project(backup=backup)
         
-        # Execute original reset logic (deletes all, resets to TRIAGE)
-        success = await db.reset_project_data(project_uuid)
-        
-        if not success:
-            return {
-                "success": False,
-                "message": "Reset failed: project not found or error occurred"
-            }
+        # Check for errors
+        if result.get("errors"):
+            logger.warning(f"[Reset] Completed with warnings: {result['errors']}", "Reset")
         
         return {
             "success": True,
-            "message": "Project reset successfully. All assets deleted, status reset to TRIAGE.",
-            "backup_path": backup_path
+            "message": f"Project reset successfully. {len(result['stages_cleaned'])} stages cleaned, "
+                      f"{result['files_removed']} files removed. All detected assets deleted. "
+                      f"Original uploaded files in Triage folder preserved.",
+            "backup_created": result["backup_created"],
+            "backup_path": result.get("backup_path"),
+            "stages_cleaned": result["stages_cleaned"],
+            "files_removed": result["files_removed"],
+            "database_reset": result["database_reset"],
+            "errors": result.get("errors", [])
         }
     
     except Exception as e:
+        logger.error(f"[Reset] Failed: {e}", "Reset")
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
+
+
+@router.get("/{project_id}/backups")
+async def list_project_backups(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    List all backup ZIP files for a project.
+    
+    Returns:
+        List of backup files with name, size, and created date
+    """
+    try:
+        # Resolve project UUID if name provided
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await db.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+        
+        cleanup_service = ProjectCleanupService(tenant_id=db.tenant_id, project_id=project_uuid)
+        backups = await cleanup_service.list_backups()
+        
+        return {
+            "success": True,
+            "backups": backups,
+            "count": len(backups)
+        }
+    
+    except Exception as e:
+        logger.error(f"[Backups] List failed: {e}", "Backups")
+        raise HTTPException(status_code=500, detail=f"Failed to list backups: {str(e)}")
+
+
+@router.delete("/{project_id}/backups/{backup_filename}")
+async def delete_project_backup(
+    project_id: str,
+    backup_filename: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Delete a specific backup ZIP file.
+    
+    Args:
+        project_id: Project UUID or name
+        backup_filename: Name of the backup file to delete
+    
+    Returns:
+        Success status
+    """
+    try:
+        # Resolve project UUID if name provided
+        project_uuid = project_id
+        if "-" not in project_id:
+            resolved = await db.get_project_id_by_name(project_id)
+            if resolved:
+                project_uuid = resolved
+        
+        cleanup_service = ProjectCleanupService(tenant_id=db.tenant_id, project_id=project_uuid)
+        result = await cleanup_service.delete_backup(backup_filename)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=404, detail=result.get("error", "Backup not found"))
+        
+        return {
+            "success": True,
+            "message": f"Backup '{backup_filename}' deleted successfully"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Backups] Delete failed: {e}", "Backups")
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {str(e)}")
 
 
 @router.patch("/{project_id}/settings")
@@ -762,8 +837,9 @@ async def approve_triage(project_id: str, db: SupabasePersistence = Depends(get_
 async def unlock_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Unlocks the project scope and transitions back to TRIAGE state."""
     project_uuid = project_id
-    success = await db.update_project_status(project_uuid, "TRIAGE")
-    return {"success": success, "status": "TRIAGE"}
+    success_status = await db.update_project_status(project_uuid, "TRIAGE")
+    success_stage = await db.update_project_stage(project_uuid, "1")
+    return {"success": success_status and success_stage, "status": "TRIAGE"}
 
 
 @router.post("/{project_id}/cancel")
@@ -838,9 +914,9 @@ async def get_project_execution_logs(
 
 # --- Triage Files (for Agent S - Scout) ---
 
-@router.get("/{project_id}/triage/files")
-async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Lists all files in the project's Triage folder for forensic analysis."""
+@router.get("/{project_id}/source/files")
+async def list_source_files(project_id: str, db: SupabasePersistence = Depends(get_db)):
+    """Lists all files in the project's Source folder for forensic analysis."""
     
     # Resolve project name if UUID provided
     project_folder = project_id
@@ -851,7 +927,7 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
     
     # Get Triage path
     # We use list_files mechanism
-    print(f"[DEBUG] list_triage_files called for project_id={project_id}, resolved={project_folder}, tenant={db.tenant_id}")
+    print(f"[DEBUG] list_source_files called for project_id={project_id}, resolved={project_folder}, tenant={db.tenant_id}")
     project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
     # The ensure_solution_dir return path/key prefix. 
     # But list_files needs the path relative to storage root?
@@ -883,14 +959,24 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
             # But the root of get_project_files returns the contents of the solution dir.
             # So "Triage" should be a top-level child.
             
-            triage_node = next((n for n in all_files if n["name"] == PersistenceService.STAGE_TRIAGE), None)
+            # [v4.5] Robust Folder Detection (Align with DiscoveryService)
+            # Find candidate folder case-insensitively
+            candidate_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "inbound"]
             
-            if not triage_node or not triage_node.get("children"):
-                 # Return empty if no triage
+            triage_node = None
+            for n in all_files:
+                if n["type"] == "folder" and n["name"].lower() in candidate_names:
+                    # If we find "source" or "triage", we use it. 
+                    # Prefer "source" if both exist (though unlikely)
+                    if not triage_node or n["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
+                        triage_node = n
+            
+            if not triage_node or (not triage_node.get("children") and triage_node.get("type") == "folder"):
+                 # Return empty if no triage/source folder or it's empty
                  return {
                     "success": True,
                     "project_id": project_id,
-                    "triage_path": "Triage",
+                    "source_path": PersistenceService.STAGE_SOURCE.capitalize(),
                     "file_count": 0,
                     "file_types": {},
                     "files": []
@@ -923,7 +1009,7 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
             return {
                 "success": True,
                 "project_id": project_id,
-                "triage_path": "Triage", # Conceptual path
+                "source_path": "Source", # Conceptual path
                 "file_count": len(triage_files),
                 "file_types": file_types,
                 "files": triage_files
@@ -939,37 +1025,37 @@ async def list_triage_files(project_id: str, db: SupabasePersistence = Depends(g
         }
 
 
-@router.post("/{project_id}/triage/upload")
+@router.post("/{project_id}/source/upload")
 async def upload_triage_files(
     project_id: str,
     files: List[UploadFile] = File(...),
     db: SupabasePersistence = Depends(get_db)
 ):
-    """Uploads one or many files to the project's Triage directory."""
+    """Uploads one or many files to the project's Source directory."""
     # 1. Resolve project folder name (handles UUID or Name)
     project_folder = project_id
     if "-" in project_id:
         resolved_name = await db.get_project_name_by_id(project_id)
         if resolved_name:
             project_folder = resolved_name
-    
-    # 2. Get storage provider and ensure directory
-    storage = PersistenceService.get_storage()
+            
+    # 2. Upload to Storage (STAGE_SOURCE)
     project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
-    triage_prefix = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+    triage_prefix = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_SOURCE}"
+    
+    storage = PersistenceService.get_storage()
     
     uploaded_files = []
-    
     try:
-        for file in files:
-            content = await file.read()
-            # Standardize filename and construct key
-            # We don't want to nested paths here, just flat in Triage/
-            filename = os.path.basename(file.filename)
-            dest_key = f"{triage_prefix}/{filename}"
-            
-            storage.save_file(dest_key, content, is_binary=True)
-            uploaded_files.append(filename)
+        for f in files:
+            content = await f.read()
+            file_key = f"{triage_prefix}/{f.filename}"
+            storage.save_file(file_key, content)
+            uploaded_files.append({
+                "filename": f.filename,
+                "size": len(content),
+                "path": file_key
+            })
             
         return {
             "success": True,
@@ -982,6 +1068,69 @@ async def upload_triage_files(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to upload files: {str(e)}")
 
+@router.post("/{project_id}/source/promote")
+async def promote_source_to_triage(
+    project_id: str,
+    payload: Dict[str, Any],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Promotes selected files from Source to Triage for actual processing.
+    
+    Expected payload:
+    {
+        "classification": {
+            "Source/Load_Customer.dtsx": {
+                "include": true,
+                "classification": "CORE"
+            },
+            "Source/README.md": {
+                "include": false,
+                "classification": "IGNORED" 
+            }
+        }
+    }
+    """
+    project_folder = project_id
+    if "-" in project_id:
+        resolved_name = await db.get_project_name_by_id(project_id)
+        if resolved_name:
+            project_folder = resolved_name
+            
+    project_base = PersistenceService.ensure_solution_dir(project_folder, db.tenant_id)
+    storage = PersistenceService.get_storage()
+    
+    classification = payload.get("classification", {})
+    promoted_count = 0
+    errors = []
+    
+    for file_path, data in classification.items():
+        if data.get("include", False):
+            try:
+                # Need to read from source and write to triage
+                # file_path is something like "Tenant/Project/source/filename.ext"
+                # Extract filename
+                filename = file_path.split("/")[-1]
+                
+                # Construct target path manually
+                target_key = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}/{filename}"
+                
+                # Read from source
+                content = storage.read_file(file_path)
+                
+                # Write to Triage
+                storage.save_file(target_key, content)
+                promoted_count += 1
+                print(f"[Promotion] Copied {filename} to Triage")
+            except Exception as e:
+                print(f"[Promotion] Failed to promote {file_path}: {e}")
+                errors.append(file_path)
+                
+    return {
+        "success": len(errors) == 0,
+        "promoted_count": promoted_count,
+        "errors": errors if errors else None
+    }
 
 # --- Sidebar Metrics (Stage-Adaptive) ---
 
@@ -1019,7 +1168,7 @@ async def get_sidebar_metrics(
                 qa_service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
                 qa_result = await qa_service.assess(project_id)
                 metrics["quickAssessment"] = {
-                    "score": qa_result.overall_score,
+                    "score": qa_result.score,
                     "readability": qa_result.readability_score,
                     "complexity": qa_result.complexity_score,
                     "risk": qa_result.estimated_risk
@@ -1053,8 +1202,8 @@ async def get_sidebar_metrics(
             try:
                 quality_stats = await db.get_quality_metrics_summary(project_id)
                 metrics["qualityScore"] = quality_stats.get("avg_quality_score", 0)
-                metrics["columnsWithPii"] = quality_stats.get("pii_column_count", 0)
-                metrics["partitionedTables"] = quality_stats.get("partitioned_table_count", 0)
+                metrics["piiCount"] = quality_stats.get("pii_column_count", 0)
+                metrics["partitionRecs"] = quality_stats.get("partitioned_table_count", 0)
             except Exception as e:
                 logger.warning(f"[SidebarMetrics] Quality metrics failed: {e}", "ProjectsRouter")
                 metrics["qualityScore"] = 0
@@ -1122,6 +1271,8 @@ async def get_sidebar_metrics(
         
         return metrics
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[SidebarMetrics] Failed to fetch metrics: {e}", "ProjectsRouter")
         import traceback
@@ -1187,3 +1338,226 @@ def _classify_file_type(ext: str) -> str:
     if ext == 'py': return 'PYTHON_SCRIPT'
     if ext in ['txt', 'md', 'doc', 'docx']: return 'DOCUMENTATION'
     return 'OTHER'
+
+
+# --- Design Registry Endpoints (Sprint 14) ---
+
+@router.get("/{project_id}/registry")
+async def get_design_registry(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Get Design Registry (utm_design_registry) for project."""
+    try:
+        registry = await db.get_design_registry(project_id)
+        
+        # Auto-initialize if empty (Sprint 14 - User Experience Fix)
+        if not registry or len(registry) == 0:
+            logger.info(f"[Registry] No registry found for project {project_id}, initializing defaults", "Registry")
+            await db.initialize_design_registry(project_id)
+            registry = await db.get_design_registry(project_id)
+        
+        return {"registry": registry, "count": len(registry)}
+    except Exception as e:
+        logger.error(f"[Registry] Error fetching registry: {e}", "Registry")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project_id}/registry")
+async def update_design_registry(
+    project_id: str,
+    payload: Dict[str, Any],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Update a single Design Registry entry."""
+    category = payload.get("category")
+    key = payload.get("key")
+    value = payload.get("value")
+    
+    if not category or not key:
+        raise HTTPException(status_code=400, detail="category and key required")
+    
+    try:
+        success = await db.update_design_registry(project_id, category, key, value)
+        if success:
+            return {"status": "updated", "category": category, "key": key}
+        else:
+            raise HTTPException(status_code=500, detail="Update failed")
+    except Exception as e:
+        logger.error(f"[Registry] Error updating registry: {e}", "Registry")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Generation Stats Endpoint (Sprint 14) ---
+
+@router.get("/{project_id}/generation/stats")
+async def get_generation_stats(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Get generation statistics (GenerationStats component)."""
+    try:
+        # Query utm_objects for generation metrics (only migrable objects - ETL packages)
+        query = db.client.table("utm_objects") \
+            .select("object_id, generated_code, tech_id, layer, quality_score, validation_result, updated_at, category")
+        
+        if db.tenant_id:
+            query = query.eq("tenant_id", db.tenant_id)
+        
+        query = query.eq("project_id", project_id).eq("category", "migrable")
+        res = query.execute()
+        
+        objects = res.data if res.data else []
+        
+        # Calculate stats (only count migrable ETL packages)
+        total_objects = len(objects)
+        processed = sum(1 for obj in objects if obj.get("generated_code"))
+        
+        # Successful: has generated code AND quality_score >= 7
+        successful = sum(1 for obj in objects 
+                        if obj.get("generated_code") 
+                        and (obj.get("quality_score") or 0) >= 7)
+        
+        # Failed: has generated code but quality_score < 7 (rejected by Agent F)
+        failed = sum(1 for obj in objects 
+                    if obj.get("generated_code") 
+                    and (obj.get("quality_score") or 0) < 7)
+        
+        # Warnings: processed but with validation warnings (quality 7-8)
+        warnings = sum(1 for obj in objects 
+                      if obj.get("generated_code") 
+                      and 7 <= (obj.get("quality_score") or 0) < 9)
+        
+        # Calculate average generation time (placeholder - would need execution logs)
+        avg_time = "N/A"
+        
+        # Get cartridge used (most common tech_id)
+        cartridges = [obj.get("tech_id") for obj in objects if obj.get("tech_id")]
+        cartridge_used = max(set(cartridges), key=cartridges.count) if cartridges else "N/A"
+        
+        # Tokens consumed (placeholder - would need utm_audit_log integration)
+        tokens_consumed = 0
+        
+        stats = {
+            "total_objects": total_objects,
+            "processed": processed,
+            "successful": successful,
+            "failed": failed,
+            "warnings": warnings,
+            "avg_generation_time": avg_time,
+            "cartridge_used": cartridge_used,
+            "tokens_consumed": tokens_consumed
+        }
+        
+        return {"stats": stats}
+        
+    except Exception as e:
+        logger.error(f"[GenerationStats] Error: {e}", "GenerationStats")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/generation/summary")
+async def get_generation_summary(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Get code generation summary (CodeGenerationSummary component)."""
+    try:
+        # Query all generated objects (note: no created_at column in utm_objects)
+        query = db.client.table("utm_objects") \
+            .select("object_id, object_name, source_name, generated_code, tech_id, layer, quality_score, validation_result, updated_at")
+        
+        if db.tenant_id:
+            query = query.eq("tenant_id", db.tenant_id)
+        
+        query = query.eq("project_id", project_id)
+        res = query.execute()
+        
+        objects = res.data if res.data else []
+        
+        # Filter only processed objects (with generated code)
+        processed = [obj for obj in objects if obj.get("generated_code")]
+        
+        # Files by type (based on tech_id)
+        files_by_type = {}
+        for obj in processed:
+            tech_id = obj.get("tech_id", "unknown")
+            if "python" in tech_id.lower() or "pyspark" in tech_id.lower():
+                files_by_type["python"] = files_by_type.get("python", 0) + 1
+            elif "sql" in tech_id.lower() or "snowflake" in tech_id.lower():
+                files_by_type["sql"] = files_by_type.get("sql", 0) + 1
+            elif "yaml" in tech_id.lower():
+                files_by_type["yaml"] = files_by_type.get("yaml", 0) + 1
+            elif "json" in tech_id.lower():
+                files_by_type["json"] = files_by_type.get("json", 0) + 1
+            else:
+                files_by_type["config"] = files_by_type.get("config", 0) + 1
+        
+        # Files by category (based on layer)
+        files_by_category = {}
+        for obj in processed:
+            layer = obj.get("layer", "unknown")
+            if layer == "bronze":
+                files_by_category["staging"] = files_by_category.get("staging", 0) + 1
+            elif layer == "silver":
+                files_by_category["transformations"] = files_by_category.get("transformations", 0) + 1
+            elif layer == "gold":
+                files_by_category["dimensions"] = files_by_category.get("dimensions", 0) + 1
+            else:
+                files_by_category["utilities"] = files_by_category.get("utilities", 0) + 1
+        
+        # Objects processed status
+        objects_processed = []
+        for obj in processed:
+            quality_score = obj.get("quality_score", 0)
+            validation_result = obj.get("validation_result")
+            
+            # Determine status
+            if quality_score >= 8:
+                status = "success"
+            elif validation_result and "error" in str(validation_result).lower():
+                status = "error"
+            elif validation_result and "warning" in str(validation_result).lower():
+                status = "warning"
+            else:
+                status = "success"
+            
+            objects_processed.append({
+                "name": obj.get("object_name") or obj.get("source_name", "Unknown"),
+                "type": obj.get("layer", "unknown"),
+                "file": f"{obj.get('source_name', 'unknown')}.{obj.get('tech_id', 'py')}",
+                "status": status
+            })
+        
+        # Structure info (placeholder - would need R2 integration)
+        structure = {
+            "folders": ["bronze", "silver", "gold", "utilities"],
+            "config_files": [
+                {"name": "requirements.txt", "size": "1.2 KB", "description": "Python dependencies"},
+                {"name": "config.yaml", "size": "856 B", "description": "Project configuration"}
+            ]
+        }
+        
+        # Get cartridge used
+        cartridges = [obj.get("tech_id") for obj in processed if obj.get("tech_id")]
+        cartridge_used = max(set(cartridges), key=cartridges.count) if cartridges else "pyspark"
+        
+        # Generation timestamp (latest updated_at)
+        timestamps = [obj.get("updated_at") for obj in processed if obj.get("updated_at")]
+        generation_timestamp = max(timestamps) if timestamps else None
+        
+        summary = {
+            "total_files": len(processed),
+            "files_by_type": files_by_type,
+            "files_by_category": files_by_category,
+            "structure": structure,
+            "objects_processed": objects_processed,
+            "cartridge_used": cartridge_used,
+            "generation_timestamp": generation_timestamp
+        }
+        
+        return summary
+        
+    except Exception as e:
+        logger.error(f"[GenerationSummary] Error: {e}", "GenerationSummary")
+        raise HTTPException(status_code=500, detail=str(e))

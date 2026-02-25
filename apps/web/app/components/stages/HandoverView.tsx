@@ -38,6 +38,8 @@ interface HandoverViewProps {
     onToggleFullscreen?: () => void;
     onReset?: () => void;
     onBackToCurrent?: () => void;
+    activeSection?: string;
+    onSectionChange?: (section: string) => void;
 }
 
 export default function HandoverView({
@@ -47,7 +49,9 @@ export default function HandoverView({
     isFullscreen,
     onToggleFullscreen,
     onReset,
-    onBackToCurrent
+    onBackToCurrent,
+    activeSection,
+    onSectionChange
 }: HandoverViewProps) {
     const [variables, setVariables] = useState<Variable[]>([
         { key: "ENV", value: "prod", description: "Environment tag for naming" },
@@ -136,7 +140,7 @@ export default function HandoverView({
             let filename = type === 'delivery'
                 ? (projectName ? `Legacy2Lake_Delivery_${projectName}.zip` : "Legacy2Lake_Delivery.zip")
                 : (projectName ? `Legacy2Lake_Solution_${projectName}.zip` : "Legacy2Lake_Solution.zip");
-            
+
             if (contentDisposition) {
                 const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
                 if (filenameMatch && filenameMatch[1]) {
@@ -165,38 +169,31 @@ export default function HandoverView({
         }
     };
 
+    // Listen for sidebar triggers
+    React.useEffect(() => {
+        if (activeSection === 'export') {
+            if (!isExporting) {
+                handleExport('delivery');
+            }
+            if (onSectionChange) onSectionChange('handover-pkg');
+        }
+    }, [activeSection, onSectionChange]);
+
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
-                title="Stage 6: Intelligent Handover"
+                title="Stage 5: Intelligent Handover"
                 subtitle="Artifact generation and deployment package Export"
                 icon={<Package className="text-emerald-500" />}
                 helpText="Final modernization package ready for deployment. Includes code, config, and runbooks."
                 onApprove={() => handleExport('governance')}
-                approveLabel={isExporting ? "Exporting..." : "Generate & Download"}
+                approveLabel={isExporting ? "Exporting..." : "Complete Migration"}
                 isApproveDisabled={isExporting}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
                 onReset={onReset}
                 onBackToCurrent={onBackToCurrent}
-            >
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setShowRunbook(!showRunbook)}
-                        className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 active:scale-95 transition-all"
-                    >
-                        <Eye size={14} /> {showRunbook ? "Edit Variables" : "View Runbook"}
-                    </button>
-                    <button
-                        onClick={() => handleExport('delivery')}
-                        disabled={isExporting}
-                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-500 active:scale-95 transition-all shadow-xl shadow-emerald-600/20 disabled:opacity-50"
-                    >
-                        {isExporting ? <Zap size={14} className="animate-pulse" /> : <Download size={14} />}
-                        {isExporting ? "Bundling..." : "Export Delivery"}
-                    </button>
-                </div>
-            </StageHeader>
+            />
 
             <div className="flex-1 overflow-y-auto p-8 max-w-7xl mx-auto w-full custom-scrollbar">
 

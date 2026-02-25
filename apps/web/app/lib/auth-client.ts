@@ -3,6 +3,7 @@ import { API_BASE_URL } from "./config";
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
     // 1. Get Credentials from LocalStorage
+    const user_id = localStorage.getItem("x_user_id");
     const tenant_id = localStorage.getItem("x_tenant_id");
     const client_id = localStorage.getItem("x_client_id");
     const role = localStorage.getItem("x_role");
@@ -15,6 +16,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
 
     if (tenant_id && !(headers as any)["X-Tenant-ID"]) {
         (headers as any)["X-Tenant-ID"] = tenant_id;
+    }
+    if (user_id && !(headers as any)["X-User-ID"]) {
+        (headers as any)["X-User-ID"] = user_id;
     }
     if (client_id) {
         (headers as any)["X-Client-ID"] = client_id;

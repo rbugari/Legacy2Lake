@@ -13,16 +13,16 @@ from pydantic import BaseModel, Field
 
 try:
     from apps.api.utils.logger import logger
-    from apps.api.services.persistence_service import SupabasePersistence
+    from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
     from apps.api.services.discovery_service import DiscoveryService
 except ImportError:
     try:
         from utils.logger import logger
-        from services.persistence_service import SupabasePersistence
+        from services.persistence_service import SupabasePersistence, PersistenceService
         from services.discovery_service import DiscoveryService
     except ImportError:
         from ..utils.logger import logger
-        from .persistence_service import SupabasePersistence
+        from .persistence_service import SupabasePersistence, PersistenceService
         from .discovery_service import DiscoveryService
 
 
@@ -102,9 +102,9 @@ class QuickAssessmentService:
         # 1. Resolve project UUID to name (R2 folders use project names, not UUIDs)
         project_name = project_id
         if "-" in project_id:  # UUID format
-            project_row = self.db.client.table("utm_projects").select("name").eq("project_id", project_id).execute()
-            if project_row.data:
-                project_name = project_row.data[0]["name"]
+            project_meta = await self.db.get_project_metadata(project_id)
+            if project_meta:
+                project_name = project_meta["name"]
                 logger.info(
                     f"[QuickAssessment] Resolved UUID to project name: {project_name}",
                     "QuickAssessment"
@@ -113,12 +113,13 @@ class QuickAssessmentService:
         # 2. Reuse generate_manifest() for deterministic file analysis
         manifest = DiscoveryService.generate_manifest(
             project_name,  # Use resolved name, not UUID
-            tenant_id=self.tenant_id
+            tenant_id=self.tenant_id,
+            source_folder=PersistenceService.STAGE_SOURCE
         )
         
         file_inventory = manifest.get("file_inventory", [])
         if not file_inventory:
-            raise ValueError("No files found in Triage folder")
+            raise ValueError("No files found in project (Source or Triage folder)")
         
         # 2. Classify each file into 4 categories
         breakdown = {

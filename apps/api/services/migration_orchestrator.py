@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 from typing import Dict, Any, List
+from datetime import datetime
 
 # Import all agents
 from apps.api.services.librarian_service import LibrarianService
@@ -67,8 +68,7 @@ class MigrationOrchestrator:
         await self.persistence.log_execution(target_id, "MIGRATION", message, step=step)
         
         # Storage Persistence
-        import datetime
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted_msg = f"[{now}] [{step.upper()}] {message}"
         
         try:
@@ -127,16 +127,30 @@ class MigrationOrchestrator:
         
         # 1. Governance Check
         # Use UUID for status check
+        # Allow both DRAFTING (first run) and DRAFTED (regeneration)
         status = await self.persistence.get_project_status(self.project_uuid)
-        if status != "DRAFTING":
-            logger.error(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.", "Orchestrator")
-            await self._log_persistence(f"BLOCKED: Project status is '{status}'. Must be 'DRAFTING'.")
+        allowed_statuses = ["DRAFTING", "DRAFTED"]
+        
+        if status not in allowed_statuses:
+            logger.error(f"BLOCKED: Project status is '{status}'. Must be DRAFTING or DRAFTED.", "Orchestrator")
+            await self._log_persistence(f"BLOCKED: Project status is '{status}'. Must be DRAFTING or DRAFTED.")
             return {
                 "project_id": self.project_id,
-                "error": f"Project is in {status} mode. Approve Triage first.",
+                "error": f"Project is in {status} mode. Cannot run migration from this state.",
                 "succeeded": [],
                 "failed": []
             }
+        
+        # Status validation passed - now change to ORCHESTRATING
+        is_regeneration = (status == "DRAFTED")
+        await self.persistence.update_project_status(self.project_uuid, "ORCHESTRATING")
+        
+        if is_regeneration:
+            await self._log_persistence("♻️ REGENERATION MODE: Project already drafted. Re-generating code...")
+            logger.info("Regeneration mode: Re-running migration", "Orchestrator")
+        else:
+            await self._log_persistence("Status changed to ORCHESTRATING. Starting pipeline...")
+            logger.info("First generation: Starting fresh migration", "Orchestrator")
 
         # 1. THE LIBRARIAN (Context)
         logger.info("Step 1: Librarian - Scanning Schema Context...", "Orchestrator")
@@ -183,8 +197,7 @@ class MigrationOrchestrator:
         }
 
         # Initialize Bitácora
-        import datetime
-        timestamp_log = datetime.datetime.utcnow().isoformat()
+        timestamp_log = datetime.utcnow().isoformat()
         self.bitacora = [
             f"# Migration Bitácora - {self.project_id}",
             f"**Generated At**: {timestamp_log}Z",
@@ -475,8 +488,6 @@ class MigrationOrchestrator:
 
     def _generate_manifest(self, results: Dict[str, List], mesh: Dict[str, Any], target_tech: str) -> Dict[str, Any]:
         """Generate MANIFEST.json with complete artifact inventory."""
-        from datetime import datetime
-        
         # Calculate total lines generated
         total_lines = 0
         for pkg_name in results["succeeded"]:

@@ -30,7 +30,7 @@ export default function HelpPage() {
                 { name: "Agent D (Drafting)", reason: "Generates production-ready code with complex transformations" },
                 { name: "Agent E (Refinement)", reason: "Deep code review, optimization, and quality assurance" },
             ],
-            models: ["Claude 3.5 Sonnet", "GPT-4 Turbo", "Gemini 1.5 Pro"]
+            models: ["Claude 4.6", "GPT-5.3", "Gemini 3.1"]
         },
         {
             tier: "Medium Reasoning & Context",
@@ -41,7 +41,7 @@ export default function HelpPage() {
                 { name: "Agent B (Cartridge)", reason: "Applies technology-specific patterns and rules" },
                 { name: "Code Generator (Compliance)", reason: "Validates against certification rules and standards" },
             ],
-            models: ["Claude 3 Haiku", "GPT-4o Mini", "Gemini 1.5 Flash"]
+            models: ["Claude 4.0 Haiku", "GPT-4.5 Mini", "Gemini 2.0 Flash"]
         },
         {
             tier: "Low Reasoning & Context",
@@ -52,7 +52,7 @@ export default function HelpPage() {
                 { name: "Compliance Auditor (Logging)", reason: "Structured log generation and formatting" },
                 { name: "Helper Agent", reason: "Quick responses and simple assistance tasks" },
             ],
-            models: ["Claude 3 Haiku", "GPT-3.5 Turbo", "Gemini Flash 8B"]
+            models: ["Claude 3.5 Haiku", "GPT-4.0 Turbo", "Gemini Flash 8B"]
         }
     ];
 

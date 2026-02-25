@@ -1,8 +1,10 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
-import { Github, FolderPlus, Settings, Trash2, RefreshCw, AlertCircle, FileText, Package, Archive, Database } from "lucide-react";
+import { Github, FolderPlus, Settings, Trash2, RefreshCw, AlertCircle, FileText, Package, Archive, Database, FolderArchive } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import BackupsModal from "./BackupsModal";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -30,6 +32,8 @@ interface ProjectCardProps {
 }
 
 export default function ProjectCard({ project, onDelete, onReset }: ProjectCardProps) {
+    const [showBackupsModal, setShowBackupsModal] = useState(false);
+    
     const stageMap: { [key: string]: { label: string; color: string; emoji: string } } = {
         "1": { label: "DISCOVERY", color: "from-slate-500 to-slate-600", emoji: "🔭" },
         "2": { label: "TRIAGE", color: "from-cyan-500 to-teal-500", emoji: "🔍" },
@@ -198,15 +202,20 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
                     </Link>
 
                     <div className="flex items-center gap-1">
-                        {parseInt(project.stage.toString()) > 1 && (
-                            <button
-                                onClick={(e) => onReset(e, project.id)}
-                                className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
-                                title="Reset to Triage"
-                            >
-                                <RefreshCw size={18} />
-                            </button>
-                        )}
+                        <button
+                            onClick={(e) => onReset(e, project.id)}
+                            className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
+                            title="Reset Project"
+                        >
+                            <RefreshCw size={18} />
+                        </button>
+                        <button
+                            onClick={(e) => { e.preventDefault(); setShowBackupsModal(true); }}
+                            className="p-2 text-[var(--text-tertiary)] hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
+                            title="Manage Backups"
+                        >
+                            <FolderArchive size={18} />
+                        </button>
                         <Link
                             href={`/workspace/settings?id=${project.id}`}
                             className="p-2 text-[var(--text-tertiary)] hover:text-white hover:bg-white/5 rounded-lg transition-all"
@@ -224,6 +233,14 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
                     </div>
                 </div>
             </div>
+
+            {/* Backups Modal */}
+            <BackupsModal
+                isOpen={showBackupsModal}
+                onClose={() => setShowBackupsModal(false)}
+                projectId={project.id}
+                projectName={project.name}
+            />
 
             <style jsx>{`
                 @keyframes shimmer {

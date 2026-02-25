@@ -77,6 +77,244 @@ class ColumnProfilingService:
         self.version = "v1.0"
     
     
+    async def profile_from_mappings(
+        self,
+        project_id: str,
+        force_refresh: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generate inferred profiling data from utm_column_mappings (without real data sampling).
+        
+        This method is called during Triage when column mappings are created but
+        actual data sampling is not performed. It creates placeholder profiling metrics
+        based on column names, data types, and heuristics.
+        
+        Args:
+            project_id: UUID of the project to profile
+            force_refresh: If True, delete existing profiling data before generating new
+            
+        Returns:
+            Dict with profiling results:
+            {
+                "success": bool,
+                "columns_profiled": int,
+                "pii_columns": int,
+                "partition_candidates": int,
+                "message": str
+            }
+        """
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        
+        try:
+            logger.info(
+                f"[ColumnProfiling] Starting inferred profiling: project_id={project_id}",
+                "Profiler"
+            )
+            
+            # 1. Optionally clear existing profiling data
+            if force_refresh:
+                logger.info("[ColumnProfiling] Force refresh - clearing existing data", "Profiler")
+                db.client.table("utm_asset_columns") \
+                    .delete() \
+                    .eq("project_id", project_id) \
+                    .execute()
+            
+            # 2. Get all column mappings for project (via utm_objects join)
+            mappings_query = db.client.table("utm_column_mappings") \
+                .select("*, utm_objects!asset_id(object_id, project_id, source_name)") \
+                .execute()
+            
+            # Filter to project (RLS handles tenant isolation)
+            mappings = [
+                m for m in mappings_query.data 
+                if m.get("utm_objects", {}).get("project_id") == project_id
+            ]
+            
+            logger.info(
+                f"[ColumnProfiling] Found {len(mappings)} column mappings to profile",
+                "Profiler"
+            )
+            
+            if not mappings:
+                return {
+                    "success": False,
+                    "columns_profiled": 0,
+                    "pii_columns": 0,
+                    "partition_candidates": 0,
+                    "message": "No column mappings found. Run Triage first."
+                }
+            
+            # 3. Group mappings by asset
+            from collections import defaultdict
+            assets_map = defaultdict(list)
+            for mapping in mappings:
+                asset_id = mapping["asset_id"]
+                assets_map[asset_id].append(mapping)
+            
+            # 4. Generate profiled columns for each asset
+            total_profiled = 0
+            total_pii = 0
+            total_partition_candidates = 0
+            
+            for asset_id, asset_mappings in assets_map.items():
+                profiled_columns = []
+                
+                for idx, mapping in enumerate(asset_mappings, 1):
+                    source_col = mapping["source_column"]
+                    target_col = mapping.get("target_column", source_col)
+                    source_type = mapping.get("source_datatype", "STRING")
+                    target_type = mapping.get("target_datatype", "STRING")
+                    is_nullable = mapping.get("is_nullable", True)
+                    
+                    # Infer PII using existing keyword detection
+                    is_pii, pii_category, pii_confidence = self._infer_pii_from_name(source_col)
+                    if is_pii:
+                        total_pii += 1
+                    
+                    # Infer cardinality
+                    is_pk = "id" in source_col.lower() and "parent" not in source_col.lower()
+                    is_fk = "id" in source_col.lower() and ("parent" in source_col.lower() or "ref" in source_col.lower())
+                    cardinality = self._infer_cardinality(target_type, is_pk, is_fk)
+                    
+                    # Infer partition suitability
+                    is_partition, partition_score = self._infer_partition_score(source_col, target_type)
+                    if is_partition:
+                        total_partition_candidates += 1
+                    
+                    # Generate profiling record
+                    column_record = {
+                        "column_name": source_col,
+                        "column_position": idx,
+                        "data_type": source_type,
+                        "inferred_type": target_type,
+                        "distinct_count": None,
+                        "cardinality_ratio": cardinality,
+                        "null_count": None,
+                        "null_percentage": 5.0 if is_nullable else 0.0,
+                        "sample_values": None,
+                        "min_value": None,
+                        "max_value": None,
+                        "is_pii": is_pii,
+                        "pii_category": pii_category,
+                        "pii_confidence": pii_confidence,
+                        "is_primary_key": is_pk,
+                        "is_foreign_key": is_fk,
+                        "is_nullable": is_nullable,
+                        "is_indexed": is_pk or is_fk,
+                        "partition_candidate": is_partition,
+                        "partition_score": partition_score,
+                        "analysis_version": "v1.0-inferred"
+                    }
+                    
+                    profiled_columns.append(column_record)
+                
+                # Persist columns for this asset
+                success = await self.persist_to_db(asset_id, project_id, profiled_columns)
+                if success:
+                    total_profiled += len(profiled_columns)
+            
+            logger.info(
+                f"[ColumnProfiling] ✅ Inferred profiling complete: "
+                f"{total_profiled} columns, {total_pii} PII, {total_partition_candidates} partition candidates",
+                "Profiler"
+            )
+            
+            return {
+                "success": True,
+                "columns_profiled": total_profiled,
+                "pii_columns": total_pii,
+                "partition_candidates": total_partition_candidates,
+                "message": f"Successfully profiled {total_profiled} columns (inferred from mappings)"
+            }
+            
+        except Exception as e:
+            logger.error(
+                f"[ColumnProfiling] Error in inferred profiling: {str(e)}",
+                "Profiler"
+            )
+            return {
+                "success": False,
+                "columns_profiled": 0,
+                "pii_columns": 0,
+                "partition_candidates": 0,
+                "message": f"Profiling failed: {str(e)}"
+            }
+    
+    
+    def _infer_pii_from_name(self, column_name: str) -> tuple:
+        """
+        Infer PII category from column name using keyword matching.
+        
+        Args:
+            column_name: Name of the column
+            
+        Returns:
+            Tuple of (is_pii, category, confidence)
+        """
+        col_lower = column_name.lower()
+        
+        for category, keywords in self.PII_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in col_lower:
+                    # Higher confidence for exact matches
+                    confidence = 0.95 if col_lower == keyword else 0.75
+                    return (True, category, confidence)
+        
+        return (False, None, 0.0)
+    
+    
+    def _infer_cardinality(self, data_type: str, is_pk: bool, is_fk: bool) -> float:
+        """
+        Infer cardinality ratio based on column characteristics.
+        
+        Args:
+            data_type: Target data type
+            is_pk: True if primary key
+            is_fk: True if foreign key
+            
+        Returns:
+            Estimated cardinality ratio (0.0-1.0)
+        """
+        if is_pk:
+            return 1.0  # 100% unique
+        elif is_fk:
+            return 0.3  # ~30% unique
+        elif data_type in ['STRING', 'TEXT']:
+            return 0.5  # ~50% unique
+        elif data_type in ['INTEGER', 'NUMERIC']:
+            return 0.6  # ~60% unique
+        else:
+            return 0.4
+    
+    
+    def _infer_partition_score(self, column_name: str, data_type: str) -> tuple:
+        """
+        Infer partition suitability for optimization.
+        
+        Args:
+            column_name: Name of the column
+            data_type: Data type
+            
+        Returns:
+            Tuple of (is_candidate, score)
+        """
+        col_lower = column_name.lower()
+        
+        # Date/time columns are excellent for partitioning
+        if any(kw in col_lower for kw in ['date', 'fecha', 'time', 'timestamp', 'year', 'month']):
+            return (True, 0.95)
+        
+        # Region/location columns are good
+        if any(kw in col_lower for kw in ['region', 'country', 'pais', 'estado', 'state']):
+            return (True, 0.85)
+        
+        # ID columns with high cardinality
+        if ('id' in col_lower or 'key' in col_lower) and data_type in ['INTEGER', 'STRING']:
+            return (True, 0.70)
+        
+        return (False, 0.0)
+    
+    
     async def profile_asset(
         self, 
         asset_id: str, 
@@ -544,15 +782,23 @@ class ColumnProfilingService:
                 'pii_columns': int,
                 'pii_percentage': float,
                 'pii_by_category': {category: count},
-                'high_risk_assets': [asset_ids with PII]
+                'high_risk_assets': [
+                    {
+                        'asset_id': str,
+                        'asset_name': str,
+                        'pii_columns': int,
+                        'pii_types': [str],
+                        'pii_column_names': [str]  # NEW: Names of PII columns
+                    }
+                ]
             }
         """
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
         try:
-            # Get all columns for project
+            # Get all columns for project with asset names
             result = db.client.table('utm_asset_columns') \
-                .select('asset_id, is_pii, pii_category, pii_confidence') \
+                .select('asset_id, column_name, is_pii, pii_category, pii_confidence, utm_objects!asset_id(source_name)') \
                 .eq('project_id', project_id) \
                 .execute()
             
@@ -567,12 +813,43 @@ class ColumnProfilingService:
                 pii_by_category[category] = pii_by_category.get(category, 0) + 1
             
             # Find high-risk assets (assets with multiple PII columns)
-            asset_pii_counts = {}
+            # Group by asset_id and collect PII types + column names
+            from collections import defaultdict
+            asset_pii_data = defaultdict(lambda: {
+                'count': 0, 
+                'types': set(), 
+                'column_names': [],
+                'asset_name': None
+            })
+            
             for col in pii_columns:
                 asset_id = col['asset_id']
-                asset_pii_counts[asset_id] = asset_pii_counts.get(asset_id, 0) + 1
+                asset_pii_data[asset_id]['count'] += 1
+                asset_pii_data[asset_id]['types'].add(col.get('pii_category', 'UNKNOWN'))
+                asset_pii_data[asset_id]['column_names'].append(col['column_name'])
+                
+                # Extract asset name from join
+                if not asset_pii_data[asset_id]['asset_name']:
+                    asset_obj = col.get('utm_objects', {})
+                    asset_pii_data[asset_id]['asset_name'] = asset_obj.get('source_name', 'Unknown') if isinstance(asset_obj, dict) else 'Unknown'
             
-            high_risk_assets = [aid for aid, count in asset_pii_counts.items() if count >= 3]
+            # Build high_risk_assets list (3+ PII columns)
+            high_risk_assets = []
+            for asset_id, data in asset_pii_data.items():
+                if data['count'] >= 3:
+                    high_risk_assets.append({
+                        'asset_id': asset_id,
+                        'asset_name': data['asset_name'],
+                        'pii_columns': data['count'],
+                        'pii_types': sorted(list(data['types'])),
+                        'pii_column_names': data['column_names']  # NEW: List of column names
+                    })
+            
+            # Sort by pii_columns descending
+            high_risk_assets.sort(key=lambda x: x['pii_columns'], reverse=True)
+            
+            # Asset PII counts for backward compatibility
+            asset_pii_counts = {aid: data['count'] for aid, data in asset_pii_data.items()}
             
             return {
                 'total_columns': total_columns,

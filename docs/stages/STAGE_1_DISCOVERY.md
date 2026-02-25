@@ -53,9 +53,10 @@ The **Discovery** phase is the entry point for artifact ingestion. It uploads so
   - `tenant_id`: Isolation key
 
 ### 4. Run Discovery Analysis
-1. **Click "Run Discovery"**: Initiates Agent S (Scout) + Agent A (Architect)
-2. **Technology Detection**: Agent S identifies source platform
-3. **Asset Categorization**: Agent A classifies files:
+1. **Open Sidebar**: Click the `Settings`/`Actions` icon in the left sidebar to expand it.
+2. **Click "Run Discovery"**: Initiates Agent S (Scout) + Agent A (Architect) from the actions list.
+3. **Technology Detection**: Agent S identifies source platform
+4. **Asset Categorization**: Agent A classifies files:
    - **STORAGE**: DDL scripts, table definitions
    - **LOGIC**: Stored procedures, functions, views
    - **ORCHESTRATION**: ETL packages, workflows
@@ -66,7 +67,7 @@ The **Discovery** phase is the entry point for artifact ingestion. It uploads so
 - **Discovery Summary**: Shows file count, total size, detected technology
 - **File Explorer**: Browse uploaded artifacts
 - **Download Option**: Generate signed URL for re-download if needed
-- **Next Stage**: Click **"Start Triage"** to proceed with classification
+- **Next Stage**: Click **"Next Phase: Triage"** in the top header to proceed with classification
 
 ## ⚙️ Technical Details
 

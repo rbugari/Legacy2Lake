@@ -51,11 +51,12 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
     *   Area central punteada. Arrastra aquí tus archivos fuenta (`.sql`, `.zip`, `.xml`, `.dtsx`).
     *   Al soltar los archivos, el sistema los carga al área de "Staging".
 *   **Botón: "Run Discovery" (o "Analyze"):**
+    *   *Ícono de Settings/Actions:* Abre el **Sidebar** izquierdo y haz clic en la acción **"Run Discovery"**.
     *   *Agente:* Activa al **Agente A (Analista)**.
     *   *Acción:* Escanea línea por línea los archivos subidos. Identifica tablas, procedimientos, vistas y dependencias externas.
     *   *Resultado:* Genera un **Manifiesto de Inventario** y habilita el botón para avanzar.
-*   **Botón: "Start Triage" (Aprobar):**
-    *   Confirma que la ingesta es correcta y mueve los archivos a la siguiente etapa.
+*   **Botón: "Next Phase: Triage" (Avanzar):**
+    *   Aparece en el **Header** superior. Confirma que la ingesta es correcta y mueve el proyecto a la siguiente etapa.
 
 ---
 
@@ -68,12 +69,13 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
     *   Verás una lista de objetos detectados (tablas, scripts).
     *   **Acción:** Arrastra los objetos críticos a la columna **"CORE"**.
     *   Arrastra lo obsoleto o innecesario a **"IGNORED"**.
-*   **Botón: "Run Analysis" (Agente S):**
+*   **Botón: "Run Analysis" (Sidebar):**
+    *   *Ubicación:* Abre el **Sidebar** a la izquierda, sección Actions.
     *   *Agente:* Activa al **Agente S (Estratega/Scout)**.
     *   *Acción:* Calcula la complejidad ciclomática y estima el esfuerzo de migración para los objetos en "CORE".
     *   *Visualización:* Verás etiquetas de riesgo (Low, Medium, High) y un "Completeness Score".
-*   **Botón: "Approve Triage":**
-    *   Congela el alcance del proyecto. Nadie podrá añadir más archivos "CORE" sin reabrir esta fase. Prepara los archivos para la planificación.
+*   **Botón: "Next Phase: Drafting" (Header):**
+    *   Congela el alcance del proyecto desde el **Header**. Nadie podrá añadir más archivos "CORE" sin reabrir esta fase. Prepara los archivos para la planificación.
 
 ---
 
@@ -82,7 +84,8 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
 **Objetivo:** Diseño de la arquitectura de destino antes de codificar.
 
 ### Interfaz y Acciones:
-*   **Botón: "Generate Plan" / "Run Pipeline":**
+*   **Botón: "Run Pipeline" / "Generate Plan":**
+    *   *Ubicación:* Abre el **Sidebar** a la izquierda.
     *   *Agente:* **Agente C (Arquitecto)** en modo borrador.
     *   *Acción:* Analiza cada script SQL y propone su equivalente en la nube (ej: "Este `CREATE PROCEDURE` será un `Job` de Databricks"). Genera un "Blueprint".
 *   **Tabs de Trabajo:**
@@ -92,8 +95,8 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
         *   **Visualización:** Gauges circulares con código de colores (rojo/amarillo/verde)
         *   **Propósito:** Detectar problemas de calidad durante la generación del IR (Intermediate Representation)
         *   **Beneficio:** Permite ajustar el diseño antes de codificar
-*   **Botón: "Approve and Refine":**
-    *   Valida el plan técnico. Al hacer clic, el sistema queda listo para la generación masiva de código.
+*   **Botón: "Next Phase: Refinement" (Header):**
+    *   Valida el plan técnico. Al hacer clic en el **Header**, el sistema queda listo para la generación masiva de código.
 
 ---
 
@@ -102,7 +105,8 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
 **Objetivo:** Generación, optimización y prueba del código moderno.
 
 ### Interfaz y Acciones:
-*   **Botón: "Refine & Modernize" (Play):**
+*   **Botón: "Run Refinement" (Sidebar):**
+    *   *Ubicación:* Expande el ícono de **Acciones** (Sidebar izquierdo).
     *   *Agentes:* Ejecuta en cadena a **Agente C (Coder)**, **Agente F (Fixer/Optimización)** y **Agente R (Reviewer)**.
     *   *Acción:* Transpila el código legado a código nativo de nube (PySpark/Snowflake) siguiendo la arquitectura "Medallion" (Bronze -> Silver -> Gold).
 *   **Tabs de Trabajo (EXPANDIDO v3.9 - 2 → 6 tabs):**
@@ -126,8 +130,8 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
         *   **Métricas:** Cache hit rates, paralelización, eficiencia de queries
         *   **Visualización:** Gráficos de líneas, barras de progreso, KPIs
         *   **Propósito:** Identificar cuellos de botella y oportunidades de optimización
-*   **Botón: "Approve Phase 4":**
-    *   Bloquea el código generado como "Candidato a Producción" y avanza a certificación.
+*   **Botón: "Next Phase: Governance" (Header):**
+    *   Bloquea el código generado como "Candidato a Producción" y avanza a certificación desde el **Header**.
 
 ---
 
@@ -137,13 +141,14 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
 
 ### Interfaz y Acciones:
 *   **Panel de Métricas:** Muestra gráficos de "Architect Score", seguridad y performance.
-*   **Botón: "Run AI Audit":**
+*   **Botón: "Run AI Audit" (Sidebar):**
+    *   *Ubicación:* En el **Sidebar** izquierdo.
     *   *Agente:* **Agente G (Guard/Auditor)**.
     *   *Acción:* Escanea el código Python/SQL generado buscando vulnerabilidades, hardcoded credentials o malas prácticas.
 *   **Sección: "Design Standards":**
     *   Permite configurar reglas de nombrado (ej: "Todas las tablas deben empezar con `tbl_`").
-*   **Botón: "Proceed to Handover":**
-    *   *Condición:* Solo aparece si el "Compliance Score" es aprobatorio (verde).
+*   **Botón: "Next Phase: Handover" (Header):**
+    *   *Condición:* Solo aparece en el **Header** si el "Compliance Score" es aprobatorio (verde).
     *   *Acción:* Autoriza el paso a la fase final de entrega.
 
 ---
@@ -158,7 +163,8 @@ El punto de partida es el **Dashboard Principal**. Aquí se centralizan todos lo
     *   La IA habrá identificado estas variables durante la refactorización.
 *   **Generador de Runbook:**
     *   Visualiza el documento `RUNBOOK.md` generado automáticamente, con instrucciones de despliegue paso a paso.
-*   **Botón: "Export Delivery" (Descargar):**
+*   **Botón: "Export Delivery" (Descargar en Sidebar):**
+    *   *Ubicación:* En el panel izquierdo de **Acciones (Sidebar)**.
     *   *Acción Final:* Genera un archivo `.zip` ("Golden Bundle") que contiene:
         1.  Código fuente moderno (PySpark/SQL).
         2.  DAGs de orquestación (Airflow/Databricks Workflows).

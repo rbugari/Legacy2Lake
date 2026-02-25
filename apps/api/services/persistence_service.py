@@ -28,6 +28,7 @@ class PersistenceService:
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "solutions"))
 
     # Stage-aligned Directory Constants
+    STAGE_SOURCE = "source"
     STAGE_TRIAGE = "triage"
     STAGE_DRAFTING = "drafting"
     STAGE_REFINEMENT = "refinement"
@@ -73,7 +74,7 @@ class PersistenceService:
             items = storage.list_files(path, recursive=False)
             for item in items:
                 # item['name'] is just the filename/foldername
-                if item["name"].lower() == cls.STAGE_TRIAGE.lower():
+                if item["name"].lower() in [cls.STAGE_TRIAGE.lower(), cls.STAGE_SOURCE.lower()]:
                     continue
                 
                 full_item_path = item["path"] # Relative to storage root or absolute key
@@ -153,19 +154,19 @@ class PersistenceService:
 
             # 2. Local Staging
             with tempfile.TemporaryDirectory() as temp_dir:
-                triage_dir = os.path.join(temp_dir, cls.STAGE_TRIAGE)
-                os.makedirs(triage_dir, exist_ok=True)
+                source_dir = os.path.join(temp_dir, cls.STAGE_SOURCE)
+                os.makedirs(source_dir, exist_ok=True)
                 
                 if source_type == "zip" and file_path:
                     # file_path is likely local temp path from UploadFile
                     with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                        zip_ref.extractall(triage_dir)
+                        zip_ref.extractall(source_dir)
                     print(f"Extracted ZIP for {project_id} in temp.")
                     
                 elif source_type == "github" and github_url:
-                    subprocess.run(["git", "clone", github_url, triage_dir], check=True)
+                    subprocess.run(["git", "clone", github_url, source_dir], check=True)
                     # Remove .git to save space/time
-                    git_dir = os.path.join(triage_dir, ".git")
+                    git_dir = os.path.join(source_dir, ".git")
                     if os.path.exists(git_dir):
                         cls._robust_local_rmtree(git_dir) 
                     print(f"Cloned GitHub for {project_id} in temp.")
@@ -278,7 +279,7 @@ class PersistenceService:
         return cls.get_storage().generate_signed_url(full_key, expiration)
 
 class SupabasePersistence:
-    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None, role: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         
@@ -302,6 +303,13 @@ class SupabasePersistence:
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.user_id = user_id  # [v3.9] Track user_id for multi-user operations
+        self.role = role # [v4.2] Track role for visibility rules
+
+    def table(self, table_name: str):
+        return self.client.table(table_name)
+
+    def rpc(self, fn_name: str, params: dict = None):
+        return self.client.rpc(fn_name, params)
 
     async def _resolve_uuid(self, project_id_or_name: str) -> Optional[str]:
         """
@@ -326,8 +334,8 @@ class SupabasePersistence:
         
         query = self.client.table("utm_projects").select("project_id", "settings").eq("name", name)
         
-        # [Security] Ensure we only check current tenant's projects
-        if self.tenant_id:
+        # [Security] Ensure we only check current tenant's projects (Admins bypass)
+        if self.tenant_id and self.role != "ADMIN":
              query = query.eq("tenant_id", self.tenant_id)
              
         res = query.execute()
@@ -351,7 +359,7 @@ class SupabasePersistence:
                 self.client.table("utm_projects").update(updates).eq("project_id", project_id).execute()
             return project_id
         
-        data = {"name": name, "stage": "1", "settings": settings}
+        data = {"name": name, "stage": "0", "status": "DISCOVERY", "settings": settings}
         if repo_url:
             data["repo_url"] = repo_url
         
@@ -364,15 +372,15 @@ class SupabasePersistence:
         res = self.client.table("utm_projects").insert(data).execute()
         return res.data[0]["project_id"]
 
-    # --- Client Management (SaaS Admin) ---
-    async def create_client(self, name: str) -> str:
-        """Creates a new client company."""
-        res = self.client.table("utm_clients").insert({"name": name}).execute()
-        return res.data[0]["client_id"]
+    # --- Tenant Management (SaaS Admin) ---
+    async def create_tenant(self, name: str) -> str:
+        """Creates a new tenant company."""
+        res = self.client.table("utm_tenants").insert({"name": name}).execute()
+        return res.data[0]["tenant_id"]
 
-    async def list_clients(self) -> List[Dict[str, Any]]:
-        """Lists all client companies."""
-        res = self.client.table("utm_clients").select("*").execute()
+    async def list_tenants(self) -> List[Dict[str, Any]]:
+        """Lists all tenant companies."""
+        res = self.client.table("utm_tenants").select("*").execute()
         return res.data if res.data else []
 
     async def get_tenant_by_id(self, tenant_id: str) -> Optional[Dict[str, Any]]:
@@ -381,10 +389,39 @@ class SupabasePersistence:
         return res.data[0] if res.data else None
 
     async def list_projects(self) -> List[Dict[str, Any]]:
-        """Returns a list of all projects, with asset counts and calculated progress."""
+        """
+        Returns a list of all projects, with asset counts and calculated progress.
+        [v4.2] Role-Based Visibility:
+        - ADMIN: All projects
+        - MANAGER: All projects in tenant
+        - COLLABORATOR / VIEWER: Projects where user is a member
+        """
         query = self.client.table("utm_projects").select("*")
-        if self.tenant_id:
-            query = query.eq("tenant_id", self.tenant_id)
+        
+        # Role-based filtering
+        if self.role == "ADMIN":
+            # Admin sees all projects from all tenants
+            pass
+        elif self.role == "MANAGER":
+            # Manager sees all projects in their tenant
+            if self.tenant_id:
+                query = query.eq("tenant_id", self.tenant_id)
+        else:
+            # COLLABORATOR / VIEWER / others see only explicit memberships
+            if self.user_id:
+                # Subquery to get projects where user is member
+                member_query = self.client.table("utm_project_members").select("project_id").eq("user_id", self.user_id)
+                member_res = member_query.execute()
+                allowed_ids = [m["project_id"] for m in member_res.data] if member_res.data else []
+                
+                if allowed_ids:
+                    query = query.in_("project_id", allowed_ids)
+                else:
+                    # No memberships = no projects
+                    return []
+            else:
+                # No identity provided = no projects for non-admins
+                return []
             
         res = query.execute()
         projects = res.data if res.data else []
@@ -402,14 +439,14 @@ class SupabasePersistence:
                 
             # Calculate progress based on stage (Aligned with WorkspacePage.tsx)
             stage_map = {
-                "1": 5,    # DISCOVERY
-                "2": 25,   # TRIAGE
-                "3": 50,   # DRAFTING
-                "4": 75,   # REFINEMENT
-                "5": 90,   # GOVERNANCE
-                "6": 100   # HANDOVER
+                "0": 5,    # DISCOVERY
+                "1": 25,   # TRIAGE
+                "2": 50,   # DRAFTING
+                "3": 75,   # REFINEMENT
+                "4": 90,   # GOVERNANCE
+                "5": 100   # HANDOVER
             }
-            item["progress"] = stage_map.get(str(item.get("stage", "1")), 0)
+            item["progress"] = stage_map.get(str(item.get("stage", "0")), 0)
 
             # Release 3.7: Expose Lines Generated for Dashboard
             project_settings = item.get("settings", {}) or {}
@@ -494,7 +531,7 @@ class SupabasePersistence:
         """Resolves a project name (slug) to its UUID. Respects Tenant Isolation."""
         query = self.client.table("utm_projects").select("project_id").eq("name", name)
         
-        if self.tenant_id:
+        if self.tenant_id and self.role != "ADMIN":
             query = query.eq("tenant_id", self.tenant_id)
             
         res = query.execute()
@@ -505,7 +542,11 @@ class SupabasePersistence:
     async def get_project_name_by_id(self, project_id: str) -> Optional[str]:
         """Resolves a project UUID to its name."""
         try:
-            res = self.client.table("utm_projects").select("name").eq("project_id", project_id).execute()
+            query = self.client.table("utm_projects").select("name").eq("project_id", project_id)
+            if self.tenant_id and self.role != "ADMIN":
+                query = query.eq("tenant_id", self.tenant_id)
+            
+            res = query.execute()
             if res.data:
                 return res.data[0]["name"]
         except Exception:
@@ -520,7 +561,7 @@ class SupabasePersistence:
                 return None
 
             query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", resolved_id)
-            if self.tenant_id:
+            if self.tenant_id and self.role != "ADMIN":
                 query = query.eq("tenant_id", self.tenant_id)
                 
             res = query.execute()
@@ -789,10 +830,10 @@ class SupabasePersistence:
             if project_name:
                 PersistenceService.clean_downstream_folders(project_name)
 
-            # 5. Reset stage to 1 and status to TRIAGE
+            # 5. Reset stage to 0 and status to DISCOVERY
             self.client.table("utm_projects").update({
-                "stage": "1",
-                "status": "TRIAGE",
+                "stage": "0",
+                "status": "DISCOVERY",
                 "triage_approved_at": None
             }).eq("project_id", resolved_id).execute()
             
@@ -1254,7 +1295,7 @@ class SupabasePersistence:
             # Resolve UUID if project_id is a name
             resolved_id = await self._resolve_uuid(project_id)
             if not resolved_id:
-                 print(f"DEBUG: Could not resolve project_id {project_id} for log_execution")
+                 print(f"[log_execution] ERROR: Could not resolve project_id '{project_id}' for log_execution")
                  return
 
             data = {
@@ -1264,27 +1305,36 @@ class SupabasePersistence:
                 "message": message,
                 "level": level
             }
-            self.client.table("utm_execution_logs").insert(data).execute()
+            print(f"[log_execution] Writing to DB: project={resolved_id}, phase={phase}, step={step}, message={message[:50]}...")
+            result = self.client.table("utm_execution_logs").insert(data).execute()
+            print(f"[log_execution] Successfully inserted log entry (count: {len(result.data) if result.data else 0})")
         except Exception as e:
-            print(f"Error logging to DB: {e}")
+            print(f"[log_execution] ERROR logging to DB: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def get_execution_logs(self, project_id: str, phase: str = None) -> List[Dict[str, Any]]:
         """Retrieves execution logs for a project, optionally filtered by phase."""
         try:
             resolved_id = await self._resolve_uuid(project_id)
             if not resolved_id:
-                print(f"DEBUG: Could not resolve project_id {project_id} for get_execution_logs")
+                print(f"[get_execution_logs] ERROR: Could not resolve project_id '{project_id}' for get_execution_logs")
                 return []
 
+            print(f"[get_execution_logs] Querying logs: project={resolved_id}, phase={phase}")
             query = self.client.table("utm_execution_logs").select("*").eq("project_id", resolved_id)
             if phase:
                 query = query.eq("phase", phase)
             
             # Sort by creation time to ensure chronological order
             res = query.order("created_at", desc=False).execute()
+            log_count = len(res.data) if res.data else 0
+            print(f"[get_execution_logs] Retrieved {log_count} log entries for project={resolved_id}, phase={phase}")
             return res.data if res.data else []
         except Exception as e:
-            print(f"Error fetching execution logs: {e}")
+            print(f"[get_execution_logs] ERROR fetching execution logs: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     async def clear_execution_logs(self, project_id: str, phase: str = None) -> bool:
@@ -1306,114 +1356,132 @@ class SupabasePersistence:
 
     async def sync_file_inventory(self, project_id: str) -> bool:
         """
-        Scans the project's solution directory and updates 'utm_file_inventory'.
-        Replaces file-system scanning for read operations.
+        Synchronizes the database file inventory with the physical storage (R2/S3/Local).
+        Replaced os.walk with StorageProvider.list_files (v3.5 Cloud Native).
+        [Robustness] Tries both project UUID and project Name for the folder path.
         """
-        import os
-        from .persistence_service import PersistenceService
-        
-        project_uuid = project_id
-        folder_key = project_id
+        resolved_uuid = await self._resolve_uuid(project_id)
+        if not resolved_uuid:
+            return False
 
-        if "-" not in project_id:
-             resolved = await self.get_project_id_by_name(project_id)
-             if resolved: project_uuid = resolved
-             folder_key = project_id
-        else:
-             # Input is UUID, find name for folder lookup
-             name = await self.get_project_name_by_id(project_id)
-             if name: folder_key = name
+        tenant_id = self.tenant_id
+        storage = PersistenceService.get_storage()
+        
+        # 1. Resolve folder candidates: UUID and Name
+        folder_candidates = [resolved_uuid]
+        
+        project_name = await self.get_project_name_by_id(resolved_uuid)
+        if project_name and project_name != resolved_uuid:
+            folder_candidates.append(project_name)
+
+        files_tree = []
+        chosen_dir = None
         
         try:
-            # 1. Get real path
-            project_dir = PersistenceService.ensure_solution_dir(folder_key)
-            import datetime
-            if not os.path.exists(project_dir):
-                return False
-
-            # 2. Walk and Collect
-            inventory = []
-            # now = "now()" # In SQL, or use python datetime
-            
-            for root, dirs, files in os.walk(project_dir):
-                rel_root = os.path.relpath(root, project_dir)
-                if rel_root == ".": rel_root = ""
+            for folder_name in folder_candidates:
+                project_dir = PersistenceService.ensure_solution_dir(folder_name, tenant_id)
+                print(f"DEBUG: Trying sync in: {project_dir}")
                 
-                # Add Directories
-                for d in dirs:
-                    if d.startswith(".") or d == "__pycache__": continue
-                    d_path = os.path.join(rel_root, d).replace("\\", "/")
-                    inventory.append({
-                        "project_id": project_uuid,
-                        "file_path": d_path,
-                        "is_directory": True,
-                        "file_path": d_path,
-                        "is_directory": True,
-                        "last_modified": None
-                    })
+                # List files from storage (recursively)
+                candidate_tree = storage.list_files(project_dir, recursive=True)
+                
+                # Check if we found anything (simple length check on children of root if root is returned, 
+                # or if candidate_tree itself has items)
+                # list_files returns a list of nodes.
+                if candidate_tree:
+                    # Filter out the root folder if it's the only item
+                    has_content = False
+                    for node in candidate_tree:
+                        # If node path is not exactly project_dir, or if it has children
+                        if node["path"].rstrip('/') != project_dir.rstrip('/') or node.get("children"):
+                            has_content = True
+                            break
+                    
+                    if has_content:
+                        files_tree = candidate_tree
+                        chosen_dir = project_dir
+                        print(f"DEBUG: Found files in {project_dir}")
+                        break
+            
+            if not chosen_dir:
+                # Default to normalized UUID if nothing found, so we clear older inventory correctly
+                chosen_dir = PersistenceService.ensure_solution_dir(resolved_uuid, tenant_id)
+                print(f"DEBUG: No files found in any candidate folder for project {project_id}")
 
-                # Add Files
-                for f in files:
-                    if f.startswith(".") or f == "__pycache__": continue
-                    if f.endswith(".pyc"): continue
+            inventory_data = []
+
+            # 2. Flatten tree and prepare batch data
+            def _extract_items(nodes):
+                for node in nodes:
+                    full_key = node["path"]
+                    # Relativize path for display (remove chosen_dir prefix)
+                    rel_path = full_key[len(chosen_dir):].lstrip('/')
                     
-                    full_path = os.path.join(root, f)
-                    rel_path = os.path.join(rel_root, f).replace("\\", "/")
+                    if not rel_path: # Skip root folder item itself
+                        if node.get("children"):
+                            _extract_items(node["children"])
+                        continue
+
+                    is_folder = (node["type"] == "folder")
                     
-                    size = os.path.getsize(full_path)
-                    
-                    mtime = os.path.getmtime(full_path)
-                    mtime_iso = datetime.datetime.fromtimestamp(mtime).isoformat()
-                    
-                    inventory.append({
-                        "project_id": project_uuid,
+                    inventory_data.append({
+                        "project_id": resolved_uuid,
                         "file_path": rel_path,
-                        "is_directory": False,
-                        "size_bytes": size,
-                        "last_modified": mtime_iso
+                        "is_directory": is_folder,
+                        "size_bytes": node.get("size", 0),
+                        "last_modified": datetime.now().isoformat()
                     })
-            
-            # 3. Simple Refresh: Delete all and re-insert
-            # (In future, intelligent diffing would be better)
-            self.client.table("utm_file_inventory").delete().eq("project_id", project_uuid).execute()
-            
-            if inventory:
-                # Batch insert? Supabase might limit request size. 
-                # Let's chunk if necessary, but thousands of files might be fine.
-                # Just catch error if too big.
-                try:
-                    self.client.table("utm_file_inventory").insert(inventory).execute()
-                except Exception as ex:
-                    print(f"Batch insert failed, retrying in chunks: {ex}")
-                    # Naive chunking
-                    chunk_size = 100
-                    for i in range(0, len(inventory), chunk_size):
-                        chunk = inventory[i:i + chunk_size]
-                        self.client.table("utm_file_inventory").insert(chunk).execute()
+                    
+                    if is_folder and node.get("children"):
+                        _extract_items(node["children"])
 
+            _extract_items(files_tree)
+
+            if not inventory_data:
+                print(f"DEBUG: No files found in any candidate folder for project {project_id}")
+                # Still clear old inventory if no files found
+                self.client.table("utm_file_inventory").delete().eq("project_id", resolved_uuid).execute()
+                return True
+
+            # 3. Clean existing and batch sync
+            self.client.table("utm_file_inventory").delete().eq("project_id", resolved_uuid).execute()
+            
+            # Batch insert
+            try:
+                self.client.table("utm_file_inventory").insert(inventory_data).execute()
+            except Exception as ex:
+                print(f"Batch insert failed, retrying in chunks: {ex}")
+                chunk_size = 100
+                for i in range(0, len(inventory_data), chunk_size):
+                    chunk = inventory_data[i:i + chunk_size]
+                    self.client.table("utm_file_inventory").insert(chunk).execute()
+            
+            print(f"DEBUG: Successfully synced {len(inventory_data)} items to utm_file_inventory")
             return True
+
         except Exception as e:
             print(f"Error syncing file inventory: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def get_project_files_from_db(self, project_id: str) -> List[Dict[str, Any]]:
         """Retrieves and builds the file tree from DB."""
-        project_uuid = project_id
-        if "-" not in project_id:
-             resolved = await self.get_project_id_by_name(project_id)
-             if resolved: project_uuid = resolved
+        resolved_uuid = await self._resolve_uuid(project_id)
+        if not resolved_uuid:
+            return []
 
         try:
-            res = self.client.table("utm_file_inventory").select("*").eq("project_id", project_uuid).execute()
+            res = self.client.table("utm_file_inventory").select("*").eq("project_id", resolved_uuid).execute()
             rows = res.data if res.data else []
             
-            if not rows:
-                # Lazy Sync if empty
-                await self.sync_file_inventory(project_id)
-                res = self.client.table("utm_file_inventory").select("*").eq("project_id", project_uuid).execute()
-                rows = res.data if res.data else []
+            if not rows and "-" not in project_id:
+                 # Lazy sync if name provided and empty
+                 await self.sync_file_inventory(project_id)
+                 res = self.client.table("utm_file_inventory").select("*").eq("project_id", resolved_uuid).execute()
+                 rows = res.data if res.data else []
 
-            # Build Tree
+            # Aligned with WorkspacePage.tsx tree expectations
             return self._build_tree(rows)
         except Exception as e:
             print(f"Error fetching inventory from DB: {e}")
@@ -1421,33 +1489,18 @@ class SupabasePersistence:
 
     def _build_tree(self, inventory: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Converts flat inventory list to nested tree structure."""
-        tree = []
-        # sort by path len to ensure parents processed before children?
-        # Actually easier to build a map.
-        
-        # Structure: path -> node
-        # But frontend expects recursive logic.
-        
-        # Let's just create a quick map of nodes
-        # This is a bit complex to do generic hierarchy from paths in one pass.
-        # Let's verify what frontend expects: 
-        # { name: "foo", type: "folder", children: [...] }
-        
-        # 1. Create all nodes
+        import os
         nodes_by_path = {}
         
-        # First pass: Create node objects
+        # 1. Create node objects
         for item in inventory:
             path = item["file_path"]
             name = os.path.basename(path)
             node = {
                 "name": name,
-                "path": path, # This is usually absolute in old helper, here relative?
-                              # Frontend uses this path for 'read_file_content'.
-                              # 'read_file_content' in persistence_service (lines 175+) handles relative paths!
-                              # So returning relative path is actually safer/better.
+                "path": path, 
                 "type": "folder" if item["is_directory"] else "file",
-                "type": "folder" if item["is_directory"] else "file",
+                "size": item.get("size_bytes", 0),
                 "children": [] if item["is_directory"] else None,
                 "last_modified": item.get("last_modified")
             }
@@ -1455,24 +1508,17 @@ class SupabasePersistence:
 
         # 2. Nest them
         root_nodes = []
-        
-        # Sort keys to ensure deterministic order (though map keys are insertion ordered in modern python)
         sorted_paths = sorted(nodes_by_path.keys())
         
         for path in sorted_paths:
             node = nodes_by_path[path]
             parent_path = os.path.dirname(path).replace("\\", "/")
             
-            if parent_path and parent_path != "." and parent_path in nodes_by_path:
+            if parent_path and parent_path != "." and parent_path != "" and parent_path in nodes_by_path:
                 nodes_by_path[parent_path]["children"].append(node)
             else:
-                # It's a top level node (relative to project root)
                 root_nodes.append(node)
 
-        # 3. Sort children? 
-        # The frontend likely expects folders first.
-        # We can do a recursive sort if needed, but 'sorted_paths' helps.
-        
         return root_nodes
 
     # Release 3.5 Phase 2: Global Configuration
@@ -1658,7 +1704,7 @@ class SupabasePersistence:
             if not resolved_id:
                 return {}
             
-            # Get all asset columns with quality metrics
+            # Get all profiled columns with quality metrics (utm_asset_columns from Sprint 7)
             res = self.client.table("utm_asset_columns").select("*").eq("project_id", resolved_id).execute()
             columns = res.data if res.data else []
             
@@ -1700,8 +1746,8 @@ class SupabasePersistence:
             if not resolved_id:
                 return {}
             
-            # Get all assets
-            res = self.client.table("utm_objects").select("source_tech, target_tech").eq("project_id", resolved_id).execute()
+            # Get all assets (only source_tech, target is at project level)
+            res = self.client.table("utm_objects").select("source_tech").eq("project_id", resolved_id).execute()
             assets = res.data if res.data else []
             
             if not assets:
@@ -1755,8 +1801,8 @@ class SupabasePersistence:
             res = self.client.table("utm_solution_context").select("*").eq("project_id", resolved_id).ilike("context_type", "%documentation%").execute()
             docs = res.data if res.data else []
             
-            # Also check design registry for governance layer
-            res2 = self.client.table("utm_design_registry").select("*").eq("project_id", resolved_id).eq("layer", "governance").execute()
+            # Also check design registry for governance category
+            res2 = self.client.table("utm_design_registry").select("*").eq("project_id", resolved_id).eq("category", "governance").execute()
             gov_nodes = res2.data if res2.data else []
             
             return docs + gov_nodes

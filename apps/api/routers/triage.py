@@ -21,6 +21,7 @@ from apps.api.services.knowledge_packet_service import KnowledgePacketService
 from apps.api.services.table_impact_service import TableImpactService
 from apps.api.services.lock_service import LockService, ProcessLockError
 from apps.api.services.quick_assessment_service import QuickAssessmentService
+from apps.api.services.column_profiling_service import ColumnProfilingService
 
 router = APIRouter(tags=["Triage & Discovery"])
 logger = logging.getLogger(__name__)
@@ -82,6 +83,100 @@ def _parse_connection_string(conn_string: str) -> Dict[str, Any]:
             parsed["database"] = db_match.group(1).strip()
     
     return parsed
+
+async def _persist_column_mappings(
+    asset_id: str,
+    medulla: Dict[str, Any],
+    db: SupabasePersistence
+) -> int:
+    """
+    Extract column mappings from SSIS medulla and persist to utm_column_mappings.
+    Called during Triage Phase B for each SSIS asset.
+    
+    Returns: Number of mappings inserted
+    """
+    try:
+        from apps.api.services.column_mapping_service import ColumnMapping, ColumnMappingService
+        
+        mappings_to_insert = []
+        seen_pairs = set()  # Dedup (source, target) pairs
+        
+        for component in medulla.get("data_flow_logic", []):
+            comp_mappings = component.get("mappings", [])
+            comp_type = component.get("type", "")
+            comp_name = component.get("name", "")
+            raw_props = component.get("raw_properties", {})
+            
+            # Process INPUT mappings (source → target)
+            for mapping in comp_mappings:
+                if mapping.get("usage") == "INPUT":
+                    # Clean column names (remove XML prefixes like "output_123.")
+                    source_raw = mapping.get("target", "")  # SSIS uses 'target' for column name
+                    target_raw = mapping.get("target", source_raw)
+                    
+                    # Extract clean column name
+                    source_col = source_raw.split(".")[-1].strip() if source_raw else ""
+                    target_col = target_raw.split(".")[-1].strip() if target_raw else source_col
+                    
+                    if not source_col:
+                        continue  # Skip empty column names
+                    
+                    # Dedup check
+                    pair_key = (source_col.lower(), target_col.lower())
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
+                    
+                    # Detect transformation rule
+                    trans_rule = None
+                    if comp_type == "DERIVED_COLUMN":
+                        trans_rule = "DERIVED"
+                    elif comp_type == "LOOKUP":
+                        trans_rule = "LOOKUP"
+                    elif "AGGREGATE" in comp_type:
+                        trans_rule = "AGGREGATE"
+                    elif source_col != target_col:
+                        trans_rule = "RENAME"
+                    
+                    mappings_to_insert.append(ColumnMapping(
+                        asset_id=asset_id,
+                        source_column=source_col,
+                        target_column=target_col,
+                        transformation_rule=trans_rule
+                    ))
+            
+            # Also process OUTPUT columns (derived/calculated fields)
+            for mapping in comp_mappings:
+                if mapping.get("usage") == "OUTPUT":
+                    col_name = mapping.get("name", "").strip()
+                    
+                    if not col_name:
+                        continue
+                    
+                    pair_key = (col_name.lower(), col_name.lower())
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
+                    
+                    # OUTPUT columns are typically derived/calculated
+                    mappings_to_insert.append(ColumnMapping(
+                        asset_id=asset_id,
+                        source_column=col_name,
+                        target_column=col_name,
+                        transformation_rule="DERIVED" if comp_type == "DERIVED_COLUMN" else "OUTPUT"
+                    ))
+        
+        # Bulk insert if we have mappings
+        if mappings_to_insert:
+            mapping_service = ColumnMappingService(supabase_client=db.client)
+            count = await mapping_service.bulk_upsert(mappings_to_insert)
+            return count
+        
+        return 0
+        
+    except Exception as e:
+        logger.warning(f"Failed to persist column mappings for asset {asset_id}: {e}")
+        return 0
 
 async def _extract_transformations_from_medulla(medulla: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract transformation components from SSIS medulla"""
@@ -241,6 +336,9 @@ async def _run_triage_background(
             if resolved_uuid:
                 project_uuid = resolved_uuid
 
+        # Clear previous execution logs for this phase (fresh start)
+        await db.clear_execution_logs(project_uuid, phase="TRIAGE")
+        
         # GOVERNANCE CHECK: TRIAGE is only allowed in TRIAGE mode.
         current_status = await db.get_project_status(project_uuid)
         if current_status == "DRAFTING":
@@ -319,22 +417,35 @@ async def _run_triage_background(
         await _log(f"Scanned {file_count} files.", agent="SCANNER")
         await _log(f"Tech Stack Detected: {tech_stats}", agent="SCANNER")
     
-        # Phase B: Enrich manifest with schema reference (Librarian)
-        await _log("Enriching manifest with schema intelligence (Librarian)...", agent="LIBRARIAN")
+        # Phase B: Parse DDL schemas and enrich manifest (Librarian)
+        await _log("Parsing DDL schemas from SUPPORT files (Librarian)...", agent="LIBRARIAN")
         try:
+            # Step 1: Generate schema_reference.json from DDL files
+            from apps.api.services.librarian_service import LibrarianService
+            librarian_parser = LibrarianService(project_id=project_folder, tenant_id=db.tenant_id)
+            schema_reference = await librarian_parser.scan_project()
+            
+            await _log(
+                f"Parsed {len(schema_reference.get('tables', {}))} tables from DDL files",
+                agent="LIBRARIAN"
+            )
+            
+            # Step 2: Consolidate with profiled columns and PII detection
             librarian = KnowledgePacketService(tenant_id=db.tenant_id, project_id=project_uuid)
             scan_result = await librarian.scan_project(project_uuid)
             
-            manifest["schema_reference"] = scan_result.get("schema_reference", {})
+            # Add to manifest for Agent A
+            manifest["schema_reference"] = schema_reference  # Parsed DDL schemas
             manifest["knowledge_summary"] = {
                 "total_assets": scan_result.get("total_assets", 0),
                 "assets_with_ddl_types": scan_result.get("assets_with_ddl_types", 0),
                 "assets_with_profiled_types": scan_result.get("assets_with_profiled_types", 0),
-                "pii_columns_detected": scan_result.get("pii_columns_detected", 0)
+                "pii_columns_detected": scan_result.get("pii_columns_detected", 0),
+                "tables_parsed": len(schema_reference.get("tables", {}))
             }
             
             await _log(
-                f"Schema reference loaded: {len(manifest['schema_reference'].get('tables', {}))} tables, "
+                f"Schema enrichment complete: {len(schema_reference.get('tables', {}))} tables, "
                 f"{scan_result.get('pii_columns_detected', 0)} PII columns detected",
                 agent="LIBRARIAN"
             )
@@ -342,6 +453,7 @@ async def _run_triage_background(
             await _log(f"Warning: Schema enrichment failed (non-critical): {e}", agent="LIBRARIAN")
             manifest["schema_reference"] = {}
             manifest["knowledge_summary"] = {}
+    
     
         # Check for cancellation
         if await _check_cancellation():
@@ -443,14 +555,16 @@ async def _run_triage_background(
             
             included_count += 1
             
+            # Find matching agent node for metadata enrichment
+            agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), {})
+            
             # Use pre-assigned classification if available, otherwise auto-detect
             if file_preclassification:
                 # Usuario ajustó la clasificación en Discovery
                 category = file_preclassification.get("classification", "CORE")
             else:
                 # Fallback: lógica anterior (backward compatible)
-                agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), None)
-                category = agent_node["category"] if agent_node else "IGNORED" 
+                category = agent_node.get("category", "IGNORED") 
                 if not agent_node:
                     category = DiscoveryService._map_extension_to_type(
                         item["name"].split('.')[-1].lower() if '.' in item["name"] else 'none'
@@ -459,13 +573,29 @@ async def _run_triage_background(
             # Classify file for category field (Sprint 14)
             file_category, detected_tech = qa_service._classify_file(item)
 
+            # Extract metadata from Agent A (Detected Architecture)
+            # Sprint 12: Ensure load_strategy, criticality, etc are persisted
+            node_metadata = agent_node.get("metadata", {})
+            
             db_assets.append({
                 "filename": item["name"],
-                "type": category,  # CORE/SUPPORT/IGNORED - from user pre-classification or auto
-                "category": file_category,  # migrable, soporte, documentacion, no_reconocido
+                "type": category,  # CORE/SUPPORT/IGNORED
+                "category": file_category,  # migrable, soporte, documentacion
                 "source_path": item["path"],
-                "metadata": {**item.get("metadata", {}), "size": item["size"]},
-                "selected": True if category == "CORE" else False
+                "metadata": {
+                    **item.get("metadata", {}), 
+                    **node_metadata,
+                    "size": item["size"],
+                    "agent_confidence": agent_node.get("confidence", 0)
+                },
+                "selected": True if category == "CORE" else False,
+                # Agent A Enrichments (Sprint 12)
+                "target_name": agent_node.get("target_name"),
+                "business_entity": agent_node.get("business_entity"),
+                "criticality": node_metadata.get("criticality", item.get("criticality", "P3")),
+                "load_strategy": node_metadata.get("load_strategy", item.get("load_strategy", "FULL_OVERWRITE")),
+                "is_pii": node_metadata.get("is_pii", item.get("is_pii", False)),
+                "masking_rule": node_metadata.get("masking_rule", item.get("masking_rule"))
             })
         
         # Log optimization stats
@@ -483,6 +613,7 @@ async def _run_triage_background(
         # SPRINT 8.5: Extract Origin Analysis during Triage (not during code generation)
         await _log("Extracting origin analysis from SSIS assets...", agent="TRIAGE")
         origin_count = 0
+        total_mappings = 0
         for asset in saved_assets:
             try:
                 metadata = asset.get("metadata", {})
@@ -514,13 +645,43 @@ async def _run_triage_background(
                     })
                 }).eq("object_id", object_id).execute()
                 
+                # Persist column mappings (auto-inferred from SSIS medulla)
+                mapping_count = await _persist_column_mappings(object_id, medulla, db)
+                total_mappings += mapping_count
+                if mapping_count > 0:
+                    await _log(f"  └─ Persisted {mapping_count} column mapping(s) for {asset.get('filename', 'asset')}", agent="TRIAGE")
+                
                 origin_count += 1
                 
             except Exception as e:
                 logger.warning(f"Failed to extract origin analysis for {asset.get('filename')}: {e}")
         
         if origin_count > 0:
-            await _log(f"✅ Extracted origin analysis from {origin_count} SSIS asset(s)", agent="TRIAGE")
+            await _log(f"✅ Extracted origin analysis from {origin_count} SSIS asset(s) | {total_mappings} total column mappings", agent="TRIAGE")
+        
+        # Auto-generate column profiling data from mappings (Sprint 7)
+        if total_mappings > 0:
+            await _log("🔍 Analyzing column profiles (PII detection, cardinality, partitioning)...", agent="PROFILER")
+            try:
+                profiler = ColumnProfilingService(tenant_id=db.tenant_id, client_id=db.client_id)
+                profiling_result = await profiler.profile_from_mappings(
+                    project_id=project_uuid,
+                    force_refresh=False
+                )
+                
+                if profiling_result.get("success"):
+                    await _log(
+                        f"✅ Profiling complete: {profiling_result.get('columns_profiled')} columns, "
+                        f"{profiling_result.get('pii_columns')} PII, "
+                        f"{profiling_result.get('partition_candidates')} partition candidates",
+                        agent="PROFILER"
+                    )
+                else:
+                    await _log(f"⚠️ Profiling warning: {profiling_result.get('message')}", agent="PROFILER")
+            except Exception as e:
+                # Non-critical - log warning but don't fail Triage
+                await _log(f"⚠️ Profiling error (non-critical): {str(e)}", agent="PROFILER")
+                logger.warning(f"[Triage] Column profiling failed (non-critical): {e}")
 
         # Phase C: Analyze table impacts after assets are persisted
         await _log("Analyzing table impacts (Phase C)...", agent="TABLE_IMPACT")
@@ -623,7 +784,10 @@ async def _run_triage_background(
     
         await _log(f"Graph and Assets saved to database. Total Lines: {total_lines}", agent="DATABASE")
         
-        # At the end, update project status to TRIAGED
+        # Phase E: Sync File Inventory (Cloud Native)
+        await _log("Synchronizing file inventory...", agent="DATABASE")
+        await db.sync_file_inventory(project_uuid)
+    
         await db.update_project_status(project_uuid, "TRIAGED")
         await _log("✅ Triage completed successfully", agent="TRIAGE")
         

@@ -54,4 +54,5 @@ The system operates via specialized AI agents interacting through the metadata s
 - **Role-Based API Routing**: The refined System Router (`/system/*`) isolates administrative functions (Agent Management, Vault) from project execution logic, ensuring cleaner separation of concerns.
 - **Header Enforcement**: Every request must include `X-Tenant-ID`, which is sanitized and validated by the `get_identity` middleware.
 - **Process Robustness**: Long-running orchestrators (Triage, Drafting, Refinement) check the `cancellation_requested` flag at granular steps, ensuring projects can be stopped immediately and safely.
+- **Unified Action Ecosystem**: All stage execution actions are centralized in a unified `StageSidebar`, orchestrated globally by the `WorkspacePage` state router, eliminating circular dependencies between stage headers and execution logic.
 - **Storage Isolation**: R2 keys follow the pattern `{tenant_id}/{project_name}/...` with signed URLs used for secure, performant delivery.

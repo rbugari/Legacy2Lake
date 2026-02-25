@@ -91,7 +91,7 @@ export default function SolutionConfigDrawer({ isOpen, onClose, projectId, sourc
                             />
                             <ConfigCard
                                 label="Output Language"
-                                value={`${targetTech === 'spark' || targetTech === 'databricks' ? 'Python (PySpark)' : 'SQL'}`}
+                                value={`${['spark', 'pyspark', 'databricks', 'cloudera'].includes(targetTech?.toLowerCase() || '') ? 'Python (PySpark)' : 'SQL'}`}
                                 icon={<CodeIcon size={16} className="text-emerald-500" />}
                                 onClick={() => {/* Future: Select Target */ }}
                             />

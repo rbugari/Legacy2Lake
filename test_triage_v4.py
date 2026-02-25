@@ -37,6 +37,7 @@ def test_triage():
     response = requests.post(
         f"{BASE_URL}/projects/{PROJECT_ID}/triage",
         headers=headers,
+        json={},  # Empty body for TriageParams (all fields optional)
         timeout=60
     )
     

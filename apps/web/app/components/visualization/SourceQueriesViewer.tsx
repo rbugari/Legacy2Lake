@@ -12,11 +12,17 @@ interface QueryItem {
     language: string;
 }
 
-interface SourceQueriesData {
-    package_name: string | null;
+interface PackageData {
+    package_id: string;
+    package_name: string;
     queries: QueryItem[];
+    query_count: number;
+}
+
+interface SourceQueriesData {
+    total_packages: number;
     total_queries: number;
-    main_query: string | null;
+    packages: PackageData[];
     timestamp: string | null;
     message?: string;
 }
@@ -35,7 +41,7 @@ export default function SourceQueriesViewer({ projectId }: SourceQueriesViewerPr
     const [data, setData] = useState<SourceQueriesData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+    const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchQueries = async () => {
@@ -62,7 +68,7 @@ export default function SourceQueriesViewer({ projectId }: SourceQueriesViewerPr
         fetchQueries();
     }, [projectId]);
 
-    const handleCopyQuery = async (query: string, index: number) => {
+    const handleCopyQuery = async (query: string, index: string) => {
         try {
             await navigator.clipboard.writeText(query);
             setCopiedIndex(index);
@@ -123,123 +129,126 @@ export default function SourceQueriesViewer({ projectId }: SourceQueriesViewerPr
 
     return (
         <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6">
-            {/* Header */}
-            <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <FileCode size={24} className="text-emerald-500" />
-                    Source Queries Extracted
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    SQL queries extracted from {data.package_name || 'SSIS package'} components
-                </p>
-            </div>
-
-            {/* Summary */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Database size={20} className="text-emerald-500" />
-                        <span className="font-semibold text-gray-900 dark:text-gray-100">
-                            Total Queries: {data.total_queries}
-                        </span>
+            <div className="max-w-7xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center">
+                        <FileCode size={24} className="text-emerald-500" />
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Package: {data.package_name}
+                    <div>
+                        <h2 className="text-2xl font-black text-[var(--text-primary)]">Source Queries</h2>
+                        <p className="text-sm text-[var(--text-tertiary)]">
+                            SQL extracted from {data.total_packages} {data.total_packages === 1 ? 'package' : 'packages'} across the project
+                        </p>
                     </div>
                 </div>
-            </div>
 
-            {/* Queries List */}
-            <div className="space-y-6">
-                {data.queries.map((query, idx) => {
-                    const typeStyle = COMPONENT_TYPE_STYLES[query.component_type] || COMPONENT_TYPE_STYLES['SOURCE_DB'];
-                    const isCopied = copiedIndex === idx;
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Database size={20} className="text-emerald-500" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Queries</span>
+                        </div>
+                        <p className="text-4xl font-black text-emerald-600">{data.total_queries}</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <FileCode size={20} className="text-blue-500" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Packages</span>
+                        </div>
+                        <p className="text-4xl font-black text-blue-600">{data.total_packages}</p>
+                    </div>
+                </div>
 
-                    return (
-                        <div
-                            key={idx}
-                            className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm"
-                        >
-                            {/* Query Header */}
-                            <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold ${typeStyle.bgColor} ${typeStyle.textColor}`}>
-                                        {typeStyle.label}
-                                    </span>
-                                    <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                        {query.component_name}
-                                    </span>
+                {/* Packages with Queries */}
+                <div className="space-y-6">
+                    {data.packages.map((pkg, pkgIdx) => (
+                        <div key={pkgIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                            {/* Package Header */}
+                            <div className="px-6 py-4 bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border-b border-gray-200 dark:border-gray-700">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                            <FileCode size={18} className="text-emerald-500" />
+                                            {pkg.package_name}
+                                        </h3>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                            {pkg.query_count} {pkg.query_count === 1 ? 'query' : 'queries'} extracted
+                                        </p>
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={() => handleCopyQuery(query.query, idx)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
-                                >
-                                    {isCopied ? (
-                                        <>
-                                            <Check size={14} />
-                                            Copied
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy size={14} />
-                                            Copy
-                                        </>
-                                    )}
-                                </button>
                             </div>
 
-                            {/* Query Code */}
-                            <div className="relative">
-                                <SyntaxHighlighter
-                                    language={query.language || 'sql'}
-                                    style={vscDarkPlus}
-                                    customStyle={{
-                                        margin: 0,
-                                        padding: '1.5rem',
-                                        fontSize: '0.875rem',
-                                        lineHeight: '1.5',
-                                        background: 'transparent'
-                                    }}
-                                    showLineNumbers={true}
-                                >
-                                    {query.query}
-                                </SyntaxHighlighter>
+                            {/* Queries in Package */}
+                            <div className="p-6 space-y-4">
+                                {pkg.queries.map((query, queryIdx) => {
+                                    const typeStyle = COMPONENT_TYPE_STYLES[query.component_type] || COMPONENT_TYPE_STYLES['SOURCE_DB'];
+                                    const idx = `${pkgIdx}-${queryIdx}`;
+                                    const isCopied = copiedIndex === idx;
+
+                                    return (
+                                        <div key={queryIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                            {/* Query Header */}
+                                            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold ${typeStyle.bgColor} ${typeStyle.textColor}`}>
+                                                        {typeStyle.label}
+                                                    </span>
+                                                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                                                        {query.component_name}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleCopyQuery(query.query, idx)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+                                                >
+                                                    {isCopied ? (
+                                                        <>
+                                                            <Check size={14} />
+                                                            Copied
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Copy size={14} />
+                                                            Copy
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+
+                                            {/* Query Code */}
+                                            <div className="relative">
+                                                <SyntaxHighlighter
+                                                    language={query.language || 'sql'}
+                                                    style={vscDarkPlus}
+                                                    customStyle={{
+                                                        margin: 0,
+                                                        padding: '1rem',
+                                                        fontSize: '0.8125rem',
+                                                        lineHeight: '1.5',
+                                                        background: 'transparent'
+                                                    }}
+                                                    showLineNumbers={true}
+                                                >
+                                                    {query.query}
+                                                </SyntaxHighlighter>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-                    );
-                })}
-            </div>
+                    ))}
+                </div>
 
-            {/* Main Query Highlight (if available) */}
-            {data.main_query && data.main_query !== data.queries[0]?.query && (
-                <div className="mt-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800 p-6">
-                    <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-100 mb-3 flex items-center gap-2">
-                        <Search size={16} />
-                        Primary Source Query
-                    </h3>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
-                        <SyntaxHighlighter
-                            language="sql"
-                            style={vscDarkPlus}
-                            customStyle={{
-                                margin: 0,
-                                padding: '1rem',
-                                fontSize: '0.8125rem',
-                                background: 'transparent'
-                            }}
-                        >
-                            {data.main_query}
-                        </SyntaxHighlighter>
+                {/* Timestamp Footer */}
+                {data.timestamp && (
+                    <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
+                        Last extracted: {new Date(data.timestamp).toLocaleString()}
                     </div>
-                </div>
-            )}
-
-            {/* Timestamp Footer */}
-            {data.timestamp && (
-                <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-                    Last extracted: {new Date(data.timestamp).toLocaleString()}
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }

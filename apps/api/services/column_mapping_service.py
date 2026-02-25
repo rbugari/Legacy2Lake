@@ -20,8 +20,7 @@ class ColumnMapping:
         transformation_rule: str = None,
         is_pii: bool = False,
         is_nullable: bool = True,
-        default_value: str = None,
-        logic: str = None
+        default_value: str = None
     ):
         self.asset_id = asset_id
         self.source_column = source_column
@@ -32,7 +31,6 @@ class ColumnMapping:
         self.is_pii = is_pii
         self.is_nullable = is_nullable
         self.default_value = default_value
-        self.logic = logic
 
 class ColumnMappingService:
     """Service for managing column-level mappings"""
@@ -61,8 +59,7 @@ class ColumnMappingService:
             'transformation_rule': mapping.transformation_rule,
             'is_pii': mapping.is_pii,
             'is_nullable': mapping.is_nullable,
-            'default_value': mapping.default_value,
-            'logic': mapping.logic
+            'default_value': mapping.default_value
         }
         
         result = self.db.table('utm_column_mappings')\
@@ -83,8 +80,7 @@ class ColumnMappingService:
                 'transformation_rule': m.transformation_rule,
                 'is_pii': m.is_pii,
                 'is_nullable': m.is_nullable,
-                'default_value': m.default_value,
-                'logic': m.logic
+                'default_value': m.default_value
             }
             for m in mappings
         ]

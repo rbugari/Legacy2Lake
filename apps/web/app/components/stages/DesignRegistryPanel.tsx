@@ -79,6 +79,27 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
 
     if (loading) return <div className="p-8 text-center text-gray-500 animate-pulse">Loading Registry...</div>;
 
+    if (Object.keys(grouped).length === 0) {
+        return (
+            <div className="max-w-7xl mx-auto p-6">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm text-center">
+                    <AlertTriangle className="mx-auto mb-4 text-yellow-500" size={48} />
+                    <h3 className="text-xl font-bold mb-2">No Design Standards Found</h3>
+                    <p className="text-gray-500 mb-4">
+                        This project doesn't have design standards configured yet.
+                        Click Refresh to initialize default values.
+                    </p>
+                    <button
+                        onClick={fetchRegistry}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all inline-flex items-center gap-2"
+                    >
+                        <RefreshCw size={20} /> Initialize Registry
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-7xl mx-auto p-6 space-y-8">
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
@@ -88,8 +109,8 @@ export default function DesignRegistryPanel({ projectId }: DesignRegistryPanelPr
                             <Settings className="text-primary" /> Design Registry
                         </h2>
                         <p className="text-gray-500 text-sm mt-1">
-                            Define the architectural standards for your solution.
-                            These rules are injected into the Architect Agents.
+                            Configure architecture patterns, naming conventions, and medallion layer design standards.
+                            These rules are injected into the Architect Agents during code generation.
                         </p>
                     </div>
                     <button onClick={fetchRegistry} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-700 transition">

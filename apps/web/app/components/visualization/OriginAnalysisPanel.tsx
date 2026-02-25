@@ -1,7 +1,14 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Database, Server, HardDrive, Link2, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Database, Server, HardDrive, Link2, CheckCircle, AlertCircle, Loader, Package } from 'lucide-react';
 import { fetchWithAuth } from '../../lib/auth-client';
+
+interface SourceSystem {
+    server: string;
+    database: string;
+    table_count: number;
+    tables: string[];
+}
 
 interface Connection {
     name: string;
@@ -12,16 +19,12 @@ interface Connection {
 }
 
 interface OriginAnalysisData {
-    source_type: string | null;
-    server: string | null;
-    database: string | null;
-    package_name: string | null;
+    source_systems: SourceSystem[];
+    total_packages: number;
+    total_tables: number;
+    total_connections: number;
     connections: Connection[];
-    statistics: {
-        source_tables: number;
-        total_rows: number | null;
-        columns_detected: number | null;
-    };
+    all_tables: string[];
     timestamp: string | null;
     message?: string;
 }
@@ -91,7 +94,7 @@ export default function OriginAnalysisPanel({ projectId }: OriginAnalysisPanelPr
         );
     }
 
-    if (!data || !data.source_type) {
+    if (!data || data.source_systems.length === 0) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
                 <div className="flex flex-col items-center gap-3 text-center px-4">
@@ -101,7 +104,7 @@ export default function OriginAnalysisPanel({ projectId }: OriginAnalysisPanelPr
                             No Origin Analysis Available
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                            {data?.message || 'Run Discovery and Triage to analyze the source system'}
+                            {data?.message || "Run Discovery and Triage to analyze source systems"}
                         </div>
                     </div>
                 </div>
@@ -110,165 +113,134 @@ export default function OriginAnalysisPanel({ projectId }: OriginAnalysisPanelPr
     }
 
     return (
-        <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6">
-            {/* Header */}
-            <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <Database size={24} className="text-emerald-500" />
-                    Origin Analysis
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Detected source system information from SSIS package analysis
-                </p>
-            </div>
-
-            {/* Main Origin Info */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6 shadow-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Source System */}
-                    <div>
-                        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                            Source System
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Database size={20} className="text-blue-500" />
-                            <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                {data.source_type}
-                            </span>
-                        </div>
+        <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center">
+                        <Server size={24} className="text-blue-500" />
                     </div>
-
-                    {/* Server */}
                     <div>
-                        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                            Server
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Server size={20} className="text-purple-500" />
-                            <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                {data.server || 'N/A'}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Database */}
-                    <div>
-                        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                            Database
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <HardDrive size={20} className="text-orange-500" />
-                            <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                {data.database || 'N/A'}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Package */}
-                    <div>
-                        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                            Package
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <CheckCircle size={20} className="text-emerald-500" />
-                            <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                {data.package_name || 'N/A'}
-                            </span>
-                        </div>
+                        <h2 className="text-2xl font-black text-[var(--text-primary)]">Origin Analysis</h2>
+                        <p className="text-sm text-[var(--text-tertiary)]">Consolidated source systems across all packages</p>
                     </div>
                 </div>
-            </div>
 
-            {/* Statistics */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6 shadow-sm">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                    <Database size={16} />
-                    Statistics
-                </h3>
+                {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
-                        <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
-                            Source Tables
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Package size={20} className="text-purple-500" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Packages</span>
                         </div>
-                        <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                            {data.statistics.source_tables || 0}
-                        </div>
+                        <p className="text-4xl font-black text-[var(--text-primary)]">{data.total_packages}</p>
                     </div>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                        <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold mb-1">
-                            Total Rows
+                    
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Database size={20} className="text-emerald-500" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Source Tables</span>
                         </div>
-                        <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                            {data.statistics.total_rows?.toLocaleString() || 'N/A'}
-                        </div>
+                        <p className="text-4xl font-black text-emerald-600">{data.total_tables}</p>
                     </div>
-                    <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
-                        <div className="text-xs text-purple-600 dark:text-purple-400 font-semibold mb-1">
-                            Columns Detected
+                    
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Link2 size={20} className="text-cyan-500" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Connections</span>
                         </div>
-                        <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                            {data.statistics.columns_detected || 'N/A'}
-                        </div>
+                        <p className="text-4xl font-black text-cyan-600">{data.total_connections}</p>
                     </div>
                 </div>
-            </div>
 
-            {/* Connections */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                    <Link2 size={16} />
-                    Connections ({data.connections.length})
-                </h3>
-                
-                {data.connections.length === 0 ? (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 italic">
-                        No connections detected
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {data.connections.map((conn, idx) => (
-                            <div
-                                key={idx}
-                                className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
-                            >
-                                <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                        <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                                            {conn.name}
-                                        </div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                                            <div>
-                                                <span className="font-semibold">Type:</span> {conn.type}
-                                            </div>
-                                            <div>
-                                                <span className="font-semibold">Server:</span> {conn.server}
-                                            </div>
-                                            <div>
-                                                <span className="font-semibold">Database:</span> {conn.database}
-                                            </div>
-                                            <div className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">
-                                                ID: {conn.id}
-                                            </div>
-                                        </div>
+                {/* Source Systems List */}
+                <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                        <Server size={18} className="text-blue-500" />
+                        Source Systems
+                    </h3>
+                    
+                    {data.source_systems.map((system, idx) => (
+                        <div key={idx} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                            <div className="flex items-start justify-between mb-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <HardDrive size={16} className="text-blue-500" />
+                                        <span className="font-bold text-[var(--text-primary)]">{system.server}</span>
                                     </div>
-                                    <div className="ml-4">
-                                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                                            {conn.type}
-                                        </span>
+                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                        <Database size={14} />
+                                        {system.database}
                                     </div>
                                 </div>
+                                <div className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
+                                        {system.table_count} {system.table_count === 1 ? 'table' : 'tables'}
+                                    </span>
+                                </div>
                             </div>
-                        ))}
+                            
+                            {system.tables.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Tables:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {system.tables.map((table, tidx) => (
+                                            <span 
+                                                key={tidx}
+                                                className="px-2 py-1 bg-gray-100 dark:bg-gray-900 rounded text-xs font-mono text-gray-700 dark:text-gray-300"
+                                            >
+                                                {table}
+                                            </span>
+                                        ))}
+                                        {system.table_count > system.tables.length && (
+                                            <span className="px-2 py-1 text-xs text-gray-500">
+                                                +{system.table_count - system.tables.length} more
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Connections Detail */}
+                {data.connections.length > 0 && (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                            <Link2 size={18} className="text-cyan-500" />
+                            Connection Strings
+                        </h3>
+                        
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 dark:bg-gray-900">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">Name</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">Type</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">Server</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">Database</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                    {data.connections.map((conn, idx) => (
+                                        <tr key={idx}>
+                                            <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{conn.name}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded text-xs font-bold text-purple-700 dark:text-purple-300">
+                                                    {conn.type}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{conn.server}</td>
+                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{conn.database}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div>
-
-            {/* Timestamp Footer */}
-            {data.timestamp && (
-                <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-                    Last analyzed: {new Date(data.timestamp).toLocaleString()}
-                </div>
-            )}
         </div>
     );
 }

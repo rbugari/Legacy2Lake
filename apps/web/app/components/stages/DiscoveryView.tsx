@@ -16,10 +16,15 @@ import {
     Database,
     Binary,
     RefreshCw,
-    ShieldCheck
+    ShieldCheck,
+    Upload,
+    X,
+    FolderOpen
 } from 'lucide-react';
 import StageHeader from '../StageHeader';
 import { fetchWithAuth } from '../../lib/auth-client';
+import UnifiedLogViewer from '../UnifiedLogViewer';
+import { useConfirm } from '../../hooks/useConfirm';
 
 interface DiscoveryViewProps {
     projectId: string;
@@ -28,9 +33,21 @@ interface DiscoveryViewProps {
     onToggleFullscreen?: () => void;
     onReset?: () => void;
     onBackToCurrent?: () => void;
+    activeSection?: string;
+    onSectionChange?: (section: string) => void;
 }
 
-export default function DiscoveryView({ projectId, onStageChange, isFullscreen, onToggleFullscreen, onReset, onBackToCurrent }: DiscoveryViewProps) {
+export default function DiscoveryView({
+    projectId,
+    onStageChange,
+    isFullscreen,
+    onToggleFullscreen,
+    onReset,
+    onBackToCurrent,
+    activeSection = 'assessment',
+    onSectionChange
+}: DiscoveryViewProps) {
+    const { confirm, ConfirmDialog } = useConfirm();
     const [isScanning, setIsScanning] = useState(false);
     const [scanProgress, setScanProgress] = useState(0);
     const [scanLogs, setScanLogs] = useState<string[]>([]);
@@ -79,7 +96,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             // ✅ STEP 1: Fetch real file list from Triage folder
             setScanLogs(prev => [...prev, "Scanning Triage folder..."]);
 
-            const filesRes = await fetchWithAuth(`projects/${projectId}/triage/files`);
+            const filesRes = await fetchWithAuth(`projects/${projectId}/source/files`);
             const filesData = await filesRes.json();
 
             if (!filesData || !filesData.success || filesData.file_count === 0) {
@@ -154,7 +171,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 try {
                     const invRes = await fetchWithAuth(`projects/${projectId}/file-inventory`);
                     const invData = await invRes.json();
-                    
+
                     if (invData.success && invData.files) {
                         setFileInventory(invData.files);
                         setShowClassification(true);
@@ -184,9 +201,27 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
             .catch(err => console.error("Failed to fetch project settings", err));
     }, [projectId]);
 
-    const handleScan = () => {
-        runScan();
+    const handleScan = async () => {
+        const runOk = await confirm({
+            title: 'Run Forensic Scan',
+            description: 'This will analyze the repository to detect technical stack and viabilities. Are you sure you want to proceed?',
+            confirmLabel: 'Run Scan',
+            variant: 'execute'
+        });
+
+        if (runOk) {
+            runScan();
+            onSectionChange?.('logs');
+        } else if (activeSection === 'run-scan') {
+            onSectionChange?.('assessment');
+        }
     };
+
+    useEffect(() => {
+        if (activeSection === 'run-scan' && !isScanning) {
+            handleScan();
+        }
+    }, [activeSection, isScanning]);
 
     const handleUpdateTech = async () => {
         if (!assessment.detectedTech) return;
@@ -221,7 +256,7 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
         formData.append("files", file);
 
         try {
-            const res = await fetchWithAuth(`projects/${projectId}/triage/upload`, {
+            const res = await fetchWithAuth(`projects/${projectId}/source/upload`, {
                 method: "POST",
                 body: formData
             });
@@ -247,13 +282,13 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
 
     // Pre-Classification Handlers
     const handleFileClassification = (index: number, classification: string) => {
-        setFileInventory(prev => prev.map((file, idx) => 
+        setFileInventory(prev => prev.map((file, idx) =>
             idx === index ? { ...file, classification } : file
         ));
     };
 
     const handleFileInclude = (index: number, include: boolean) => {
-        setFileInventory(prev => prev.map((file, idx) => 
+        setFileInventory(prev => prev.map((file, idx) =>
             idx === index ? { ...file, include } : file
         ));
     };
@@ -296,20 +331,39 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 });
 
                 setScanLogs(prev => [...prev, `✓ Saved classification for ${Object.keys(classification).length} files`]);
+
+                // Call promotion endpoint to copy files to Triage
+                setScanLogs(prev => [...prev, `Promoting ${Object.values(classification).filter((c: any) => c.include).length} selected files to Triage...`]);
+                const promoteRes = await fetchWithAuth(`projects/${projectId}/source/promote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ classification })
+                });
+
+                if (promoteRes.ok) {
+                    const promoteData = await promoteRes.json();
+                    if (promoteData.success) {
+                        setScanLogs(prev => [...prev, `✓ Promoted ${promoteData.promoted_count} files to Triage.`]);
+                    } else {
+                        setScanLogs(prev => [...prev, `⚠️ Error promoting files: ${promoteData.errors?.join(", ")}`]);
+                    }
+                } else {
+                    setScanLogs(prev => [...prev, `❌ Failed to promote files to Triage.`]);
+                }
             } catch (err) {
                 console.error("Failed to save pre-classification:", err);
                 alert("Warning: Failed to save classification settings");
             }
         }
 
-        onStageChange(2);
+        onStageChange(1);
     };
 
     return (
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
-                title="Stage 1: Technical Discovery"
-                subtitle="Agent S: Forensic repository audit and gap detection"
+                title="Stage 0: Technical Discovery"
+                subtitle="The Scout: Forensic repository audit and gap detection"
                 icon={<Activity className="text-cyan-500" />}
                 helpText="Initial analysis to ensure technical consistency and fill tribal knowledge gaps before triage."
                 onApprove={handleStartTriage}
@@ -333,349 +387,374 @@ export default function DiscoveryView({ projectId, onStageChange, isFullscreen, 
                 </div>
             </StageHeader>
 
-            <div className="flex-1 overflow-y-auto p-8 grid grid-cols-12 gap-8 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
 
-                {/* Left Side: Agent S Console */}
-                <div className="col-span-12 lg:col-span-7 space-y-6">
-                    <div className="bg-black/40 border border-white/5 rounded-3xl overflow-hidden flex flex-col h-[500px] shadow-2xl">
-                        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/5">
-                            <div className="flex items-center gap-3">
-                                <Terminal size={14} className="text-cyan-500" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Agent S: Forensic Audit</span>
+                {/* LOGS VIEW */}
+                {activeSection === 'logs' && (
+                    <div className="h-full flex flex-col">
+                        <div className="flex-1 min-h-[500px]">
+                            <UnifiedLogViewer
+                                mode="realtime"
+                                projectId={projectId}
+                                logs={scanLogs}
+                                isRunning={isScanning}
+                                processName="Forensic Discovery Analysis"
+                                variant="embedded"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* FORENSIC ASSESSMENT */}
+                {activeSection === 'assessment' && (
+                    <div className="max-w-4xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                <ShieldCheck size={24} className="text-emerald-500" />
+                                Forensic Assessment
+                            </h2>
+                        </div>
+                        {assessment.summary ? (
+                            <div className="bg-white/5 border border-white/5 rounded-3xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-white">Gap Detection Summary</h3>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Completeness</span>
+                                        <div className="px-4 py-1.5 bg-white/5 rounded-full text-xs font-black text-cyan-500">
+                                            {assessment.score}%
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p className="text-sm text-gray-300 leading-relaxed mb-8 font-medium bg-black/20 p-6 rounded-2xl border border-white/5">
+                                    {assessment.summary}
+                                </p>
+
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Identified Gaps</h4>
+                                    {assessment.gaps.map((gap, idx) => (
+                                        <div key={idx} className="p-5 bg-black/40 border border-white/5 rounded-2xl flex items-start gap-5 hover:border-cyan-500/30 transition-colors">
+                                            <div className={`p-3 rounded-xl border ${gap.impact === 'HIGH' ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-amber-500/10 border-amber-500/30 text-amber-500'}`}>
+                                                <ShieldAlert size={20} />
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs font-black uppercase tracking-widest text-white">{gap.category}</span>
+                                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${gap.impact === 'HIGH' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                        {gap.impact} IMPACT
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-400 mb-3 leading-relaxed">{gap.gap_description}</p>
+                                                <div className="flex items-center gap-2 bg-white/5 p-3 rounded-xl border border-white/5">
+                                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Recommendation:</span>
+                                                    <span className="text-[11px] font-bold text-cyan-500 opacity-90 italic">Upload "{gap.suggested_file}"</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {assessment.gaps.length === 0 && (
+                                        <div className="text-center p-8 text-gray-500 text-sm">No critical gaps identified.</div>
+                                    )}
+                                </div>
                             </div>
-                            {isScanning && (
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-cyan-500 rounded-full animate-ping" />
-                                    <span className="text-[9px] font-bold text-cyan-500 uppercase">Scanning...</span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex-1 p-6 font-mono text-[11px] space-y-2 overflow-y-auto custom-scrollbar-slim bg-[#080808]">
-                            {scanLogs.map((log, idx) => (
-                                <div key={idx} className={`flex gap-3 ${log.includes('ALERT') ? 'text-amber-500' : 'text-gray-400'}`}>
-                                    <span className="text-gray-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
-                                    <span className={log.includes('Complete') ? 'text-emerald-500 font-bold' : ''}>{log}</span>
-                                </div>
-                            ))}
-                            {scanLogs.length === 0 && !isScanning && (
-                                <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
-                                    <SearchCode size={48} className="mb-4" />
-                                    <p className="text-xs font-bold uppercase tracking-widest">Awaiting execution command...</p>
-                                </div>
-                            )}
-                            <div ref={logEndRef} />
-                        </div>
-                        {isScanning && (
-                            <div className="h-1 bg-white/5 w-full overflow-hidden">
-                                <div
-                                    className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)] transition-all duration-300"
-                                    style={{ width: `${scanProgress}%` }}
-                                />
+                        ) : (
+                            <div className="h-[400px] flex flex-col items-center justify-center text-center opacity-50 border border-dashed border-white/10 rounded-3xl">
+                                <SearchCode size={48} className="mb-4 text-cyan-500" />
+                                <p className="text-sm font-bold uppercase tracking-widest">Run the Forensic Scan to view assessment.</p>
+                                <button
+                                    onClick={() => onSectionChange?.('run-scan')}
+                                    className="mt-6 px-6 py-2 bg-white/5 rounded-xl text-xs font-bold hover:bg-white/10 transition-colors uppercase tracking-widest"
+                                >
+                                    Go to Scan
+                                </button>
                             </div>
                         )}
                     </div>
+                )}
 
-                    {/* GAP DETECTION REPORT */}
-                    {assessment.summary && (
-                        <div className="bg-white/5 border border-white/5 rounded-3xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-3">
-                                    <ShieldCheck size={18} className="text-emerald-500" />
-                                    <h3 className="text-xs font-black uppercase tracking-widest text-white">Forensic Assessment</h3>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Completeness</span>
-                                    <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-black text-cyan-500">
-                                        {assessment.score}%
-                                    </div>
-                                </div>
-                            </div>
-
-                            <p className="text-xs text-gray-400 leading-relaxed mb-6 font-medium">
-                                {assessment.summary}
-                            </p>
-
-                            <div className="space-y-3">
-                                {assessment.gaps.map((gap, idx) => (
-                                    <div key={idx} className="p-4 bg-black/40 border border-white/5 rounded-2xl flex items-start gap-4 hover:border-cyan-500/30 transition-colors">
-                                        <div className={`p-2 rounded-xl border ${gap.impact === 'HIGH' ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-amber-500/10 border-amber-500/30 text-amber-500'}`}>
-                                            <ShieldAlert size={16} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-white">{gap.category}</span>
-                                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${gap.impact === 'HIGH' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
-                                                    {gap.impact} IMPACT
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-gray-400 mb-2">{gap.gap_description}</p>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest">Recommendation:</span>
-                                                <span className="text-[9px] font-bold text-cyan-500 lowercase opacity-80 italic">Upload "{gap.suggested_file}"</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Right Side: Quality Gates */}
-                <div className="col-span-12 lg:col-span-5 space-y-6">
-
-                    {/* Gate 1: Technology Validation */}
-                    <div className={`p-6 rounded-3xl border transition-all ${showConflict ? 'bg-amber-500/5 border-amber-500/20' : 'bg-white/5 border-white/5'}`}>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className={`p-2 rounded-xl border ${showConflict ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-cyan-500/20 text-cyan-500 border-cyan-500/30'}`}>
-                                <Cpu size={18} />
-                            </div>
-                            <div>
-                                <h3 className="text-xs font-black uppercase tracking-widest text-white">Technology Validation</h3>
-                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Cross-check Audit</p>
-                            </div>
+                {/* TECH VALIDATION */}
+                {activeSection === 'validation' && (
+                    <div className="max-w-4xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                <Cpu size={24} className="text-cyan-500" />
+                                Tech Validation
+                            </h2>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-black/40 border border-white/5 rounded-2xl">
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-2">User Input</span>
-                                <div className="flex items-center gap-2">
-                                    <Database size={14} className="text-gray-400" />
-                                    <span className="text-xs font-black text-white uppercase">{sourceTech}</span>
+                        <div className={`p-8 rounded-3xl border transition-all ${showConflict ? 'bg-amber-500/5 border-amber-500/20' : 'bg-white/5 border-white/5'}`}>
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className={`p-3 rounded-xl border ${showConflict ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-cyan-500/20 text-cyan-500 border-cyan-500/30'}`}>
+                                    <Cpu size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-white">Cross-check Audit</h3>
+                                    <p className="text-xs text-gray-500 font-bold mt-1">Comparing repository contents against project settings.</p>
                                 </div>
                             </div>
-                            <div className={`p-4 border rounded-2xl transition-all ${showConflict ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-2">Detected</span>
-                                <div className="flex items-center gap-2">
-                                    <Binary size={14} className={showConflict ? 'text-cyan-500' : 'text-gray-400'} />
-                                    <span className={`text-xs font-black ${showConflict ? 'text-cyan-500' : 'text-white'}`}>
-                                        {assessment.detectedTech || "PENDING"}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
 
-                        {showConflict && (
-                            <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-2">
-                                <div className="flex items-start gap-3 p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
-                                    <ShieldCheck className="text-cyan-500 shrink-0" size={16} />
-                                    <p className="text-[10px] text-cyan-200/80 font-bold uppercase tracking-wide leading-relaxed">
-                                        You selected {sourceTech}, but my analysis thinks {assessment.detectedTech} is a better match. Do you want to update?
-                                    </p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleUpdateTech}
-                                        className="flex-1 py-3 bg-cyan-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-cyan-500 transition-all active:scale-95"
-                                    >
-                                        Update Selection
-                                    </button>
-                                    <button
-                                        onClick={() => setShowConflict(false)}
-                                        className="px-4 py-3 bg-white/5 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/10 transition-all"
-                                    >
-                                        Keep {sourceTech}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Gate 2: Tribal Knowledge Ingestion */}
-                    <div className={`p-6 rounded-3xl border transition-all ${hasContext ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/5 border-white/5'}`}>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className={`p-2 rounded-xl border ${hasContext ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30' : 'bg-cyan-500/20 text-cyan-500 border-cyan-500/30'}`}>
-                                <FileUp size={18} />
-                            </div>
-                            <div>
-                                <h3 className="text-xs font-black uppercase tracking-widest text-white">Tribal Knowledge Ingest</h3>
-                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Extra AI Context</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            {uploadedFiles.map((file, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 animate-in zoom-in-95 group">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="p-6 bg-black/40 border border-white/5 rounded-2xl">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-3">User Input</span>
                                     <div className="flex items-center gap-3">
-                                        <CheckCircle2 size={14} className="text-emerald-500" />
-                                        <span className="text-[10px] font-black text-white uppercase tracking-widest truncate max-w-[180px]">
-                                            {file}
+                                        <Database size={20} className="text-gray-400" />
+                                        <span className="text-lg font-black text-white uppercase">{sourceTech}</span>
+                                    </div>
+                                </div>
+                                <div className={`p-6 border rounded-2xl transition-all ${showConflict ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-black/40 border-white/5'}`}>
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-3">Agent Detected</span>
+                                    <div className="flex items-center gap-3">
+                                        <Binary size={20} className={showConflict ? 'text-cyan-500' : 'text-gray-400'} />
+                                        <span className={`text-lg font-black ${showConflict ? 'text-cyan-500' : 'text-white'}`}>
+                                            {assessment.detectedTech || "PENDING SCAN"}
                                         </span>
                                     </div>
-                                    <button
-                                        onClick={() => {
-                                            const newFiles = uploadedFiles.filter((_, i) => i !== idx);
-                                            setUploadedFiles(newFiles);
-                                            if (newFiles.length === 0) setHasContext(false);
-                                        }}
-                                        className="text-[9px] font-bold text-gray-500 hover:text-red-500 uppercase transition-colors opacity-0 group-hover:opacity-100"
-                                    >
-                                        Remove
-                                    </button>
                                 </div>
-                            ))}
+                            </div>
 
-                            <label className={`flex flex-col items-center justify-center w-full border-2 border-dashed border-white/5 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-cyan-500/50 transition-all group relative ${uploadedFiles.length > 0 ? 'h-16' : 'h-32'}`}>
+                            {showConflict && (
+                                <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-start gap-4 p-5 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
+                                        <ShieldCheck className="text-cyan-500 shrink-0" size={20} />
+                                        <p className="text-xs text-cyan-200/90 font-bold leading-relaxed">
+                                            You selected <span className="text-white bg-black/30 px-2 py-0.5 rounded">{sourceTech}</span>, but the forensic analysis concludes that <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is a better match. Do you want to update the project configuration?
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <button
+                                            onClick={handleUpdateTech}
+                                            className="px-6 py-3 bg-cyan-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-cyan-500 transition-all shadow-lg active:scale-95"
+                                        >
+                                            Update Configuration
+                                        </button>
+                                        <button
+                                            onClick={() => setShowConflict(false)}
+                                            className="px-6 py-3 bg-white/5 border border-white/10 text-gray-400 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-white/10 hover:text-white transition-all"
+                                        >
+                                            Keep {sourceTech}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!showConflict && assessment.detectedTech && (
+                                <div className="mt-8 flex items-center gap-3 p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                                    <CheckCircle2 className="text-emerald-500" size={20} />
+                                    <p className="text-sm text-emerald-400 font-medium">Technology configuration matches repository contents.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* TRIBAL KNOWLEDGE */}
+                {activeSection === 'upload' && (
+                    <div className="max-w-4xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                <Upload size={24} className="text-purple-500" />
+                                Tribal Knowledge Ingest
+                            </h2>
+                        </div>
+
+                        <div className="p-8 rounded-3xl border bg-white/5 border-white/5">
+                            <p className="text-sm text-gray-400 mb-8 leading-relaxed">
+                                Upload business rules, data dictionaries, mapping documents, or any other tribal knowledge that can help the AI agents understand the legacy system context better.
+                            </p>
+
+                            <label className={`flex flex-col items-center justify-center w-full border-2 border-dashed border-white/10 rounded-3xl cursor-pointer hover:bg-white/5 hover:border-purple-500/50 transition-all group relative h-48 mb-8`}>
                                 {isUploading ? (
-                                    <div className="flex items-center gap-3">
-                                        <RefreshCw size={14} className="text-cyan-500 animate-spin" />
-                                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Uploading...</p>
+                                    <div className="flex flex-col items-center gap-4">
+                                        <RefreshCw size={24} className="text-purple-500 animate-spin" />
+                                        <p className="text-xs text-gray-300 font-black uppercase tracking-widest">Uploading securely...</p>
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center">
-                                        <FileUp size={uploadedFiles.length > 0 ? 14 : 20} className="mb-1 text-gray-600 group-hover:text-cyan-500 transition-colors" />
-                                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest text-center px-4">
-                                            {uploadedFiles.length > 0 ? "+ Add More Docs" : "Upload Business Rules / Docs / PDF"}
+                                        <div className="p-4 bg-purple-500/10 rounded-full mb-4 group-hover:scale-110 transition-transform">
+                                            <FileUp size={32} className="text-purple-500" />
+                                        </div>
+                                        <p className="text-sm text-white font-bold mb-2">
+                                            Click to browse or drag and drop
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                                            PDF, DOCX, TXT, CSV, XLSX
                                         </p>
                                     </div>
                                 )}
                                 <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
-                        </div>
-                        <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4 leading-relaxed">
-                            These documents will be used by Agent R and Agent F to respect legacy business rules.
-                        </p>
-                    </div>
 
-                </div>
+                            {uploadedFiles.length > 0 && (
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Ingested Documents</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {uploadedFiles.map((file, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-4 bg-purple-500/10 rounded-2xl border border-purple-500/20 group animate-in zoom-in-95">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <CheckCircle2 size={18} className="text-purple-500 shrink-0" />
+                                                    <span className="text-xs font-bold text-white truncate">
+                                                        {file}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const newFiles = uploadedFiles.filter((_, i) => i !== idx);
+                                                        setUploadedFiles(newFiles);
+                                                        if (newFiles.length === 0) setHasContext(false);
+                                                    }}
+                                                    className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-colors ml-2 shrink-0"
+                                                    title="Remove document"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* PRE-CLASSIFICATION GRID (NEW) */}
-                {showClassification && fileInventory.length > 0 && (
-                    <div className="col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {activeSection === 'files' && (
+                    <div className="space-y-6">
                         {/* Header */}
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                                    <Database size={24} className="text-cyan-500" />
-                                    Pre-Classification
+                                    <FolderOpen size={24} className="text-blue-500" />
+                                    File Pre-Classification
                                 </h2>
                                 <p className="text-sm text-gray-400 mt-1">
-                                    Clasifica archivos ANTES del Triage para optimizar análisis: <strong>CORE</strong> = migrar profundo, <strong>SUPPORT</strong> = contexto para completar datos, <strong>IGNORED</strong> = saltar
+                                    Classify files BEFORE Triage to optimize analysis: <strong className="text-cyan-400">CORE</strong> = deep migration, <strong className="text-purple-400">SUPPORT</strong> = read-only context, <strong className="text-gray-500">IGNORED</strong> = skip.
                                 </p>
                             </div>
-                            <div className="text-xs text-gray-500 bg-white/5 px-4 py-2 rounded-lg border border-white/5">
-                                <span className="font-bold text-cyan-500">{fileInventory.filter(f => f.include).length}</span> de <span className="font-bold">{fileInventory.length}</span> seleccionados
+                            {fileInventory.length > 0 && (
+                                <div className="text-sm border border-white/10 bg-black/40 px-5 py-2.5 rounded-xl flex gap-4">
+                                    <div><span className="text-gray-400">Total:</span> <span className="font-bold">{fileInventory.length}</span></div>
+                                    <div><span className="text-gray-400">Selected:</span> <span className="font-bold text-cyan-500">{fileInventory.filter(f => f.include).length}</span></div>
+                                </div>
+                            )}
+                        </div>
+
+                        {showClassification && fileInventory.length > 0 ? (
+                            <div className="bg-black/40 border border-white/5 rounded-2xl overflow-hidden flex flex-col h-[600px]">
+                                {/* Bulk Actions */}
+                                <div className="p-4 border-b border-white/5 bg-white/5 flex gap-3 flex-wrap items-center">
+                                    <button
+                                        onClick={bulkClassifyByCategory}
+                                        className="px-4 py-2 bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-lg text-xs font-bold hover:bg-blue-600/30 transition-all flex items-center gap-2"
+                                    >
+                                        <Zap size={14} /> Auto-Classify
+                                    </button>
+                                    <div className="w-px h-6 bg-white/10 mx-2"></div>
+                                    <button
+                                        onClick={() => bulkClassify('CORE')}
+                                        className="px-3 py-1.5 bg-cyan-600/10 text-cyan-500 hover:bg-cyan-600/20 rounded text-xs font-medium transition-colors"
+                                    >
+                                        All CORE
+                                    </button>
+                                    <button
+                                        onClick={() => bulkClassify('SUPPORT')}
+                                        className="px-3 py-1.5 bg-purple-600/10 text-purple-400 hover:bg-purple-600/20 rounded text-xs font-medium transition-colors"
+                                    >
+                                        All SUPPORT
+                                    </button>
+                                    <button
+                                        onClick={() => bulkClassify('IGNORED')}
+                                        className="px-3 py-1.5 bg-gray-600/10 text-gray-400 hover:bg-gray-600/20 rounded text-xs font-medium transition-colors"
+                                    >
+                                        All IGNORED
+                                    </button>
+                                    <div className="w-px h-6 bg-white/10 mx-2"></div>
+                                    <button
+                                        onClick={() => bulkInclude(true)}
+                                        className="px-3 py-1.5 bg-emerald-600/10 text-emerald-500 hover:bg-emerald-600/20 rounded text-xs font-medium transition-colors"
+                                    >
+                                        Select All
+                                    </button>
+                                    <button
+                                        onClick={() => bulkInclude(false)}
+                                        className="px-3 py-1.5 bg-white/5 text-gray-400 hover:bg-white/10 rounded text-xs font-medium transition-colors"
+                                    >
+                                        Deselect All
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-auto custom-scrollbar">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-white/5 text-gray-400 uppercase text-[10px] font-black tracking-widest sticky top-0 backdrop-blur-md">
+                                            <tr>
+                                                <th className="px-6 py-4 text-left">File Path</th>
+                                                <th className="px-6 py-4 text-left w-48">Detected Type</th>
+                                                <th className="px-6 py-4 text-right w-32">Size</th>
+                                                <th className="px-6 py-4 text-left w-48">Classification</th>
+                                                <th className="px-6 py-4 text-center w-24">Include</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {fileInventory.map((file, idx) => (
+                                                <tr key={idx} className={`hover:bg-white/5 transition-colors ${file.include === false ? 'opacity-50 grayscale' : ''}`}>
+                                                    <td className="px-6 py-3 font-mono text-xs text-white max-w-sm truncate" title={file.name}>
+                                                        {file.name}
+                                                    </td>
+                                                    <td className="px-6 py-3">
+                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${file.category === 'migrable' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/20' :
+                                                            file.category === 'soporte' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20' :
+                                                                file.category === 'documentacion' ? 'bg-gray-500/20 text-gray-400 border border-gray-500/20' :
+                                                                    'bg-red-500/20 text-red-400 border border-red-500/20'
+                                                            }`}>
+                                                            {file.category || 'unknown'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-3 text-gray-400 text-xs text-right font-mono">
+                                                        {(file.size / 1024).toFixed(1)} KB
+                                                    </td>
+                                                    <td className="px-6 py-3">
+                                                        <select
+                                                            value={file.classification || 'CORE'}
+                                                            onChange={(e) => handleFileClassification(idx, e.target.value)}
+                                                            className={`w-full bg-black/60 border rounded-lg px-3 py-2 text-xs font-bold transition-colors outline-none focus:ring-1 ${file.classification === 'CORE' ? 'border-cyan-500/30 text-cyan-400 focus:ring-cyan-500' :
+                                                                file.classification === 'SUPPORT' ? 'border-purple-500/30 text-purple-400 focus:ring-purple-500' :
+                                                                    'border-gray-600 text-gray-400 focus:ring-gray-500'
+                                                                }`}
+                                                        >
+                                                            <option value="CORE">CORE</option>
+                                                            <option value="SUPPORT">SUPPORT</option>
+                                                            <option value="IGNORED">IGNORED</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-6 py-3 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={file.include !== false}
+                                                            onChange={(e) => handleFileInclude(idx, e.target.checked)}
+                                                            className="w-5 h-5 rounded bg-black/40 border-white/20 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer transition-all"
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-
-                        {/* Classification Grid */}
-                        <div className="bg-black/40 border border-white/5 rounded-2xl overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead className="bg-white/5 text-gray-400 uppercase text-xs">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left">Archivo</th>
-                                        <th className="px-4 py-3 text-left">Tipo Detectado</th>
-                                        <th className="px-4 py-3 text-left">Tamaño</th>
-                                        <th className="px-4 py-3 text-left">Clasificación</th>
-                                        <th className="px-4 py-3 text-center">Incluir</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {fileInventory.map((file, idx) => (
-                                        <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                            <td className="px-4 py-3 font-mono text-xs text-white max-w-xs truncate" title={file.name}>
-                                                {file.name}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                                    file.category === 'migrable' ? 'bg-cyan-500/20 text-cyan-400' :
-                                                    file.category === 'soporte' ? 'bg-purple-500/20 text-purple-400' :
-                                                    file.category === 'documentacion' ? 'bg-gray-500/20 text-gray-400' :
-                                                    'bg-red-500/20 text-red-400'
-                                                }`}>
-                                                    {file.category || 'unknown'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-400 text-xs">
-                                                {(file.size / 1024).toFixed(1)} KB
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <select
-                                                    value={file.classification || 'CORE'}
-                                                    onChange={(e) => handleFileClassification(idx, e.target.value)}
-                                                    className={`bg-black/40 border rounded px-3 py-1.5 text-xs font-bold transition-colors ${
-                                                        file.classification === 'CORE' ? 'border-cyan-500/30 text-cyan-400' :
-                                                        file.classification === 'SUPPORT' ? 'border-purple-500/30 text-purple-400' :
-                                                        'border-gray-500/30 text-gray-400'
-                                                    }`}
-                                                >
-                                                    <option value="CORE">CORE (Migrar)</option>
-                                                    <option value="SUPPORT">SUPPORT (Contexto)</option>
-                                                    <option value="IGNORED">IGNORED (Saltar)</option>
-                                                </select>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={file.include !== false}
-                                                    onChange={(e) => handleFileInclude(idx, e.target.checked)}
-                                                    className="w-4 h-4 rounded bg-black/40 border-white/10 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
-                                                />
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Bulk Actions */}
-                        <div className="flex gap-3 flex-wrap">
-                            <button
-                                onClick={bulkClassifyByCategory}
-                                className="px-4 py-2 bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 rounded-lg text-xs font-bold hover:bg-cyan-600/30 transition-all"
-                            >
-                                ✨ Auto-Clasificar (Sugerencias)
-                            </button>
-                            <button
-                                onClick={() => bulkClassify('CORE')}
-                                className="px-4 py-2 bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 rounded-lg text-xs font-bold hover:bg-cyan-600/30 transition-all"
-                            >
-                                Marcar Todos CORE
-                            </button>
-                            <button
-                                onClick={() => bulkClassify('SUPPORT')}
-                                className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 text-purple-400 rounded-lg text-xs font-bold hover:bg-purple-600/30 transition-all"
-                            >
-                                Marcar Todos SUPPORT
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setFileInventory(prev => prev.map(file => ({
-                                        ...file,
-                                        include: file.classification !== 'IGNORED'
-                                    })));
-                                }}
-                                className="px-4 py-2 bg-amber-600/20 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-600/30 transition-all"
-                            >
-                                Excluir IGNORED
-                            </button>
-                            <button
-                                onClick={() => bulkInclude(true)}
-                                className="px-4 py-2 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition-all"
-                            >
-                                Seleccionar Todos
-                            </button>
-                            <button
-                                onClick={() => bulkInclude(false)}
-                                className="px-4 py-2 bg-red-600/20 border border-red-500/30 text-red-400 rounded-lg text-xs font-bold hover:bg-red-600/30 transition-all"
-                            >
-                                Deseleccionar Todos
-                            </button>
-                        </div>
-
-                        {/* Info Badge */}
-                        <div className="flex items-start gap-3 p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
-                            <ShieldCheck className="text-cyan-500 shrink-0 mt-0.5" size={16} />
-                            <p className="text-xs text-cyan-200/80 leading-relaxed">
-                                <strong>Optimización inteligente:</strong> El Triage profundizará SOLO en archivos marcados como "Incluir". 
-                                <strong className="text-cyan-400"> CORE</strong> = análisis exhaustivo para migración, 
-                                <strong className="text-purple-400"> SUPPORT</strong> = consulta para completar datos de los CORE, 
-                                <strong className="text-gray-400"> IGNORED</strong> = saltar (ahorro de tiempo y costos).
-                            </p>
-                        </div>
+                        ) : (
+                            <div className="h-[400px] flex flex-col items-center justify-center text-center opacity-50 border border-dashed border-white/10 rounded-3xl">
+                                <SearchCode size={48} className="mb-4 text-gray-500" />
+                                <p className="text-sm font-bold text-gray-400 max-w-md">No file inventory available. Run the Forensic Scan first to analyze the repository contents.</p>
+                                <button
+                                    onClick={() => onSectionChange?.('run-scan')}
+                                    className="mt-6 px-6 py-2 bg-white/5 rounded-xl text-xs font-bold hover:bg-white/10 transition-colors uppercase tracking-widest text-white"
+                                >
+                                    Go to Scan
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
+            {ConfirmDialog}
         </div>
     );
 }

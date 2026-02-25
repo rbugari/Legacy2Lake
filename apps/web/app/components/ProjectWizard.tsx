@@ -13,7 +13,11 @@ import {
     Zap,
     CheckCircle2,
     Shield,
-    Box
+    Box,
+    Cloud,
+    Code,
+    Snowflake,
+    PackageCheck
 } from 'lucide-react';
 
 interface WizardProps {
@@ -58,6 +62,31 @@ export default function ProjectWizard({ isOpen, onClose, onCreate, isCreating }:
     }, [isOpen]);
 
     if (!isOpen) return null;
+
+    // Helper function to get icon and color for tech options
+    const getTechIcon = (techName: string, size: number = 20) => {
+        const lowerName = techName.toLowerCase();
+        
+        // Input/Origin technologies
+        if (lowerName.includes('sql server')) return { icon: <Database size={size} />, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500' };
+        if (lowerName.includes('oracle')) return { icon: <Database size={size} />, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500' };
+        if (lowerName.includes('ssis')) return { icon: <PackageCheck size={size} />, color: 'text-blue-600', bg: 'bg-blue-600/10', border: 'border-blue-600' };
+        if (lowerName.includes('informatica')) return { icon: <Zap size={size} />, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500' };
+        if (lowerName.includes('datastage')) return { icon: <Server size={size} />, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500' };
+        if (lowerName.includes('talend')) return { icon: <Code size={size} />, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500' };
+        
+        // Output/Destination technologies
+        if (lowerName.includes('databricks') || lowerName.includes('pyspark')) return { icon: <Zap size={size} />, color: 'text-orange-600', bg: 'bg-orange-600/10', border: 'border-orange-600' };
+        if (lowerName.includes('fabric')) return { icon: <Box size={size} />, color: 'text-blue-600', bg: 'bg-blue-600/10', border: 'border-blue-600' };
+        if (lowerName.includes('snowflake')) return { icon: <Snowflake size={size} />, color: 'text-cyan-500', bg: 'bg-cyan-500/10', border: 'border-cyan-500' };
+        if (lowerName.includes('google') || lowerName.includes('gcp') || lowerName.includes('bigquery')) return { icon: <Cloud size={size} />, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500' };
+        if (lowerName.includes('aws') || lowerName.includes('glue') || lowerName.includes('redshift')) return { icon: <Server size={size} />, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500' };
+        if (lowerName.includes('salesforce')) return { icon: <Cloud size={size} />, color: 'text-sky-500', bg: 'bg-sky-500/10', border: 'border-sky-500' };
+        if (lowerName.includes('sql')) return { icon: <Code size={size} />, color: 'text-gray-500', bg: 'bg-gray-500/10', border: 'border-gray-500' };
+        
+        // Default
+        return { icon: <Database size={size} />, color: 'text-gray-500', bg: 'bg-gray-500/10', border: 'border-gray-500' };
+    };
 
     const nextStep = () => setStep(s => s + 1);
     const prevStep = () => setStep(s => s - 1);
@@ -157,47 +186,100 @@ export default function ProjectWizard({ isOpen, onClose, onCreate, isCreating }:
                     {step === 3 && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="space-y-4">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Legacy Source (Origin)</label>
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Legacy Source (Origin)</label>
+                                    <span className="text-[9px] text-gray-600 uppercase tracking-wider">Input Technology</span>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     {loadingOpts ? (
-                                        <div className="col-span-3 text-center py-4 text-xs text-gray-500">Loading inputs...</div>
+                                        <div className="col-span-3 text-center py-8 text-xs text-gray-500">Loading inputs...</div>
                                     ) : (
                                         originsInfo.length > 0 ? (
-                                            originsInfo.filter(o => o.enabled).map(opt => (
-                                                <button
-                                                    key={opt.id}
-                                                    onClick={() => setFormData({ ...formData, origin: opt.name })}
-                                                    className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all truncate ${formData.origin === opt.name ? 'bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}
-                                                    title={opt.desc}
-                                                >
-                                                    {opt.name}
-                                                </button>
-                                            ))
+                                            originsInfo.filter(o => o.enabled).map(opt => {
+                                                const isActive = formData.origin === opt.name;
+                                                const techStyle = getTechIcon(opt.name, 22);
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        onClick={() => setFormData({ ...formData, origin: opt.name })}
+                                                        className={`flex flex-col p-4 rounded-2xl border-2 text-left transition-all ${
+                                                            isActive
+                                                                ? `${techStyle.bg} ${techStyle.border} shadow-lg`
+                                                                : 'bg-white/5 border-white/10 hover:border-white/20'
+                                                        }`}
+                                                        title={opt.desc}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className={`p-2 rounded-lg ${isActive ? 'bg-white/10' : 'bg-black/20'}`}>
+                                                                <span className={isActive ? techStyle.color : 'text-gray-500'}>
+                                                                    {techStyle.icon}
+                                                                </span>
+                                                            </div>
+                                                            {isActive && <CheckCircle2 size={16} className={techStyle.color} />}
+                                                        </div>
+                                                        <span className={`font-bold text-xs ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                                                            {opt.name}
+                                                        </span>
+                                                        {opt.desc && (
+                                                            <span className="text-[9px] text-gray-500 mt-1 leading-tight line-clamp-2">
+                                                                {opt.desc}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })
                                         ) : (
-                                            <div className="col-span-3 text-center py-4 text-xs text-gray-500">No origins found</div>
+                                            <div className="col-span-3 text-center py-8 text-xs text-gray-500">No origins configured</div>
                                         )
                                     )}
                                 </div>
                             </div>
+                            
                             <div className="space-y-4">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Target Cloud (Destination)</label>
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Target Cloud (Destination)</label>
+                                    <span className="text-[9px] text-gray-600 uppercase tracking-wider">Output Technology</span>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     {loadingOpts ? (
-                                        <div className="col-span-3 text-center py-4 text-xs text-gray-500">Loading targets...</div>
+                                        <div className="col-span-3 text-center py-8 text-xs text-gray-500">Loading targets...</div>
                                     ) : (
                                         destinationsInfo.length > 0 ? (
-                                            destinationsInfo.filter(d => d.enabled).map(opt => (
-                                                <button
-                                                    key={opt.id}
-                                                    onClick={() => setFormData({ ...formData, destination: opt.name })}
-                                                    className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all truncate ${formData.destination === opt.name ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/20' : 'bg-white/5 border-white/5 text-gray-500 hover:bg-white/10'}`}
-                                                    title={opt.desc}
-                                                >
-                                                    {opt.name}
-                                                </button>
-                                            ))
+                                            destinationsInfo.filter(d => d.enabled).map(opt => {
+                                                const isActive = formData.destination === opt.name;
+                                                const techStyle = getTechIcon(opt.name, 22);
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        onClick={() => setFormData({ ...formData, destination: opt.name })}
+                                                        className={`flex flex-col p-4 rounded-2xl border-2 text-left transition-all ${
+                                                            isActive
+                                                                ? `${techStyle.bg} ${techStyle.border} shadow-lg`
+                                                                : 'bg-white/5 border-white/10 hover:border-white/20'
+                                                        }`}
+                                                        title={opt.desc}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className={`p-2 rounded-lg ${isActive ? 'bg-white/10' : 'bg-black/20'}`}>
+                                                                <span className={isActive ? techStyle.color : 'text-gray-500'}>
+                                                                    {techStyle.icon}
+                                                                </span>
+                                                            </div>
+                                                            {isActive && <CheckCircle2 size={16} className={techStyle.color} />}
+                                                        </div>
+                                                        <span className={`font-bold text-xs ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                                                            {opt.name}
+                                                        </span>
+                                                        {opt.desc && (
+                                                            <span className="text-[9px] text-gray-500 mt-1 leading-tight line-clamp-2">
+                                                                {opt.desc}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })
                                         ) : (
-                                            <div className="col-span-3 text-center py-4 text-xs text-gray-500">No destinations found</div>
+                                            <div className="col-span-3 text-center py-8 text-xs text-gray-500">No destinations configured</div>
                                         )
                                     )}
                                 </div>

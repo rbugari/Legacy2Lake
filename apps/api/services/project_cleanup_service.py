@@ -243,28 +243,70 @@ class ProjectCleanupService:
             }
     
     async def _reset_database_state(self) -> Dict[str, Any]:
-        """Reset project database state to initial (post-upload)."""
+        """
+        Reset project database state to initial (post-upload).
+        
+        Cleans:
+        - Dependent tables (utm_logical_steps, utm_transformations, utm_asset_context)
+        - Execution logs and file inventory
+        - ALL utm_objects (detected assets deleted completely)
+        - Design registry
+        - Resets project stage to 0 (DISCOVERY)
+        
+        NOTE: This is a HARD reset - all detected assets are deleted.
+        TODO v4.1: Add 'preserve_metadata' parameter for soft reset (only clear generated fields)
+        """
         try:
-            # Reset project status
-            self.db.client.table("utm_projects").update({
-                "status": "draft"
-            }).eq("project_id", self.project_id).execute()
+            # Get object_ids for dependent table cleanup
+            obj_res = self.db.client.table("utm_objects").select("object_id").eq("project_id", self.project_id).execute()
+            object_ids = [o["object_id"] for o in obj_res.data]
             
-            # Clear generated code from utm_objects (only migrable files)
-            self.db.client.table("utm_objects").update({
-                "generated_code": None,
-                "tech_id": None,
-                "layer": None,
-                "validation_result": None,
-                "optimization_metadata": None,
-                "quality_score": None
-            }).eq("project_id", self.project_id).eq("category", "migrable").execute()
+            if object_ids:
+                # Delete dependent tables (satisfy foreign keys)
+                try:
+                    self.db.client.table("utm_logical_steps").delete().in_("object_id", object_ids).execute()
+                except Exception as e:
+                    logger.warning(f"[Cleanup] Could not delete utm_logical_steps: {e}", "Cleanup")
+                
+                try:
+                    self.db.client.table("utm_transformations").delete().in_("asset_id", object_ids).execute()
+                except Exception as e:
+                    logger.warning(f"[Cleanup] Could not delete utm_transformations: {e}", "Cleanup")
+            
+            # Clean per-asset context overrides
+            try:
+                self.db.client.table("utm_asset_context").delete().eq("project_id", self.project_id).execute()
+            except Exception as e:
+                logger.warning(f"[Cleanup] Could not delete utm_asset_context: {e}", "Cleanup")
+            
+            # DELETE all utm_objects (hard reset - removes all detected assets)
+            # This is the original behavior - user must re-run Triage to detect assets again
+            self.db.client.table("utm_objects").delete().eq("project_id", self.project_id).execute()
+            
+            # Delete execution logs
+            try:
+                self.db.client.table("utm_execution_logs").delete().eq("project_id", self.project_id).execute()
+            except Exception as e:
+                logger.warning(f"[Cleanup] Could not delete utm_execution_logs: {e}", "Cleanup")
+            
+            # Delete file inventory
+            try:
+                self.db.client.table("utm_file_inventory").delete().eq("project_id", self.project_id).execute()
+            except Exception as e:
+                logger.warning(f"[Cleanup] Could not delete utm_file_inventory: {e}", "Cleanup")
             
             # Delete design registry nodes
             try:
                 self.db.client.table("utm_design_registry").delete().eq("project_id", self.project_id).execute()
             except Exception as e:
-                logger.warning(f"[Cleanup] Could not delete design registry: {e}", "Cleanup")
+                logger.warning(f"[Cleanup] Could not delete utm_design_registry: {e}", "Cleanup")
+            
+            # Reset project stage to 0 (DISCOVERY) and status
+            self.db.client.table("utm_projects").update({
+                "stage": "0",
+                "status": "DISCOVERY",
+                "triage_approved_at": None
+            }).eq("project_id", self.project_id).execute()
             
             logger.info(f"[Cleanup] Database state reset complete: project_id={self.project_id}", "Cleanup")
             
@@ -297,3 +339,86 @@ class ProjectCleanupService:
             elif node["type"] == "file":
                 files.append(node)
         return files
+    
+    async def list_backups(self) -> List[Dict[str, Any]]:
+        """
+        List all backup ZIP files for this project.
+        
+        Returns:
+            List of backup info dicts with: filename, size, created_at, path
+        """
+        try:
+            project_name = await self._resolve_project_name()
+            if not project_name:
+                return []
+            
+            base_path = PersistenceService.ensure_solution_dir(project_name, self.tenant_id)
+            
+            # List all files in project root
+            items = self.storage.list_files(base_path, recursive=False)
+            
+            # Filter only backup ZIP files
+            backups = []
+            for item in items:
+                if item["type"] == "file" and "_backup_" in item["name"] and item["name"].endswith(".zip"):
+                    # Extract timestamp from filename: projectname_backup_YYYYMMDD_HHMMSS.zip
+                    try:
+                        parts = item["name"].replace(".zip", "").split("_backup_")
+                        if len(parts) == 2:
+                            timestamp_str = parts[1]  # YYYYMMDD_HHMMSS
+                            # Parse timestamp
+                            created_at = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S").isoformat()
+                        else:
+                            created_at = None
+                    except:
+                        created_at = None
+                    
+                    backups.append({
+                        "filename": item["name"],
+                        "size": item.get("size", 0),
+                        "size_mb": round(item.get("size", 0) / (1024 * 1024), 2) if item.get("size") else 0,
+                        "created_at": created_at,
+                        "path": item["path"]
+                    })
+            
+            # Sort by created_at descending (newest first)
+            backups.sort(key=lambda x: x["created_at"] or "", reverse=True)
+            
+            logger.info(f"[Cleanup] Listed {len(backups)} backups for project {self.project_id}", "Cleanup")
+            return backups
+        
+        except Exception as e:
+            logger.error(f"[Cleanup] Failed to list backups: {e}", "Cleanup")
+            return []
+    
+    async def delete_backup(self, backup_filename: str) -> Dict[str, Any]:
+        """
+        Delete a specific backup ZIP file.
+        
+        Args:
+            backup_filename: Name of the backup file to delete
+        
+        Returns:
+            Dict with success status
+        """
+        try:
+            project_name = await self._resolve_project_name()
+            if not project_name:
+                return {"success": False, "error": "Project not found"}
+            
+            base_path = PersistenceService.ensure_solution_dir(project_name, self.tenant_id)
+            backup_path = f"{base_path.rstrip('/')}/{backup_filename}"
+            
+            # Verify file exists
+            if not self.storage.exists(backup_path):
+                return {"success": False, "error": f"Backup file not found: {backup_filename}"}
+            
+            # Delete the file
+            self.storage.delete_file(backup_path)
+            
+            logger.info(f"[Cleanup] Deleted backup: {backup_filename}", "Cleanup")
+            return {"success": True}
+        
+        except Exception as e:
+            logger.error(f"[Cleanup] Failed to delete backup {backup_filename}: {e}", "Cleanup")
+            return {"success": False, "error": str(e)}

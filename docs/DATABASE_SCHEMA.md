@@ -24,17 +24,17 @@
 - **utm_users** - User accounts with authentication
 - **utm_projects** - Data migration projects
 - **utm_project_members** - Project access control
-- **utm_invitations** - User invitation system
+- **utm_user_invitations** - User invitation system
 
 **Project Data & Assets (5)**
 - **utm_objects** - Source assets (tables, views, procedures)
 - **utm_design_registry** - Medallion architecture definitions
 - **utm_column_mappings** - Column transformation mappings
 - **utm_solution_context** - Project context metadata
-- **utm_file_storage** - File metadata tracking
+- **utm_file_inventory** - File metadata tracking
 
 **Agent & Execution (4)**
-- **utm_agents** - LLM agent configurations
+- **utm_agent_catalog** - LLM agent definitions
 - **utm_agent_matrix** - Agent-phase-tech mappings
 - **utm_execution_logs** - Process execution logs
 - **utm_process_locks** - Concurrent process management
@@ -266,11 +266,11 @@ CREATE INDEX idx_registry_node_type ON utm_design_registry((node_data->>'type'))
 
 ## 🤖 Agent System
 
-### utm_agents
+### utm_agent_catalog
 **Purpose:** LLM agent configurations per tenant
 
 ```sql
-CREATE TABLE utm_agents (
+CREATE TABLE utm_agent_catalog (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id           UUID REFERENCES utm_tenants(tenant_id) ON DELETE CASCADE,
     agent_id            TEXT NOT NULL,  -- 'agent_a', 'agent_c', etc.
@@ -289,9 +289,9 @@ CREATE TABLE utm_agents (
     CONSTRAINT unique_agent_per_tenant UNIQUE (tenant_id, agent_id)
 );
 
-CREATE INDEX idx_agents_tenant ON utm_agents(tenant_id);
-CREATE INDEX idx_agents_phase ON utm_agents(phase);
-CREATE INDEX idx_agents_active ON utm_agents(is_active);
+CREATE INDEX idx_agents_tenant ON utm_agent_catalog(tenant_id);
+CREATE INDEX idx_agents_phase ON utm_agent_catalog(phase);
+CREATE INDEX idx_agents_active ON utm_agent_catalog(is_active);
 ```
 
 **Agents Implemented:**
@@ -539,11 +539,11 @@ CREATE INDEX idx_locks_expiry ON utm_process_locks(expires_at);
 
 ## 👤 User Invitations
 
-### utm_invitations
+### utm_user_invitations
 **Purpose:** User invitation workflow
 
 ```sql
-CREATE TABLE utm_invitations (
+CREATE TABLE utm_user_invitations (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id           UUID NOT NULL REFERENCES utm_tenants(tenant_id) ON DELETE CASCADE,
     project_id          UUID REFERENCES utm_projects(project_id) ON DELETE CASCADE,
@@ -560,10 +560,10 @@ CREATE TABLE utm_invitations (
     CONSTRAINT valid_invitation_status CHECK (status IN ('pending', 'accepted', 'expired', 'cancelled'))
 );
 
-CREATE INDEX idx_invitations_tenant ON utm_invitations(tenant_id);
-CREATE INDEX idx_invitations_project ON utm_invitations(project_id);
-CREATE INDEX idx_invitations_token ON utm_invitations(token);
-CREATE INDEX idx_invitations_status ON utm_invitations(status);
+CREATE INDEX idx_invitations_tenant ON utm_user_invitations(tenant_id);
+CREATE INDEX idx_invitations_project ON utm_user_invitations(project_id);
+CREATE INDEX idx_invitations_token ON utm_user_invitations(token);
+CREATE INDEX idx_invitations_status ON utm_user_invitations(status);
 ```
 
 **Workflow:**
@@ -576,11 +576,11 @@ CREATE INDEX idx_invitations_status ON utm_invitations(status);
 
 ## 📄 File Storage Metadata
 
-### utm_file_storage
+### utm_file_inventory
 **Purpose:** Track files stored in R2/S3
 
 ```sql
-CREATE TABLE utm_file_storage (
+CREATE TABLE utm_file_inventory (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id          UUID NOT NULL REFERENCES utm_projects(project_id) ON DELETE CASCADE,
     tenant_id           UUID NOT NULL REFERENCES utm_tenants(tenant_id) ON DELETE CASCADE,
@@ -596,9 +596,9 @@ CREATE TABLE utm_file_storage (
     CONSTRAINT unique_file_key UNIQUE (project_id, file_key)
 );
 
-CREATE INDEX idx_storage_project ON utm_file_storage(project_id);
-CREATE INDEX idx_storage_tenant ON utm_file_storage(tenant_id);
-CREATE INDEX idx_storage_stage ON utm_file_storage(stage);
+CREATE INDEX idx_storage_project ON utm_file_inventory(project_id);
+CREATE INDEX idx_storage_tenant ON utm_file_inventory(tenant_id);
+CREATE INDEX idx_storage_stage ON utm_file_inventory(stage);
 ```
 
 **Storage Provider:** Cloudflare R2 (abstracted via StorageFactory)
@@ -626,13 +626,18 @@ CREATE TABLE utm_solution_context (
 ```sql
 CREATE TABLE utm_column_mappings (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id          UUID NOT NULL REFERENCES utm_projects(project_id) ON DELETE CASCADE,
-    source_column       TEXT NOT NULL,
-    target_column       TEXT NOT NULL,
-    transformation      TEXT,
-    data_type_source    TEXT,
-    data_type_target    TEXT,
-    created_at          TIMESTAMPTZ DEFAULT NOW()
+    asset_id            UUID NOT NULL REFERENCES utm_objects(object_id) ON DELETE CASCADE,
+    source_column       VARCHAR(255) NOT NULL,
+    source_datatype     VARCHAR(100),
+    target_column       VARCHAR(255),
+    target_datatype     VARCHAR(100),
+    transformation_rule TEXT,
+    is_pii              BOOLEAN DEFAULT FALSE,
+    is_nullable         BOOLEAN DEFAULT TRUE,
+    default_value       TEXT,
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_column_per_asset UNIQUE (asset_id, source_column)
 );
 ```
 

@@ -1,0 +1,104 @@
+<style>
+.sh { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; color: #cbd5e1; font-size: 14px; line-height: 1.7; }
+.sh-hero { background: linear-gradient(135deg, rgba(37,99,235,0.18) 0%, rgba(14,165,233,0.1) 100%); border: 1px solid rgba(59,130,246,0.25); border-radius: 14px; padding: 22px 24px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px; }
+.sh-hero-icon { font-size: 36px; }
+.sh-hero-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #60a5fa; text-transform: uppercase; margin-bottom: 4px; }
+.sh-hero-title { font-size: 22px; font-weight: 800; color: #f1f5f9; }
+.sh-hero-sub { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+.sh-section { margin-bottom: 28px; }
+.sh-section-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #60a5fa; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.sh-goal { background: rgba(255,255,255,0.03); border-left: 3px solid #3b82f6; border-radius: 0 10px 10px 0; padding: 14px 18px; color: #cbd5e1; font-size: 14px; line-height: 1.8; }
+.sh-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sh-table th { text-align: left; color: #64748b; font-weight: 600; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.sh-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #cbd5e1; vertical-align: top; }
+.sh-table tr:last-child td { border-bottom: none; }
+.sh-table td:first-child { color: #e2e8f0; font-weight: 600; white-space: nowrap; }
+.sh-table tr:hover td { background: rgba(255,255,255,0.02); }
+.sh-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.sh-badge-blue { background: rgba(37,99,235,0.2); color: #93c5fd; border: 1px solid rgba(37,99,235,0.3); }
+.sh-badge-amber { background: rgba(217,119,6,0.2); color: #fcd34d; border: 1px solid rgba(217,119,6,0.3); }
+.sh-badge-slate { background: rgba(100,116,139,0.2); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+.sh-action { display: flex; align-items: flex-start; gap: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; }
+.sh-action-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+.sh-action-name { font-weight: 700; color: #e2e8f0; font-size: 14px; }
+.sh-action-desc { font-size: 13px; color: #94a3b8; margin-top: 3px; }
+.sh-tip { display: flex; gap: 10px; background: rgba(234,179,8,0.06); border: 1px solid rgba(234,179,8,0.2); border-radius: 10px; padding: 12px 14px; margin-top: 6px; font-size: 13px; color: #fde68a; }
+.sh-done { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.18); border-radius: 10px; padding: 14px 18px; font-size: 13px; color: #6ee7b7; line-height: 1.7; }
+.sh-done strong { color: #a7f3d0; }
+.sh-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 20px 0; }
+</style>
+
+<div class="sh">
+  <!-- Hero -->
+  <div class="sh-hero">
+    <div class="sh-hero-icon">🔍</div>
+    <div>
+      <div class="sh-hero-label">Stage 0 of 5</div>
+      <div class="sh-hero-title">Discovery Phase</div>
+      <div class="sh-hero-sub">Forensic scan &amp; complete asset inventory</div>
+    </div>
+  </div>
+
+  <!-- Goal -->
+  <div class="sh-section">
+    <div class="sh-section-title">🎯 What this stage does</div>
+    <div class="sh-goal">
+      The Discovery Phase performs a deep forensic scan of your legacy codebase. It catalogs every object —
+      tables, views, stored procedures, functions, triggers, and their inter-dependencies —
+      <strong style="color:#e2e8f0">without touching or moving any business data</strong>.
+      The result is a structured inventory that powers every subsequent stage automatically.
+    </div>
+  </div>
+
+  <hr class="sh-divider"/>
+
+  <!-- Configuration -->
+  <div class="sh-section">
+    <div class="sh-section-title">⚙️ What you can configure</div>
+    <table class="sh-table">
+      <thead><tr><th>Section</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Tribal Knowledge</td><td>Upload ZIP, SQL, or XML files with extra context: ERDs, specs, runbooks, or existing documentation.</td></tr>
+        <tr><td>File Pre-Classification</td><td>Preview how the scanner has categorized your source files before committing to a full scan run.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="sh-divider"/>
+
+  <!-- Actions -->
+  <div class="sh-section">
+    <div class="sh-section-title">▶️ Actions</div>
+    <div class="sh-action">
+      <div class="sh-action-icon">🚀</div>
+      <div>
+        <div class="sh-action-name">Run Forensic Scan</div>
+        <div class="sh-action-desc">Launches <strong style="color:#e2e8f0">Agent S</strong>, which parses all uploaded files, extracts object metadata, builds the dependency node graph, and delivers the final inventory count.</div>
+      </div>
+    </div>
+    <div class="sh-tip">💡 You can upload multiple files and re-run the scan at any time without losing previous results.</div>
+  </div>
+
+  <hr class="sh-divider"/>
+
+  <!-- Reports -->
+  <div class="sh-section">
+    <div class="sh-section-title">📊 Reports available</div>
+    <table class="sh-table">
+      <thead><tr><th>Report</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>Forensic Assessment</td><td>Full vulnerability and complexity report per object.</td></tr>
+        <tr><td>Tech Validation</td><td>Summary of supported and unsupported constructs found in your codebase.</td></tr>
+        <tr><td>File Pre-Classification</td><td>Object-by-object breakdown of what was detected and how it was classified.</td></tr>
+        <tr><td>Execution Logs</td><td>Real-time logs from the scan process — useful for troubleshooting parsing errors.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="sh-divider"/>
+
+  <!-- Done when -->
+  <div class="sh-done">
+    ✅ <strong>Done when:</strong> The Forensic Assessment shows 0 unresolved errors and your total asset count looks correct. Proceed to <strong>Triage →</strong>
+  </div>
+</div>

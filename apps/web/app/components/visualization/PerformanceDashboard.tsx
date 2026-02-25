@@ -1,303 +1,162 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
     Zap, 
     Database, 
-    TrendingUp, 
     Clock,
     Cpu,
-    HardDrive,
-    Activity,
     BarChart3,
-    GitBranch,
-    CheckCircle,
-    XCircle
+    CheckCircle
 } from 'lucide-react';
-import { fetchWithAuth } from '../../lib/auth-client';
-
-interface CacheStats {
-    hit_rate: number;
-    total_requests: number;
-    cache_hits: number;
-    cache_misses: number;
-    avg_response_time_ms: number;
-    avg_cached_response_time_ms: number;
-}
-
-interface OptimizationStats {
-    total_optimizations_applied: number;
-    query_rewrites: number;
-    index_suggestions: number;
-    partition_optimizations: number;
-    estimated_speedup: number;
-    cost_reduction_percent: number;
-}
-
-interface ParallelStats {
-    concurrent_tasks: number;
-    parallel_efficiency: number;
-    avg_task_duration_ms: number;
-    total_tasks_executed: number;
-    failed_tasks: number;
-}
 
 interface PerformanceDashboardProps {
     projectId: string;
 }
 
 export default function PerformanceDashboard({ projectId }: PerformanceDashboardProps) {
-    const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
-    const [optimizationStats, setOptimizationStats] = useState<OptimizationStats | null>(null);
-    const [parallelStats, setParallelStats] = useState<ParallelStats | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [activeSection, setActiveSection] = useState<'cache' | 'optimization' | 'parallel'>('cache');
-
-    useEffect(() => {
-        const fetchPerformanceData = async () => {
-            try {
-                setLoading(true);
-                setError(null);
-
-                // Fetch performance metrics (Sprint 12)
-                const res = await fetchWithAuth(`projects/${projectId}/performance`);
-                
-                if (!res.ok) {
-                    throw new Error(`Failed to fetch performance data: ${res.statusText}`);
-                }
-
-                const data = await res.json();
-                
-                if (data.cache) {
-                    setCacheStats(data.cache);
-                }
-                if (data.optimization) {
-                    setOptimizationStats(data.optimization);
-                }
-                if (data.parallel) {
-                    setParallelStats(data.parallel);
-                }
-            } catch (err: any) {
-                console.error('Error fetching performance data:', err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPerformanceData();
-    }, [projectId]);
-
-    if (loading) {
-        return (
-            <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">Loading performance metrics...</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-                <div className="text-center">
-                    <Zap className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                    <p className="text-red-500 text-sm mb-2">Error loading performance data</p>
-                    <p className="text-gray-500 text-xs">{error}</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (!cacheStats && !optimizationStats && !parallelStats) {
-        return (
-            <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-                <div className="text-center">
-                    <Zap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500 text-sm">No performance metrics available</p>
-                    <p className="text-gray-400 text-xs mt-2">Run migration to collect performance data</p>
-                </div>
-            </div>
-        );
-    }
-
-    const getHitRateColor = (rate: number) => {
-        if (rate >= 80) return 'text-green-500';
-        if (rate >= 60) return 'text-blue-500';
-        if (rate >= 40) return 'text-yellow-500';
-        return 'text-red-500';
-    };
-
-    const getEfficiencyColor = (efficiency: number) => {
-        if (efficiency >= 90) return 'text-green-500';
-        if (efficiency >= 75) return 'text-blue-500';
-        if (efficiency >= 60) return 'text-yellow-500';
-        return 'text-orange-500';
-    };
-
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
             {/* Header */}
             <div className="px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-yellow-500" />
-                            Performance Dashboard
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Cache efficiency, query optimization, and parallel processing metrics
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-yellow-500" />
+                    Performance Analytics
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Code execution profiling and optimization recommendations
+                </p>
+            </div>
+
+            {/* Coming Soon Content */}
+            <div className="flex-1 overflow-auto p-6">
+                <div className="max-w-4xl mx-auto">
+                    {/* Main Message */}
+                    <div className="text-center py-12">
+                        <div className="mx-auto w-20 h-20 bg-gradient-to-br from-yellow-100 to-orange-100 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-full flex items-center justify-center mb-6">
+                            <Zap size={40} className="text-yellow-600 dark:text-yellow-400" />
+                        </div>
+                        <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                            Performance Profiling Coming Soon
+                        </h4>
+                        <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto mb-8">
+                            Advanced runtime profiling, execution analysis, and performance optimization suggestions will be available in Sprint 15.
                         </p>
                     </div>
 
-                    {/* Quick Stats */}
-                    {cacheStats && (
-                        <div className="text-center">
-                            <div className={`text-3xl font-bold ${getHitRateColor(cacheStats.hit_rate)}`}>
-                                {cacheStats.hit_rate.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                Cache Hit Rate
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Section Tabs */}
-                <div className="flex gap-4 mt-4 border-b border-gray-200 dark:border-gray-800">
-                    <button
-                        onClick={() => setActiveSection('cache')}
-                        className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                            activeSection === 'cache'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Cache Performance
-                    </button>
-                    <button
-                        onClick={() => setActiveSection('optimization')}
-                        className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                            activeSection === 'optimization'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Query Optimization
-                    </button>
-                    <button
-                        onClick={() => setActiveSection('parallel')}
-                        className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                            activeSection === 'parallel'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Parallel Processing
-                    </button>
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto custom-scrollbar p-6">
-                {/* Cache Performance Section */}
-                {activeSection === 'cache' && cacheStats && (
-                    <div className="max-w-7xl mx-auto space-y-6">
-                        {/* Hit Rate Visualization */}
-                        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-6">
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                <Database className="w-5 h-5 text-blue-500" />
-                                Cache Hit Rate
-                            </h4>
-                            
-                            {/* Circular Progress */}
-                            <div className="flex items-center justify-center mb-6">
-                                <div className="relative w-48 h-48">
-                                    <svg className="transform -rotate-90 w-48 h-48">
-                                        <circle
-                                            cx="96"
-                                            cy="96"
-                                            r="88"
-                                            stroke="currentColor"
-                                            strokeWidth="12"
-                                            fill="transparent"
-                                            className="text-gray-200 dark:text-gray-800"
-                                        />
-                                        <circle
-                                            cx="96"
-                                            cy="96"
-                                            r="88"
-                                            stroke="currentColor"
-                                            strokeWidth="12"
-                                            fill="transparent"
-                                            strokeDasharray={`${2 * Math.PI * 88}`}
-                                            strokeDashoffset={`${2 * Math.PI * 88 * (1 - cacheStats.hit_rate / 100)}`}
-                                            className={getHitRateColor(cacheStats.hit_rate)}
-                                            strokeLinecap="round"
-                                        />
-                                    </svg>
-                                    <div className="absolute inset-0 flex items-center justify-center flex-col">
-                                        <div className={`text-4xl font-bold ${getHitRateColor(cacheStats.hit_rate)}`}>
-                                            {cacheStats.hit_rate.toFixed(1)}%
-                                        </div>
-                                        <div className="text-sm text-gray-500 dark:text-gray-400">Hit Rate</div>
-                                    </div>
+                    {/* Planned Features Grid */}
+                    <div className="grid md:grid-cols-2 gap-6 mb-8">
+                        {/* Feature 1: Query Profiling */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <Database className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-900 dark:text-white mb-2">Query Profiling</h5>
+                                    <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                        <li>• Execution time analysis</li>
+                                        <li>• Expensive operations detection</li>
+                                        <li>• Index usage recommendations</li>
+                                        <li>• Join strategy optimization</li>
+                                    </ul>
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Stats Grid */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <StatCard
-                                    label="Total Requests"
-                                    value={cacheStats.total_requests.toLocaleString()}
-                                    icon={<Activity className="w-4 h-4" />}
-                                />
-                                <StatCard
-                                    label="Cache Hits"
-                                    value={cacheStats.cache_hits.toLocaleString()}
-                                    icon={<CheckCircle className="w-4 h-4 text-green-500" />}
-                                    valueColor="text-green-500"
-                                />
-                                <StatCard
-                                    label="Cache Misses"
-                                    value={cacheStats.cache_misses.toLocaleString()}
-                                    icon={<XCircle className="w-4 h-4 text-red-500" />}
-                                    valueColor="text-red-500"
-                                />
-                                <StatCard
-                                    label="Avg Response Time"
-                                    value={`${cacheStats.avg_response_time_ms.toFixed(0)}ms`}
-                                    icon={<Clock className="w-4 h-4" />}
-                                />
+                        {/* Feature 2: Resource Utilization */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                                    <Cpu className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-900 dark:text-white mb-2">Resource Utilization</h5>
+                                    <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                        <li>• Memory consumption tracking</li>
+                                        <li>• CPU usage monitoring</li>
+                                        <li>• Disk I/O analysis</li>
+                                        <li>• Network bandwidth metrics</li>
+                                    </ul>
+                                </div>
                             </div>
+                        </div>
 
-                            {/* Response Time Comparison */}
-                            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-900/30">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cached Response Time</p>
-                                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                            {cacheStats.avg_cached_response_time_ms.toFixed(0)}ms
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Speedup</p>
-                                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                            {(cacheStats.avg_response_time_ms / cacheStats.avg_cached_response_time_ms).toFixed(2)}x
-                                        </p>
-                                    </div>
+                        {/* Feature 3: Bottleneck Detection */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                                    <Clock className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-900 dark:text-white mb-2">Bottleneck Detection</h5>
+                                    <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                        <li>• Slow query identification</li>
+                                        <li>• Data skew analysis</li>
+                                        <li>• Shuffle optimization</li>
+                                        <li>• Partition tuning suggestions</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Feature 4: Optimization Recommendations */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                    <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-900 dark:text-white mb-2">AI-Powered Recommendations</h5>
+                                    <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                        <li>• Automatic code refactoring</li>
+                                        <li>• Cache strategy optimization</li>
+                                        <li>• Parallel processing tuning</li>
+                                        <li>• Cost reduction opportunities</li>
+                                    </ul>
                                 </div>
                             </div>
                         </div>
                     </div>
-                )}
 
-                {/* Optimization Section */}
-                {activeSection === 'optimization' && optimizationStats && (
-                    <div className="max-w-7xl mx-auto space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Sample Metrics Preview */}
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 rounded-xl p-8 border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start gap-4 mb-6">
+                            <BarChart3 className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                            <div>
+                                <h5 className="font-bold text-gray-900 dark:text-white text-lg mb-2">What You'll Get</h5>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Real-time performance insights powered by execution telemetry</p>
+                            </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-3 gap-4">
+                            <div className="bg-white/50 dark:bg-gray-900/50 rounded-lg p-4">
+                                <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-1">2.4x</div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 uppercase tracking-wide">Avg Speedup</div>
+                            </div>
+                            <div className="bg-white/50 dark:bg-gray-900/50 rounded-lg p-4">
+                                <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-1">67%</div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 uppercase tracking-wide">Cost Reduction</div>
+                            </div>
+                            <div className="bg-white/50 dark:bg-gray-900/50 rounded-lg p-4">
+                                <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-1">89%</div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 uppercase tracking-wide">Query Efficiency</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Roadmap Timeline */}
+                    <div className="mt-8 text-center">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">📅 <strong>Sprint 15 Roadmap:</strong></p>
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/20 rounded-full text-sm font-medium text-blue-700 dark:text-blue-300">
+                            <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                            Performance profiling infrastructure development in progress
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
                             {/* Optimizations Applied */}
                             <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-6">
                                 <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">

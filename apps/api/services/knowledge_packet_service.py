@@ -238,17 +238,17 @@ class KnowledgePacketService:
         return result.data[0] if result.data else None
     
     async def _get_profiled_columns(self, asset_id: str) -> List[Dict]:
-        """Read profiled columns from utm_asset_columns (Sprint 7)."""
+        """Read profiled columns from utm_asset_columns (Sprint 7 column profiling)."""
         try:
             query = (
                 self.db.client.table("utm_asset_columns")
                 .select("*")
-                .eq("object_id", asset_id)
+                .eq("asset_id", asset_id)
             )
             
-            # Multi-tenant isolation
-            if self.tenant_id:
-                query = query.eq("tenant_id", self.tenant_id)
+            # NOTE: utm_asset_columns does NOT have tenant_id column
+            # Tenant isolation is achieved via project_id FK -> utm_projects.tenant_id
+            # RLS policy enforces: project_id IN (SELECT project_id FROM utm_projects WHERE tenant_id = ...)
             
             result = query.execute()
             return result.data or []
@@ -311,9 +311,18 @@ class KnowledgePacketService:
     async def _load_schema_reference(self, project_id: str) -> Dict[str, Any]:
         """Load schema_reference.json from storage (R2/local - DDL types)."""
         try:
-            # Build storage key
-            project_base = PersistenceService.ensure_solution_dir(project_id, self.tenant_id)
-            key = f"{project_base}/Discovery/schema_reference.json"
+            # 1. Resolve Project Name for folder path (Standard: normalized name)
+            project_id_for_folder = project_id
+            if "-" in project_id:
+                # Try to get name from DB if UUID passed
+                project_res = self.db.client.table("utm_projects").select("name").eq("project_id", project_id).single().execute()
+                if project_res.data:
+                    project_id_for_folder = project_res.data["name"]
+
+            # 2. Build storage key using normalized name
+            project_base = PersistenceService.ensure_solution_dir(project_id_for_folder, self.tenant_id)
+            # Standard subfolder is 'drafting' (STAGE_DRAFTING)
+            key = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}/schema_reference.json"
             
             # Read file content
             content = self.storage.read_file(key)
@@ -321,11 +330,13 @@ class KnowledgePacketService:
             if content:
                 if isinstance(content, bytes):
                     content = content.decode('utf-8')
-                return json.loads(content)
+                raw = json.loads(content)
+                # Handle both structured { "tables": {...} } and flat {...} schemas
+                return raw.get("tables", raw) if isinstance(raw, dict) else {}
             
             return {}
         except Exception as e:
-            logger.warning(f"[Librarian] No schema_reference.json found: {e}", "Librarian")
+            logger.warning(f"[Librarian] No schema_reference.json found at {project_id}: {e}", "Librarian")
             return {}
     
     async def _get_table_impacts(self, project_id: str, asset_id: str) -> List[TableImpactInfo]:
@@ -380,7 +391,7 @@ class KnowledgePacketService:
         """
         try:
             # Call DB function to resolve parser
-            result = self.client.rpc(
+            result = self.db.client.rpc(
                 "resolve_parser_by_tech",
                 {"p_source_tech": source_tech}
             ).execute()

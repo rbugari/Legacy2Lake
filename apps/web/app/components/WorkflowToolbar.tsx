@@ -17,28 +17,37 @@ const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
         {
             name: "Orígenes",
             color: "bg-cyan-500/5 dark:bg-cyan-500/10",
-            shadow: "shadow-[0_0_30px_rgba(6,182,212,0.1)]",
+            shadow: "shadow-[0_0_30_px_rgba(6,182,212,0.1)]",
+            activeColor: "bg-cyan-600 shadow-[0_4px_20px_rgba(6,182,212,0.3)]",
+            textColor: "text-cyan-600 dark:text-cyan-400",
+            hoverBg: "hover:bg-cyan-500/10",
             stages: [
-                { id: 1, label: "Discovery", icon: Map },
-                { id: 2, label: "Triage", icon: FileEdit },
+                { id: 0, label: "Discovery", icon: Map },
+                { id: 1, label: "Triage", icon: FileEdit },
             ]
         },
         {
             name: "Core Logic",
             color: "bg-emerald-500/5 dark:bg-emerald-500/10",
             shadow: "shadow-[0_0_30px_rgba(16,185,129,0.1)]",
+            activeColor: "bg-emerald-600 shadow-[0_4px_20px_rgba(16,185,129,0.3)]",
+            textColor: "text-emerald-600 dark:text-emerald-400",
+            hoverBg: "hover:bg-emerald-500/10",
             stages: [
-                { id: 3, label: "Drafting", icon: Code },
-                { id: 4, label: "Refinement", icon: CheckCircle },
+                { id: 2, label: "Drafting", icon: Code },
+                { id: 3, label: "Refinement", icon: CheckCircle },
             ]
         },
         {
             name: "Salida",
             color: "bg-indigo-500/5 dark:bg-indigo-500/10",
             shadow: "shadow-[0_0_30px_rgba(99,102,241,0.1)]",
+            activeColor: "bg-indigo-600 shadow-[0_4px_20px_rgba(99,102,241,0.3)]",
+            textColor: "text-indigo-600 dark:text-indigo-400",
+            hoverBg: "hover:bg-indigo-500/10",
             stages: [
-                { id: 5, label: "Audit", icon: ShieldCheck },
-                { id: 6, label: "Handover", icon: Package },
+                { id: 4, label: "Governance", icon: ShieldCheck },
+                { id: 5, label: "Handover", icon: Package },
             ]
         }
     ];
@@ -72,10 +81,10 @@ const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                                             className={`
                                                 flex items-center gap-2.5 px-6 py-3 rounded-full text-[11px] font-black tracking-widest transition-all relative
                                                 ${isViewing
-                                                    ? "bg-cyan-600 text-white shadow-[0_4px_20px_rgba(6,182,212,0.3)] cursor-default scale-105 z-10"
+                                                    ? `${group.activeColor} text-white cursor-default scale-105 z-10`
                                                     : isLocked
                                                         ? "text-gray-400 dark:text-gray-600 cursor-not-allowed grayscale"
-                                                        : "text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                                                        : `${group.textColor} ${group.hoverBg} cursor-pointer`
                                                 }
                                             `}
                                         >

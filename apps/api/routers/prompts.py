@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from apps.api.services.persistence_service import SupabasePersistence
 from apps.api.services.prompts.prompt_service import PromptService, Prompt
 from apps.api.services.prompts.prompt_assembler import PromptAssembler
-from apps.api.routers.dependencies import get_db, get_identity
+from apps.api.routers.dependencies import get_db, get_identity, check_project_permission
 
 router = APIRouter(prefix="/api/v1/prompts", tags=["Prompts (v4.0)"])
 
@@ -59,6 +59,11 @@ class TestPromptRequest(BaseModel):
     prompt_id: str = Field(..., description="Prompt ID to test")
     context: Dict[str, Any] = Field(..., description="Context variables for assembly")
     format: str = Field("simple", description="Assembly format: simple, handlebars, jinja2")
+
+
+class PromptOverrideRequest(BaseModel):
+    """Request model for prompt overrides"""
+    content: str = Field(..., description="User instructions and rules")
 
 
 class PromptResponse(BaseModel):
@@ -213,18 +218,49 @@ async def update_prompt(
     """
     Update an existing prompt.
     
-    **ADMIN ONLY** - Requires admin role.
+    **Cartridge prompts**: MANAGER or COLLABORATOR of the project can edit.
+    **System prompts**: ADMIN only.
     
     Note: Update will trigger automatic versioning (saved to utm_prompts_history).
     """
     try:
-        # Check admin role
+        # Check permissions based on prompt type
         user_role = identity.get("role")
-        if user_role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="Admin role required to update prompts"
+        user_id = identity.get("user_id")
+        tenant_id = identity.get("tenant_id")
+        
+        # For cartridge prompts, allow project members to edit
+        if prompt_id.startswith("cartridge_"):
+            # Extract project_id from payload metadata
+            project_id = payload.metadata.get("project_id") if payload.metadata else None
+            
+            if not project_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="project_id required in metadata for cartridge prompt updates"
+                )
+            
+            # Check if user has permission on this project
+            has_permission = await check_project_permission(
+                user_id=user_id,
+                project_id=project_id,
+                tenant_id=tenant_id,
+                db_client=db.client,
+                required_roles=["MANAGER", "COLLABORATOR"]
             )
+            
+            if not has_permission:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You must be a project manager or collaborator to edit cartridge prompts"
+                )
+        else:
+            # For system prompts, require admin role
+            if user_role != "admin":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Admin role required to update system prompts"
+                )
         
         prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
         
@@ -412,3 +448,171 @@ async def clear_prompt_cache(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+# ================================================================
+# TENANT-SPECIFIC PROMPT ENDPOINTS (No Admin Required)
+# ================================================================
+
+@router.post("/custom/{prompt_id}", response_model=PromptResponse, status_code=201)
+async def create_custom_prompt(
+    prompt_id: str,
+    payload: CreatePromptRequest,
+    db: SupabasePersistence = Depends(get_db),
+    identity: Dict[str, Any] = Depends(get_identity)
+):
+    """
+    Create or update tenant-specific prompt override.
+    
+    Available to all authenticated users (creates tenant-specific version).
+    Does NOT require admin role - each tenant can customize their own prompts.
+    
+    Use case: User wants to customize PySpark cartridge prompt for their tenant.
+    """
+    try:
+        prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
+        
+        # Check if tenant-specific version already exists
+        existing = await prompt_service.get_prompt(prompt_id, use_cache=False)
+        
+        if existing and existing.tenant_id == db.tenant_id:
+            # Update existing tenant-specific prompt
+            prompt = await prompt_service.update_prompt(
+                prompt_id=prompt_id,
+                content=payload.content,
+                tech_stack=payload.tech_stack,
+                pattern_type=payload.pattern_type,
+                agent_id=payload.agent_id,
+                metadata=payload.metadata
+            )
+        else:
+            # Create new tenant-specific prompt
+            prompt = await prompt_service.create_prompt(
+                prompt_id=prompt_id,
+                content=payload.content,
+                tech_stack=payload.tech_stack,
+                pattern_type=payload.pattern_type,
+                agent_id=payload.agent_id,
+                metadata=payload.metadata,
+                created_by=identity.get("user_id")
+            )
+        
+        return PromptResponse(**prompt.to_dict())
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create custom prompt: {str(e)}")
+
+
+@router.delete("/custom/{prompt_id}", status_code=204)
+async def delete_custom_prompt(
+    prompt_id: str,
+    db: SupabasePersistence = Depends(get_db),
+    identity: Dict[str, Any] = Depends(get_identity)
+):
+    """
+    Delete tenant-specific prompt override (revert to global default).
+    
+    Available to all authenticated users (deletes only THEIR tenant version).
+    Does NOT delete global prompts - only tenant-specific overrides.
+    """
+    try:
+        prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
+        
+        # Check if tenant-specific prompt exists
+        existing = await prompt_service.get_prompt(prompt_id, use_cache=False)
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"Prompt not found: {prompt_id}")
+        
+        # Only allow deletion of tenant-specific prompts
+        if existing.tenant_id != db.tenant_id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Cannot delete global prompt. Use this endpoint only to delete your tenant's custom version."
+            )
+        
+        # Delete tenant-specific prompt
+        await prompt_service.delete_prompt(prompt_id)
+        
+        return None
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete custom prompt: {str(e)}")
+# ================================================================
+# OVERRIDE ENDPOINTS (Project-specific)
+# ================================================================
+
+@router.get("/overrides/{project_id}/{prompt_id}")
+async def get_prompt_override(
+    project_id: str,
+    prompt_id: str,
+    db: SupabasePersistence = Depends(get_db),
+    identity: Dict[str, Any] = Depends(get_identity)
+):
+    """
+    Get project-specific prompt override.
+    """
+    try:
+        # Check permissions
+        has_permission = await check_project_permission(
+            user_id=identity.get("user_id"),
+            project_id=project_id,
+            tenant_id=identity.get("tenant_id"),
+            db_client=db.client,
+            required_roles=["MANAGER", "COLLABORATOR", "VIEWER"]
+        )
+        
+        if not has_permission:
+            raise HTTPException(status_code=403, detail="No access to this project")
+            
+        prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
+        content = await prompt_service.get_prompt_override(project_id, prompt_id)
+        
+        return {"project_id": project_id, "prompt_id": prompt_id, "content": content or ""}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get prompt override: {str(e)}")
+
+
+@router.put("/overrides/{project_id}/{prompt_id}")
+async def save_prompt_override(
+    project_id: str,
+    prompt_id: str,
+    payload: PromptOverrideRequest,
+    db: SupabasePersistence = Depends(get_db),
+    identity: Dict[str, Any] = Depends(get_identity)
+):
+    """
+    Save project-specific prompt override.
+    """
+    try:
+        # Check permissions
+        has_permission = await check_project_permission(
+            user_id=identity.get("user_id"),
+            project_id=project_id,
+            tenant_id=identity.get("tenant_id"),
+            db_client=db.client,
+            required_roles=["MANAGER", "COLLABORATOR"]
+        )
+        
+        if not has_permission:
+            raise HTTPException(status_code=403, detail="Insufficient permissions to save overrides")
+            
+        prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
+        success = await prompt_service.save_prompt_override(project_id, prompt_id, payload.content)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save prompt override")
+            
+        return {"status": "success", "project_id": project_id, "prompt_id": prompt_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save prompt override: {str(e)}")

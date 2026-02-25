@@ -34,7 +34,7 @@ class QualityService:
                 })
 
             # Rule 3: Type Checking (Basic)
-            dtype = mapping.get("source_datatype", "").lower()
+            dtype = (mapping.get("source_datatype") or "").lower()
             gx_type = None
             if "int" in dtype or "long" in dtype: gx_type = "Integer"
             elif "float" in dtype or "double" in dtype: gx_type = "Float"

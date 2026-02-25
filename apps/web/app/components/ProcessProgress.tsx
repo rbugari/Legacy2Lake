@@ -10,11 +10,11 @@ interface ProcessProgressProps {
     onCancel?: () => void;
 }
 
-export default function ProcessProgress({ 
-    isRunning, 
-    logs, 
+export default function ProcessProgress({
+    isRunning,
+    logs,
     processName,
-    onCancel 
+    onCancel
 }: ProcessProgressProps) {
     const [lastLogTime, setLastLogTime] = useState<Date>(new Date());
     const [progress, setProgress] = useState(0);
@@ -26,23 +26,46 @@ export default function ProcessProgress({
         }
     }, [logs.length]);
 
-    // Estimate progress based on logs (simple heuristic)
+    // Estimate progress based on logs (improved heuristic)
     useEffect(() => {
         if (logs.length === 0) {
             setProgress(5);
-        } else if (logs.some(l => l.toLowerCase().includes('complete') || l.toLowerCase().includes('success'))) {
-            setProgress(100);
-        } else if (logs.some(l => l.toLowerCase().includes('agent f') || l.toLowerCase().includes('critic'))) {
-            setProgress(80);
-        } else if (logs.some(l => l.toLowerCase().includes('agent c') || l.toLowerCase().includes('coder'))) {
-            setProgress(60);
-        } else if (logs.some(l => l.toLowerCase().includes('agent a') || l.toLowerCase().includes('architect'))) {
-            setProgress(40);
-        } else if (logs.some(l => l.toLowerCase().includes('starting') || l.toLowerCase().includes('initializing'))) {
-            setProgress(20);
-        } else {
-            setProgress(Math.min(10 + logs.length * 2, 95));
+            return;
         }
+
+        const logStr = logs.join('\n').toLowerCase();
+
+        // Completion keywords
+        if (logStr.includes('complete') || logStr.includes('success') || logStr.includes('finished') || logStr.includes('pipeline complete')) {
+            setProgress(100);
+            return;
+        }
+
+        // Failure keywords
+        if (logStr.includes('failed') || logStr.includes('error') || logStr.includes('cancelled')) {
+            // Keep current progress but maybe cap it or show it differently? 
+            // For now just let it be, but these usually stop the process.
+            return;
+        }
+
+        // Stage-based heuristics
+        let estimatedProgress = 10;
+
+        if (logStr.includes('agent o') || logStr.includes('orchestrat')) estimatedProgress = 90;
+        else if (logStr.includes('agent r') || logStr.includes('reasoning') || logStr.includes('refining')) estimatedProgress = 75;
+        else if (logStr.includes('agent a') || logStr.includes('architect')) estimatedProgress = 60;
+        else if (logStr.includes('agent c') || logStr.includes('coder') || logStr.includes('generating')) estimatedProgress = 45;
+        else if (logStr.includes('agent f') || logStr.includes('critic') || logStr.includes('validating')) estimatedProgress = 30;
+        else if (logStr.includes('starting') || logStr.includes('initializ') || logStr.includes('loading')) estimatedProgress = 15;
+
+        // Add a small increment based on number of logs to show "movement" 
+        // within a stage, capped to not jump to next stage prematurely
+        const logBonus = Math.min(logs.length * 0.5, 10);
+        const finalProgress = Math.min(estimatedProgress + logBonus, 98);
+
+        // Only update if progress increased to prevent jumping back
+        setProgress(prev => Math.max(prev, Math.round(finalProgress)));
+
     }, [logs]);
 
     const getTimeSinceLastLog = () => {
@@ -118,12 +141,11 @@ export default function ProcessProgress({
                         </div>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                        <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                                isError ? 'bg-red-500' : 
-                                isComplete ? 'bg-green-500' : 
-                                'bg-blue-500 animate-pulse'
-                            }`}
+                        <div
+                            className={`h-full rounded-full transition-all duration-500 ${isError ? 'bg-red-500' :
+                                    isComplete ? 'bg-green-500' :
+                                        'bg-blue-500 animate-pulse'
+                                }`}
                             style={{ width: `${progress}%` }}
                         />
                     </div>
@@ -155,14 +177,13 @@ export default function ProcessProgress({
                     </summary>
                     <div className="mt-3 bg-black rounded-lg p-4 max-h-64 overflow-y-auto custom-scrollbar">
                         {logs.map((log, idx) => (
-                            <div 
+                            <div
                                 key={idx}
-                                className={`text-xs font-mono mb-1 ${
-                                    log.toLowerCase().includes('error') ? 'text-red-400' :
-                                    log.toLowerCase().includes('success') || log.toLowerCase().includes('complete') ? 'text-green-400' :
-                                    log.toLowerCase().includes('warning') ? 'text-yellow-400' :
-                                    'text-gray-300'
-                                }`}
+                                className={`text-xs font-mono mb-1 ${log.toLowerCase().includes('error') ? 'text-red-400' :
+                                        log.toLowerCase().includes('success') || log.toLowerCase().includes('complete') ? 'text-green-400' :
+                                            log.toLowerCase().includes('warning') ? 'text-yellow-400' :
+                                                'text-gray-300'
+                                    }`}
                             >
                                 <span className="text-gray-500 mr-2">{String(idx + 1).padStart(3, '0')}</span>
                                 {log}

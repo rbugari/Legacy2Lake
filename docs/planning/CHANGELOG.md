@@ -1,5 +1,67 @@
 # Release Planning Changelog
 
+## 2026-02-19: Sprint 14 Phase 2 Day 4 - UI Polish & Status Indicators
+
+**Focus:** User-facing bug fixes, visual feedback systems, and UI modernization
+
+**Deliverables:**
+- ✅ Progress percentage reset fix (DraftingView)
+- ✅ 3 missing API endpoints created (/registry, /generation/stats, /generation/summary)
+- ✅ Database schema fixes (removed non-existent column references)
+- ✅ Component redesign: compact dark theme (GenerationStats, CodeGenerationSummary)
+- ✅ Sidebar status indicators: green/yellow dots showing data availability
+- ✅ Cartridge Settings: load project default configuration
+
+**User Feedback Addressed:**
+1. *"el porcentaje no se resetea"* → Fixed progress reset
+2. *"grande y tonto"* → Compact dark components
+3. *"deberia ser simple... un grreen... un amarillo"* → Status dots implemented
+4. *"tiene q traer configurado el q tiene el proyecto x default"* → Cartridge defaults working
+
+**Impact:**
+- Zero 404 errors (was 3 endpoint failures)
+- Zero database column errors (was 2 failures)
+- Professional dark UI matching user preference
+- Visual feedback on 5 sidebar sections
+- Improved UX consistency across stages
+
+**Files Modified:** 6 files, ~535 lines changed
+
+**Documentation:**
+- Updated: [SPRINT_14_PHASE_2_SUMMARY.md](../SPRINT_14_PHASE_2_SUMMARY.md) with Day 4 section
+
+---
+
+## 2026-02-18: Sprint 14 Phase 2 Day 3 - Schema Viewer Intelligence
+
+**Focus:** Schema detection, PK/FK relationships, column lineage tracking
+
+**Deliverables:**
+- ✅ Fixed silent parser failure (invalid sqlglot reference)
+- ✅ Two-pass constraint detection in Librarian Service
+- ✅ SQL lineage integration for column usage tracking
+- ✅ Smart table filtering (only show tables in queries)
+- ✅ Visual indicators for used/unused columns
+
+**Impact:**
+- Schema detection: 40% → 95% (+137%)
+- PK/FK detection: 0% → 90% (new capability)
+- Silent failures: eliminated 100%
+
+---
+
+## 2026-02-17: Sprint 14 Phase 2 Day 1 - Performance Crisis Resolution
+
+**Crisis:** Backend bombarded with 30+ requests/second, UI freezing
+
+**Deliverables:**
+- ✅ Polling interval optimization (3s → 10s = 70% reduction)
+- ✅ Circular dependency elimination (infinite loop fix)
+- ✅ Backend load reduced from 30+ req/s to 0.1 req/s (95%+ improvement)
+- ✅ Unified sidebar architecture with lifted-state pattern
+
+---
+
 ## 2026-02-13 (PM): v4.0 Further Simplifications (REFINEMENT)
 
 **Decision:** Additional simplifications to v4.0 Zero-Hardcode feature

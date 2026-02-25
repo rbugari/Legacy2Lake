@@ -12,14 +12,74 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
+    const normalizeTargetTech = (value: string) => {
+        if (!value) return 'pyspark';
+
+        const mapping: Record<string, string> = {
+            'Microsoft Fabric': 'fabric',
+            'MS Fabric': 'fabric',
+            'Fabric': 'fabric',
+            'Databricks': 'databricks',
+            'Databricks PySpark': 'databricks',
+            'PySpark': 'pyspark',
+            'PySpark Generic': 'pyspark',
+            'PySpark Native': 'pyspark',
+            'Cloudera': 'cloudera',
+            'Cloudera Spark': 'cloudera',
+            'Snowflake': 'snowflake',
+            'Google Cloud': 'gcp',
+            'GCP': 'gcp',
+            'BigQuery': 'gcp',
+            'AWS': 'aws',
+            'Amazon Web Services': 'aws',
+            'Salesforce': 'salesforce',
+            'SQL': 'sql',
+            'Pure SQL': 'sql'
+        };
+
+        // Try exact match first
+        if (mapping[value]) return mapping[value];
+
+        // Try lowercase match (most IDs are already lowercase)
+        const lower = value.toLowerCase();
+        if (['databricks', 'pyspark', 'cloudera', 'fabric', 'snowflake', 'gcp', 'aws', 'salesforce', 'sql'].includes(lower)) {
+            return lower;
+        }
+
+        // Default to pyspark if unknown
+        return 'pyspark';
+    };
+
     const fetchStack = async () => {
         setLoading(true);
         try {
+            // First, try to get from registry
             const res = await fetchWithAuth(`/projects/${projectId}/registry`);
             const data = await res.json();
+            console.log('[TechnologyMixer] Registry data:', data);
+
             if (data.registry) {
                 const target = data.registry.find((r: any) => r.key === 'target_stack');
-                if (target) setStack(target.value);
+                if (target) {
+                    const normalizedTech = normalizeTargetTech(target.value);
+                    console.log('[TechnologyMixer] Found target_stack in registry:', target.value, '->', normalizedTech);
+                    setStack(normalizedTech);
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            // If not found in registry, get from project settings (default configuration)
+            const settingsRes = await fetchWithAuth(`/projects/${projectId}/settings`);
+            const settings = await settingsRes.json();
+            console.log('[TechnologyMixer] Project settings:', settings);
+
+            if (settings.target_tech) {
+                const normalizedTech = normalizeTargetTech(settings.target_tech);
+                console.log('[TechnologyMixer] Normalized target_tech:', settings.target_tech, '->', normalizedTech);
+                setStack(normalizedTech);
+            } else {
+                console.log('[TechnologyMixer] No target_tech found in settings, using default: pyspark');
             }
         } catch (e) {
             console.error("Failed to fetch stack", e);
@@ -57,11 +117,25 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
 
     const options = [
         {
+            id: 'databricks',
+            label: 'Databricks PySpark',
+            desc: 'Databricks Platform & Delta Lake',
+            icon: <Database className="text-orange-600" />,
+            color: 'border-orange-600 bg-orange-50/50 dark:bg-orange-900/10'
+        },
+        {
             id: 'pyspark',
-            label: 'PySpark Native',
-            desc: 'Delta Lake & Spark SQL (Standard)',
+            label: 'PySpark Generic',
+            desc: 'Standard Apache Spark SQL & Python',
             icon: <Zap className="text-blue-500" />,
             color: 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10'
+        },
+        {
+            id: 'cloudera',
+            label: 'Cloudera Spark',
+            desc: 'CDP Datahub & Apache Spark',
+            icon: <Cloud className="text-emerald-500" />,
+            color: 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10'
         },
         {
             id: 'fabric',

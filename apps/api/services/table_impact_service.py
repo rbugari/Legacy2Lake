@@ -43,7 +43,7 @@ class TableImpact(BaseModel):
 
 class TableSummary(BaseModel):
     """Summary of impacts on a single table."""
-    table_name: str
+    full_name: str
     readers_count: int
     writers_count: int
     total_impacts: int
@@ -143,11 +143,12 @@ class TableImpactService:
                     total_tables.add(impact["full_name"])
             
             except Exception as e:
+                asset_name = asset.get("source_name", asset.get("name", "unknown"))
                 logger.error(
-                    f"[TableImpact] Error analyzing {asset['name']}: {e}",
+                    f"[TableImpact] Error analyzing {asset_name}: {e}",
                     "TableImpact"
                 )
-                errors.append({"asset": asset["name"], "error": str(e)})
+                errors.append({"asset": asset_name, "error": str(e)})
         
         logger.info(
             f"[TableImpact] Completed: {total_impacts} impacts on {len(total_tables)} tables",
@@ -176,7 +177,7 @@ class TableImpactService:
         summaries = []
         for row in result.data:
             summaries.append(TableSummary(
-                table_name=row["table_name"],
+                full_name=row["table_name"],
                 readers_count=row["readers_count"],
                 writers_count=row["writers_count"],
                 total_impacts=row["total_impacts"],
@@ -320,7 +321,7 @@ class TableImpactService:
                     "table_name": table_info["table_name"],
                     "full_name": table_info["full_name"],
                     "asset_id": asset["object_id"],
-                    "asset_name": asset["name"],
+                    "asset_name": asset.get("source_name", asset.get("name", "unknown")),
                     "operation": table_info["operation"],
                     "access_pattern": table_info.get("access_pattern"),
                     "is_source": table_info["operation"] == "SELECT",
@@ -337,10 +338,11 @@ class TableImpactService:
         """
         Extracts tables and operation from an SSIS component.
         
-        Uses raw_properties:
-        - SqlCommand: full SQL query
-        - OpenRowset: direct table name
-        - TableOrViewName: table/view name
+        Uses raw_properties (priority order):
+        1. OpenRowset: direct table name (most reliable for SSIS)
+        2. TableOrViewName: table/view name
+        3. SqlCommand: full SQL query (only if not empty)
+        4. SqlCommandVariable: variable containing SQL
         
         Returns:
             List of dicts: [{full_name, schema_name, table_name, operation, sql_statement, access_pattern}, ...]
@@ -355,25 +357,25 @@ class TableImpactService:
         tables = []
         sql_statement = None
         
-        # 1. SqlCommand (most common and informative)
-        if "SqlCommand" in props and props["SqlCommand"]:
-            sql_statement = props["SqlCommand"]
-            tables = self._extract_table_names(sql_statement)
-        
-        # 2. SqlCommandVariable (variable containing SQL)
-        elif "SqlCommandVariable" in props and props["SqlCommandVariable"]:
-            sql_statement = f"/* Variable: {props['SqlCommandVariable']} */"
-            tables = []  # Cannot extract from variables at static analysis time
-        
-        # 3. OpenRowset (direct table without query)
-        elif "OpenRowset" in props and props["OpenRowset"]:
+        # 1. OpenRowset (HIGHEST PRIORITY - most common in SSIS)
+        if "OpenRowset" in props and props["OpenRowset"]:
             raw_table = props["OpenRowset"]
             tables = [self._clean_table_name(raw_table)]
         
-        # 4. TableOrViewName (OLE DB Destination components)
+        # 2. TableOrViewName (OLE DB Destination components)
         elif "TableOrViewName" in props and props["TableOrViewName"]:
             raw_table = props["TableOrViewName"]
             tables = [self._clean_table_name(raw_table)]
+        
+        # 3. SqlCommand (only if not empty)
+        elif "SqlCommand" in props and props["SqlCommand"]:
+            sql_statement = props["SqlCommand"]
+            tables = self._extract_table_names(sql_statement)
+        
+        # 4. SqlCommandVariable (variable containing SQL)
+        elif "SqlCommandVariable" in props and props["SqlCommandVariable"]:
+            sql_statement = f"/* Variable: {props['SqlCommandVariable']} */"
+            tables = []  # Cannot extract from variables at static analysis time
         
         # Create result for each detected table
         for table in tables:
@@ -458,27 +460,28 @@ class TableImpactService:
     def _classify_operation(self, comp: Dict) -> str:
         """
         Classifies operation based on:
-        1. Component intent (SOURCE → SELECT, DESTINATION → INSERT default)
+        1. Component type (SOURCE_DB → SELECT, DESTINATION_DB → INSERT default)
         2. SqlCommand parsing (more precise)
         
         Returns:
             "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "MERGE" | "TRUNCATE" | "UNKNOWN"
         """
-        intent = comp.get("intent", "").upper()
+        # FIXED: Use "type" field (not "intent") and check for _DB suffix
+        comp_type = comp.get("type", "").upper()
         props = comp.get("raw_properties", {})
         
-        # If SqlCommand exists, parse it (most accurate)
-        sql_command = props.get("SqlCommand") or props.get("SqlCommandVariable")
+        # If SqlCommand exists and is not empty, parse it (most accurate)
+        sql_command = props.get("SqlCommand", "")
         
         if sql_command and not sql_command.startswith("/*"):
             operation = self._parse_sql_operation(sql_command)
             if operation != "UNKNOWN":
                 return operation
         
-        # Fallback to inference by intent
-        if intent == "SOURCE":
+        # Fallback to inference by type (FIXED: use "type" instead of "intent")
+        if "SOURCE" in comp_type:
             return "SELECT"
-        elif intent == "DESTINATION":
+        elif "DESTINATION" in comp_type:
             return "INSERT"  # Default assumption for destinations
         
         return "UNKNOWN"

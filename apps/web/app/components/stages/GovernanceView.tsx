@@ -28,13 +28,14 @@ import {
     LucideIcon
 } from 'lucide-react';
 import StageHeader from '../StageHeader';
+import StageSidebar from '@/app/components/navigation/StageSidebar';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchWithAuth } from '../../lib/auth-client';
 import DesignRegistryPanel from './DesignRegistryPanel';
 import OrchestrationPanel from './OrchestrationPanel';
 import QualityDashboard from '../visualization/QualityDashboard';
-import PerformanceDashboard from '../visualization/PerformanceDashboard';
+
 
 interface GovernanceViewProps {
     projectId: string;
@@ -43,6 +44,8 @@ interface GovernanceViewProps {
     onToggleFullscreen?: () => void;
     onReset?: () => void;
     onBackToCurrent?: () => void;
+    activeSection?: string;
+    onSectionChange?: (section: string) => void;
 }
 
 export default function GovernanceView({
@@ -51,11 +54,47 @@ export default function GovernanceView({
     isFullscreen,
     onToggleFullscreen,
     onReset,
-    onBackToCurrent
+    onBackToCurrent,
+    activeSection,
+    onSectionChange
 }: GovernanceViewProps) {
     const [report, setReport] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality" | "performance">("report"); // [SPRINT 13] Added performance tab
+    const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<"report" | "registry" | "orchestration" | "quality" | "audit" | "documentation">("report");
+
+    // Map sidebar action IDs to handler functions
+    useEffect(() => {
+        if (!activeSection) return;
+
+        switch (activeSection) {
+            case "generate-governance":
+                fetchGovernanceReport();
+                if (onSectionChange) onSectionChange("completion");
+                break;
+            case "audit":
+                runAudit();
+                setActiveTab("audit");
+                break;
+            case "completion":
+                setActiveTab("report");
+                break;
+            case "technical":
+                setActiveTab("registry");
+                break;
+            case "dictionary":
+                setActiveTab("orchestration");
+                break;
+            case "lineage":
+            case "runbook":
+                setActiveTab("documentation");
+                break;
+            case "quality":
+                setActiveTab("quality");
+                break;
+            default:
+                setActiveTab("report");
+        }
+    }, [activeSection, onSectionChange]);
     const [isPushing, setIsPushing] = useState(false);
     const [auditReport, setAuditReport] = useState<any>(null);
     const [isAuditing, setIsAuditing] = useState(false);
@@ -84,24 +123,25 @@ export default function GovernanceView({
     const [project, setProject] = useState<any>(null);
 
     useEffect(() => {
-        // Fetch Project Metadata
+        // Fetch Project Metadata only
         fetchWithAuth(`projects/${projectId}`)
             .then(res => res.json())
             .then(data => setProject(data))
             .catch(err => console.error("Failed to fetch project details:", err));
-
-        // Fetch Governance Report
-        fetchWithAuth(`projects/${projectId}/governance`)
-            .then(res => res.json())
-            .then(data => {
-                setReport(data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error("Failed to fetch governance report:", err);
-                setLoading(false);
-            });
     }, [projectId]);
+
+    const fetchGovernanceReport = async () => {
+        setLoading(true);
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/governance`);
+            const data = await res.json();
+            setReport(data);
+        } catch (err) {
+            console.error("Failed to fetch governance report:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -127,339 +167,230 @@ export default function GovernanceView({
 
     return (
         <div className={`h-full bg-gray-50/50 dark:bg-gray-950 overflow-y-auto custom-scrollbar transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950' : ''}`}>
-            <StageHeader
-                title="Stage 5: Intelligent Governance"
-                subtitle="Agent G: Compliance audit and final quality gate"
-                icon={<ShieldCheck className="text-amber-500" />}
-                helpText="Final verification of dependencies, security patterns, and Medallion architecture compliance."
-                onApprove={() => onStageChange(6)}
-                approveLabel="Approve & Handover"
-                isApproveDisabled={isAuditing || !report}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={onToggleFullscreen}
-                onReset={onReset}
-                onBackToCurrent={onBackToCurrent}
-            >
-                <div className="flex gap-2">
-                    <button
-                        onClick={handlePush}
-                        disabled={isPushing}
-                        className="px-6 py-2.5 bg-blue-500/20 border border-blue-500/30 text-blue-500 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-500/30 active:scale-95 transition-all disabled:opacity-50"
-                    >
-                        {isPushing ? (
-                            <>
-                                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                Pushing...
-                            </>
-                        ) : (
-                            <>
-                                <Github size={14} /> Push
-                            </>
-                        )}
-                    </button>
-                    <button
-                        onClick={runAudit}
-                        disabled={isAuditing}
-                        className="px-6 py-2.5 bg-[var(--accent)]/20 border border-[var(--accent)]/30 text-[var(--accent)] rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-[var(--accent)]/30 active:scale-95 transition-all disabled:opacity-50"
-                    >
-                        {isAuditing ? (
-                            <>
-                                <div className="w-3 h-3 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
-                                Auditing...
-                            </>
-                        ) : (
-                            <>
-                                <ShieldCheck size={14} /> Re-Audit
-                            </>
-                        )}
-                    </button>
-                </div>
-            </StageHeader>
-
-            {/* Navigation Tabs */}
-            <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-200 dark:border-white/5 px-8 py-3 flex items-center justify-between shadow-sm">
-                <div className="flex gap-1 bg-gray-100/50 dark:bg-white/5 p-1.5 rounded-2xl border border-gray-200/50 dark:border-white/10">
-                    <button
-                        onClick={() => setActiveTab("report")}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "report" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-                    >
-                        <ShieldCheck size={14} /> Certification
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("registry")}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "registry" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-                    >
-                        <Settings size={14} /> Design Standards
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("orchestration")}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "orchestration" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-                    >
-                        <Share2 size={14} /> Orchestration
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("quality")}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "quality" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-                    >
-                        <Shield size={14} /> Data Quality
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("performance")}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === "performance" ? "bg-white dark:bg-gray-800 shadow-xl text-primary border border-primary/10" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-                    >
-                        <Zap size={14} /> Performance
-                    </button>
-                </div>
-
-                <button
-                    onClick={() => window.history.back()}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm text-[10px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+            <div className="flex-1">
+                <StageHeader
+                    title="Stage 4: Intelligent Governance"
+                    subtitle="The Governor: Compliance audit and final quality gate"
+                    icon={<ShieldCheck className="text-amber-500" />}
+                    helpText="Final verification of dependencies, security patterns, and Medallion architecture compliance."
+                    onApprove={() => onStageChange(5)}
+                    approveLabel="Next Phase: Handover"
+                    isApproveDisabled={isAuditing || !report}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={onToggleFullscreen}
+                    onReset={onReset}
+                    onBackToCurrent={onBackToCurrent}
                 >
-                    <ArrowLeft size={12} /> Back
-                </button>
-            </div>
+                    {/* Action buttons can be removed or kept for redundancy */}
+                </StageHeader>
 
-            <div className="p-8 max-w-7xl mx-auto space-y-8">
-                {activeTab === "registry" ? (
-                    <div className="card-glass border-none shadow-2xl">
-                        <DesignRegistryPanel projectId={projectId} />
-                    </div>
-                ) : activeTab === "orchestration" ? (
-                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
-                        <OrchestrationPanel projectId={projectId} />
-                    </div>
-                ) : activeTab === "quality" ? (
-                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
-                        <QualityDashboard projectId={projectId} />
-                    </div>
-                ) : activeTab === "performance" ? (
-                    <div className="card-glass border-none shadow-2xl min-h-[600px]">
-                        <PerformanceDashboard projectId={projectId} />
-                    </div>
-                ) : (
-                    <>
-                        {/* Hero Success Section */}
-                        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 rounded-3xl p-10 text-white shadow-2xl">
-                            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                                <div className="space-y-4">
-                                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold uppercase tracking-widest">
-                                        <ShieldCheck size={12} /> Compliance Passed
-                                    </div>
-                                    <h1 className="text-4xl font-extrabold tracking-tight">Migration Certified.</h1>
-                                    <p className="text-blue-100 max-w-md text-lg leading-relaxed">
-                                        Your legacy {project?.origin || 'Legacy'} logic has been successfully architecturalized into modern, idempotent {project?.destination || 'Cloud'} logic.
-                                    </p>
-                                    <div className="flex items-center gap-4 pt-4">
-                                        <button
-                                            onClick={() => onStageChange(6)}
-                                            className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 hover:bg-emerald-400 transition-all flex items-center gap-2"
-                                        >
-                                            <ArrowRight size={18} /> Proceed to Handover
-                                        </button>
-                                        <button
-                                            onClick={handlePush}
-                                            disabled={isPushing}
-                                            className="px-6 py-3 bg-blue-500/30 border border-white/20 backdrop-blur-md rounded-xl font-bold hover:bg-white/10 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
-                                        >
-                                            {isPushing ? (
-                                                <>
-                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                    Pushing...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Github size={18} /> Push
-                                                </>
-                                            )}
-                                        </button>
+                {/* Navigation Tabs (Removed entirely as requested, migrating to sidebar) */}
+                <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-200 dark:border-white/5 px-8 py-3 flex items-center justify-end shadow-sm">
+                    <button
+                        onClick={() => window.history.back()}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm text-[10px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                    >
+                        <ArrowLeft size={12} /> Back
+                    </button>
+                </div>
+
+                <div className="p-8 max-w-7xl mx-auto space-y-8">
+                    {activeTab === "registry" ? (
+                        <div className="card-glass border-none shadow-2xl">
+                            <DesignRegistryPanel projectId={projectId} />
+                        </div>
+                    ) : activeTab === "orchestration" ? (
+                        <div className="card-glass border-none shadow-2xl min-h-[600px]">
+                            <OrchestrationPanel projectId={projectId} />
+                        </div>
+                    ) : activeTab === "quality" ? (
+                        <div className="card-glass border-none shadow-2xl min-h-[600px]">
+                            <QualityDashboard projectId={projectId} />
+                        </div>
+                    ) : !report ? (
+                        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm text-center mx-auto max-w-4xl mt-10">
+                            <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-6 text-blue-600 dark:text-blue-400">
+                                <ShieldCheck size={48} />
+                            </div>
+                            <h2 className="text-3xl font-extrabold mb-4 text-gray-900 dark:text-white tracking-tight">Governance & Certification</h2>
+                            <p className="text-gray-500 dark:text-gray-400 max-w-lg mb-8 mx-auto text-lg leading-relaxed">
+                                This project is ready for its final compliance audit. Generate the governance report from the sidebar menu to verify dependencies, security patterns, and Medallion architecture compliance.
+                            </p>
+                        </div>
+                    ) : activeTab === "audit" ? (
+                        <div className="card-glass border-none shadow-2xl min-h-[600px] p-8">
+                            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                                {auditReport ? <ShieldCheck className="text-primary" /> : <CheckCircle className="text-green-500" />}
+                                {auditReport ? "AI Audit Findings" : "Compliance Audit Trail"}
+                            </h3>
+                            <div className="space-y-4">
+                                {report?.audit_details?.checks ? (
+                                    report.audit_details.checks.map((check: any, idx: number) => (
+                                        <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800 group hover:shadow-md transition-all">
+                                            <div className={`p-2 rounded-xl ${check.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                                                {check.status === 'PASSED' ? <ShieldCheck size={18} /> : <AlertCircle size={18} />}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">{check.check_name}</h4>
+                                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${check.status === 'PASSED' ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>
+                                                        {check.status}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                                                    {check.detail}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : report?.compliance_logs?.length > 0 ? (
+                                    report.compliance_logs.map((log: any, idx: number) => (
+                                        <LogItem
+                                            key={idx}
+                                            status={log.status}
+                                            message={log.message}
+                                            time={log.time}
+                                        />
+                                    ))
+                                ) : (
+                                    <div className="text-center py-20 bg-gray-50 dark:bg-gray-800/20 rounded-3xl">
+                                        <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full inline-block mb-4">
+                                            <Shield size={40} className="text-gray-300" />
+                                        </div>
+                                        <p className="text-sm text-gray-400 italic">
+                                            No audit data available. Run AI Audit to certify this project.
+                                        </p>
                                         <button
                                             onClick={runAudit}
                                             disabled={isAuditing}
-                                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-xl font-bold shadow-lg shadow-[var(--accent)]/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                                            className="mt-6 px-6 py-3 bg-[var(--accent)] text-white rounded-xl font-bold hover:scale-105 active:scale-95 transition-all flex items-center gap-2 mx-auto disabled:opacity-50"
                                         >
-                                            {isAuditing ? (
-                                                <>
-                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                    Auditing...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <ShieldCheck size={18} /> Re-Audit
-                                                </>
-                                            )}
+                                            {isAuditing ? "Auditing..." : "Run AI Audit Now"}
                                         </button>
                                     </div>
-                                </div>
-
-                                {/* Large Score Circle */}
-                                <div className="relative w-48 h-48 flex items-center justify-center">
-                                    <svg className="w-full h-full transform -rotate-90">
-                                        <circle
-                                            cx="96"
-                                            cy="96"
-                                            r="88"
-                                            stroke="currentColor"
-                                            strokeWidth="12"
-                                            fill="transparent"
-                                            className="text-white/10"
-                                        />
-                                        <circle
-                                            cx="96"
-                                            cy="96"
-                                            r="88"
-                                            stroke="currentColor"
-                                            strokeWidth="12"
-                                            fill="transparent"
-                                            strokeDasharray={552}
-                                            strokeDashoffset={552 - (552 * auditScore) / 100}
-                                            className="text-white transition-all duration-1000 ease-out"
-                                        />
-                                    </svg>
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                        <span className="text-5xl font-black">{auditScore}</span>
-                                        <span className="text-[10px] font-bold uppercase opacity-60">Architect Score</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Background Decorative Elements */}
-                            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white/10 rounded-full blur-3xl opacity-50" />
-                            <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-black/10 rounded-full blur-3xl opacity-50" />
-                        </div>
-
-                        {/* Grid Layout for details */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-                            {/* Column 1 & 2: Main Details */}
-                            <div className="lg:col-span-2 space-y-8">
-
-                                {/* Summary Metrics */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <StatCard label="Total Refined" value={stats.total_files} icon={<ScrollText className="text-blue-500" />} />
-                                    <StatCard label="Pyspark Lines" value={stats.total_lines} icon={<Code className="text-purple-500" />} />
-                                    <StatCard label="Medallion Layers" value="3/3" icon={<Database className="text-green-500" />} />
-                                    <StatCard label="Idempotency" value="100%" icon={<ShieldCheck className="text-indigo-500" />} />
-                                </div>
-
-                                {/* Recent AI Findings or Governance Logs */}
-                                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
-                                    <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                                        {auditReport ? <ShieldCheck className="text-primary" /> : <CheckCircle className="text-green-500" />}
-                                        {auditReport ? "AI Audit Findings" : "Compliance Audit Trail"}
-                                    </h3>
-                                    <div className="space-y-4">
-                                        {report?.audit_details?.checks ? (
-                                            report.audit_details.checks.map((check: any, idx: number) => (
-                                                <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800 group hover:shadow-md transition-all">
-                                                    <div className={`p-2 rounded-xl ${check.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
-                                                        {check.status === 'PASSED' ? <ShieldCheck size={18} /> : <AlertCircle size={18} />}
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">{check.check_name}</h4>
-                                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${check.status === 'PASSED' ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>
-                                                                {check.status}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                                                            {check.detail}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : report?.compliance_logs?.length > 0 ? (
-                                            report.compliance_logs.map((log: any, idx: number) => (
-                                                <LogItem
-                                                    key={idx}
-                                                    status={log.status}
-                                                    message={log.message}
-                                                    time={log.time}
-                                                />
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-10">
-                                                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-full inline-block mb-4">
-                                                    <Shield size={40} className="text-gray-300" />
-                                                </div>
-                                                <p className="text-sm text-gray-400 italic">
-                                                    No audit data available. Run AI Audit to certify this project.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Column 3: Sidebar Details */}
-                            <div className="space-y-8">
-                                {/* Output Artifacts */}
-                                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm h-full">
-                                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                        <FileText size={20} className="text-gray-400" /> Deliverables
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <ArtifactLink label="Bronze Layer Scripts" size={`${stats.bronze_count} files`} />
-                                        <ArtifactLink label="Silver Layer Scripts" size={`${stats.silver_count} files`} />
-                                        <ArtifactLink label="Gold Layer Scripts" size={`${stats.gold_count} files`} />
-                                        <ArtifactLink label="IaC & DevOp Manifests" size="2 files" />
-                                    </div>
-
-                                    <hr className="my-6 border-gray-100 dark:border-gray-800" />
-
-                                    <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <Database className="text-blue-500" size={18} />
-                                            <span className="text-sm font-bold text-blue-900 dark:text-blue-200">Catalog Target</span>
-                                        </div>
-                                        <p className="text-[11px] text-blue-700 dark:text-blue-400 font-mono">
-                                            shiftt_silver_db.orders_migrated
-                                        </p>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
-
-                        {/* Visual Lineage Section */}
-                        <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
-                            <h3 className="text-xl font-bold mb-8 flex items-center gap-2">
-                                <TrendingUp size={20} className="text-indigo-500" /> Medallion Lineage Mapping
-                            </h3>
-                            <div className="space-y-12 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
-                                {report?.lineage?.map((item: any, idx: number) => (
-                                    <LineageRow key={idx} item={item} />
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Runbook Preview */}
-                        {report?.runbook && (
-                            <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm mt-8">
-                                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                                    <ScrollText size={20} className="text-amber-500" /> Modernization Runbook Preview
+                    ) : activeTab === "documentation" ? (
+                        <div className="space-y-8">
+                            {/* Visual Lineage Section */}
+                            <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
+                                <h3 className="text-xl font-bold mb-8 flex items-center gap-2">
+                                    <TrendingUp size={20} className="text-indigo-500" /> Medallion Lineage Mapping
                                 </h3>
-                                <div className="p-6 bg-gray-50 dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 max-h-[400px] overflow-y-auto custom-scrollbar font-mono text-xs whitespace-pre-wrap text-gray-600 dark:text-gray-400">
-                                    {report.runbook}
+                                <div className="space-y-12 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                                    {report?.lineage?.map((item: any, idx: number) => (
+                                        <LineageRow key={idx} item={item} />
+                                    ))}
+                                    {!report?.lineage && (
+                                        <p className="text-gray-500 italic text-center py-10">No lineage mapping available.</p>
+                                    )}
                                 </div>
                             </div>
-                        )}
 
-                        {/* Final Footer CTA */}
-                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-4 border-t border-gray-100 dark:border-gray-800">
-                            <div className="w-16 h-1 w-16 bg-gray-200 dark:bg-gray-800 rounded-full mb-4" />
-                            <h3 className="text-xl font-bold">Ready to take the next step?</h3>
-                            <p className="text-gray-500 max-w-md text-sm">
-                                You can deploy these artifacts directly to your {project?.destination || 'Databricks'} Workspace or export them for external CI/CD pipelines.
-                            </p>
-                            <div className="flex gap-4 pt-2">
-                                <button className="text-sm font-bold text-primary hover:underline active:scale-95 transition-all">Support Hub</button>
-                                <span className="text-gray-300">|</span>
-                                <button className="text-sm font-bold text-primary hover:underline active:scale-95 transition-all">
-                                    Open in {project?.destination || 'Databricks'}
-                                </button>
-                            </div>
+                            {/* Runbook Preview */}
+                            {report?.runbook && (
+                                <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
+                                    <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                                        <ScrollText size={20} className="text-amber-500" /> Modernization Runbook Preview
+                                    </h3>
+                                    <div className="p-6 bg-gray-50 dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 max-h-[400px] overflow-y-auto custom-scrollbar font-mono text-xs whitespace-pre-wrap text-gray-600 dark:text-gray-400">
+                                        {report.runbook}
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    </>
-                )}
+                    ) : (
+                        <>
+                            {/* Hero Success Section */}
+                            <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 rounded-3xl p-10 text-white shadow-2xl mb-8">
+                                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                                    <div className="space-y-4">
+                                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold uppercase tracking-widest">
+                                            <ShieldCheck size={12} /> Compliance Passed
+                                        </div>
+                                        <h1 className="text-4xl font-extrabold tracking-tight">Migration Certified.</h1>
+                                        <p className="text-blue-100 max-w-md text-lg leading-relaxed">
+                                            Your legacy {project?.origin || 'Legacy'} logic has been successfully architecturalized into modern, idempotent {project?.destination || 'Cloud'} logic.
+                                        </p>
+                                        <div className="flex items-center gap-4 pt-4">
+                                            <button
+                                                onClick={() => onStageChange(5)}
+                                                className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 hover:bg-emerald-400 transition-all flex items-center gap-2"
+                                            >
+                                                <ArrowRight size={18} /> Proceed to Handover
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Large Score Circle */}
+                                    <div className="relative w-48 h-48 flex items-center justify-center">
+                                        <svg className="w-full h-full transform -rotate-90">
+                                            <circle
+                                                cx="96"
+                                                cy="96"
+                                                r="88"
+                                                stroke="currentColor"
+                                                strokeWidth="12"
+                                                fill="transparent"
+                                                className="text-white/10"
+                                            />
+                                            <circle
+                                                cx="96"
+                                                cy="96"
+                                                r="88"
+                                                stroke="currentColor"
+                                                strokeWidth="12"
+                                                fill="transparent"
+                                                strokeDasharray={552}
+                                                strokeDashoffset={552 - (552 * auditScore) / 100}
+                                                className="text-white transition-all duration-1000 ease-out"
+                                            />
+                                        </svg>
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                            <span className="text-5xl font-black">{auditScore}</span>
+                                            <span className="text-[10px] font-bold uppercase opacity-60">Architect Score</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Background Decorative Elements */}
+                                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white/10 rounded-full blur-3xl opacity-50" />
+                                <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-black/10 rounded-full blur-3xl opacity-50" />
+                            </div>
+
+                            {/* Grid Layout for details */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                {/* Column 1 & 2: Main Details */}
+                                <div className="lg:col-span-2 space-y-8">
+                                    {/* Summary Metrics */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <StatCard label="Total Refined" value={stats.total_files} icon={<ScrollText className="text-blue-500" />} />
+                                        <StatCard label="Pyspark Lines" value={stats.total_lines} icon={<Code className="text-purple-500" />} />
+                                        <StatCard label="Medallion Layers" value="3/3" icon={<Database className="text-green-500" />} />
+                                        <StatCard label="Idempotency" value="100%" icon={<ShieldCheck className="text-indigo-500" />} />
+                                    </div>
+                                </div>
+
+                                {/* Column 3: Sidebar Details */}
+                                <div className="space-y-8">
+                                    {/* Output Artifacts */}
+                                    <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm h-full">
+                                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                            <FileText size={20} className="text-gray-400" /> Deliverables
+                                        </h3>
+                                        <div className="space-y-3">
+                                            <ArtifactLink label="Bronze Layer Scripts" size={`${stats.bronze_count} files`} />
+                                            <ArtifactLink label="Silver Layer Scripts" size={`${stats.silver_count} files`} />
+                                            <ArtifactLink label="Gold Layer Scripts" size={`${stats.gold_count} files`} />
+                                            <ArtifactLink label="IaC & DevOp Manifests" size="2 files" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

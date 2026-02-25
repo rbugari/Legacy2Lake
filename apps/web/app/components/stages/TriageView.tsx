@@ -12,19 +12,51 @@ import MeshGraph from '../MeshGraph';
 import StageHeader from '../StageHeader';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Activity, AlertTriangle, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, FileUp, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap, Server } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeftRight, ArrowRight, Brain, Bot, CheckCircle, ChevronDown, ChevronRight, Clock, Cpu, Database, Expand, FileCode, FileEdit, FileText, Folder, FolderOpen, GitBranch, Infinity, Layout, Layers, List, Map, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Play, RefreshCw, RotateCcw, Save, Search, Settings, Shield, ShieldAlert, ShieldCheck, Shrink, Terminal, X, Zap, Server } from 'lucide-react';
 import DiscoveryDashboard from '../DiscoveryDashboard';
 import { fetchWithAuth } from '../../lib/auth-client';
-import ProcessProgress from '../ProcessProgress';
+import UnifiedLogViewer from "../UnifiedLogViewer";
+import UnifiedFileExplorer from "../UnifiedFileExplorer";
 
 import ColumnMappingEditor from '../ColumnMappingEditor'; // Added Phase A
 import OriginAnalysisPanel from '../visualization/OriginAnalysisPanel'; // Sprint 8.5
 import TransformationsMatrix from '../visualization/TransformationsMatrix'; // Sprint 8.5
 import SourceQueriesViewer from '../visualization/SourceQueriesViewer'; // Sprint 8.5
-import QualityDashboard from '../visualization/QualityDashboard'; // Sprint 11
+import CodeQualityAnalysis from '../visualization/CodeQualityAnalysis'; // Sprint 14 - Legacy schema issues
 import SchemaViewer from '../visualization/SchemaViewer'; // Sprint 13
 import PIIHeatmap from '../visualization/PIIHeatmap'; // Sprint 11 - Advanced Triage
-import PartitionRecommendations from '../visualization/PartitionRecommendations'; // Sprint 11 - Advanced Triage
+import TableRegistry from '../visualization/TableRegistry'; // Sprint 14 - Table Impact Registry
+import ReactMarkdown from 'react-markdown';
+import { useConfirm } from '@/app/hooks/useConfirm';
+
+// Lazy mismatch badge for Grid rows
+function MismatchBadge({ projectId, objectId, onClickSchema }: { projectId: string; objectId: string; onClickSchema: () => void }) {
+    const [count, setCount] = React.useState<number | null>(null);
+    useEffect(() => {
+        if (!objectId) return;
+        fetchWithAuth(`projects/${projectId}/objects/${objectId}/type-mismatches`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d) setCount(d.mismatch_count ?? 0); })
+            .catch(() => { });
+    }, [projectId, objectId]);
+
+    if (count === null) return <span className="text-gray-600 text-[9px]">—</span>;
+    if (count === 0) return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+            ✓ OK
+        </span>
+    );
+    return (
+        <button
+            onClick={(e) => { e.stopPropagation(); onClickSchema(); }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
+            title={`${count} type mismatch${count !== 1 ? 'es' : ''} — click to view`}
+        >
+            <AlertTriangle size={9} />
+            {count} mismatch{count !== 1 ? 'es' : ''}
+        </button>
+    );
+}
 
 // Tab Definitions
 const TABS = [
@@ -36,6 +68,7 @@ const TABS = [
     { id: 'queries', label: 'Queries', icon: <FileCode size={14} />, group: 'Analysis' }, // Sprint 8.5
     { id: 'quality', label: 'Quality', icon: <Shield size={14} />, group: 'Analysis' }, // Sprint 11
     { id: 'pii', label: 'PII Heatmap', icon: <ShieldAlert size={14} />, group: 'Analysis' }, // Sprint 11 Advanced
+    { id: 'tables', label: 'Table Registry', icon: <GitBranch size={14} />, group: 'Analysis' }, // Sprint 14 - Table Impacts
     { id: 'partitions', label: 'Partitions', icon: <Layers size={14} />, group: 'Analysis' }, // Sprint 11 Advanced
     { id: 'mapping', label: 'Mapping', icon: <Database size={14} />, group: 'Views' },
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
@@ -43,9 +76,15 @@ const TABS = [
     { id: 'files', label: 'File Explorer', icon: <FolderOpen size={14} />, group: 'Config' }, // Added per request
 ];
 
+const TRIAGE_AGENTS = [
+    { id: 'A', name: 'The Architect', role: 'Asset classifier & strategy advisor' },
+    { id: 'B', name: 'The Privacy Guard', role: 'PII detection & risk labelling' },
+];
+
 export default function TriageView({
     projectId,
     activeTenantId,
+    projectStage,
     onStageChange,
     isReadOnly: propReadOnly,
     onStatsUpdate,
@@ -58,6 +97,7 @@ export default function TriageView({
 }: {
     projectId: string,
     activeTenantId?: string,
+    projectStage?: number,
     onStageChange?: (stage: number) => void,
     isReadOnly?: boolean,
     onStatsUpdate?: (stats: any) => void,
@@ -74,18 +114,14 @@ export default function TriageView({
     // Data State
     const [assets, setAssets] = useState<any[]>([]);
     const [isInitialLoading, setIsInitialLoading] = useState(true); // Only for initial load
+    const { confirm, ConfirmDialog } = useConfirm();
     const [isTriageRunning, setIsTriageRunning] = useState(false); // For active triage/regenerate processes
 
     // Graph State
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
 
-    // Files State
-    const [triageFiles, setTriageFiles] = useState<any[]>([]);
-    const [loadingFiles, setLoadingFiles] = useState(false);
-    const [viewingFile, setViewingFile] = useState<any | null>(null);
-    const [fileContent, setFileContent] = useState("");
-    const [isUploading, setIsUploading] = useState(false);
+    // Files state removed - now using UnifiedFileExplorer
 
     // Prompt & Context State
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -113,6 +149,7 @@ export default function TriageView({
     const [editingAsset, setEditingAsset] = useState<any | null>(null);
     const [assetNote, setAssetNote] = useState("");
     const [isApproving, setIsApproving] = useState(false);
+    const [schemaInitialTab, setSchemaInitialTab] = useState<'schema' | 'mapping'>('schema');
 
     const handleDeleteNode = useCallback((id: string) => {
         if (isReadOnly) return;
@@ -272,13 +309,24 @@ export default function TriageView({
     // Initialization
     const fetchProject = useCallback(async () => {
         try {
+            console.log('[TriageView fetchProject] Starting fetch for projectId:', projectId);
+
             // Check Status first
             const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
             const statusData = await statusRes.json();
+            console.log('[TriageView fetchProject] Status response:', statusData);
 
-            if (statusData.status === 'COMPLETED' || statusData.status === 'TRIAGED' || statusData.status === 'TRIAGE' || statusData.status === 'DRAFTING') {
+            // Allow loading for any post-discovery status
+            const validStatuses = ['COMPLETED', 'TRIAGED', 'TRIAGE', 'DRAFTING', 'DRAFTED', 'REFINING', 'REFINED', 'DELIVERED'];
+            if (validStatuses.includes(statusData.status)) {
                 const projectRes = await fetchWithAuth(`discovery/project/${projectId}`);
                 const projectData = await projectRes.json();
+                console.log('[TriageView fetchProject] Project data:', {
+                    assetsCount: projectData.assets?.length || 0,
+                    assets: projectData.assets,
+                    source_tech: projectData.source_tech,
+                    target_tech: projectData.target_tech
+                });
 
                 // Filter out system assets like LAYOUT from the UI list if needed, 
                 // or just rely on the pending filter.
@@ -286,9 +334,11 @@ export default function TriageView({
                 setSystemPrompt(projectData.prompt || "");
                 setSourceTech(projectData.source_tech);
                 setDestTech(projectData.target_tech);
+            } else {
+                console.warn('[TriageView fetchProject] Status not eligible for loading:', statusData.status);
             }
         } catch (error) {
-            console.error("Init error:", error);
+            console.error("[TriageView fetchProject] Init error:", error);
         } finally {
             setIsInitialLoading(false);
         }
@@ -454,10 +504,10 @@ export default function TriageView({
                 // 3. Also update stage for UI stepper consistency (optional if backend does it, but safer here for now)
                 await fetchWithAuth(`projects/${projectId}/stage`, {
                     method: 'POST',
-                    body: JSON.stringify({ stage: '3' })
+                    body: JSON.stringify({ stage: '2' })
                 });
 
-                if (onStageChange) onStageChange(3);
+                if (onStageChange) onStageChange(2);
             } else {
                 console.error("Approve failed", await res.text());
                 alert("Error approving design. Please try again.");
@@ -477,19 +527,22 @@ export default function TriageView({
             if (data.logs) {
                 setTriageLog(data.logs);
             }
-            
+
             // Check project status to detect completion
             const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
             const statusData = await statusRes.json();
-            
+
             // If status changed to TRIAGED, stop polling
             if (statusData.status === "TRIAGED" && isTriageRunning) {
                 console.log("DEBUG: Triage completed, stopping polling...");
-                
+
                 // Stop polling - data will reload via useEffect when isTriageRunning changes
                 setIsTriageRunning(false);
-                onSectionChange('grid'); // Switch to grid view to show results
-                
+
+                // Auto-redirect to grid to show results
+                console.log("DEBUG: Triage success, auto-transitioning to grid view");
+                onSectionChange('grid');
+
                 console.log("DEBUG: Polling stopped, component will reload data");
             }
         } catch (e) {
@@ -507,6 +560,13 @@ export default function TriageView({
         return () => clearInterval(interval);
     }, [isTriageRunning, fetchTriageLogs]);
 
+    // Load historical logs when logs tab is opened
+    useEffect(() => {
+        if (activeSection === 'logs' && !isTriageRunning) {
+            fetchTriageLogs(); // Load historical logs
+        }
+    }, [activeSection]); // Only trigger when section changes
+
     // Reload data when triage completes (isTriageRunning changes from true to false)
     const prevTriageRunning = useRef(false);
     useEffect(() => {
@@ -519,105 +579,38 @@ export default function TriageView({
         prevTriageRunning.current = isTriageRunning;
     }, [isTriageRunning, fetchProject, fetchLayout]);
 
-    // Fetch Files - Load initially and when section changes to files
-    const fetchFiles = useCallback(async () => {
-        setLoadingFiles(true);
-        try {
-            const res = await fetchWithAuth(`projects/${projectId}/triage/files`);
-            const data = await res.json();
-            console.log('[TriageView] Files loaded:', data);
-            if (data.files) {
-                setTriageFiles(data.files);
-            } else if (data.success && data.file_count === 0) {
-                setTriageFiles([]);
-            }
-        } catch (e) {
-            console.error("Failed to load files", e);
-        } finally {
-            setLoadingFiles(false);
-        }
-    }, [projectId]);
-
-    // Load files immediately when component mounts
-    useEffect(() => {
-        fetchFiles();
-    }, [fetchFiles]);
-
-    // Reload files when activeSection changes to files
-    useEffect(() => {
-        if (activeSection === 'files') {
-            fetchFiles();
-        }
-    }, [activeSection]);
-
-    const handleViewFile = async (file: any) => {
-        setViewingFile(file);
-        setFileContent("Loading...");
-        try {
-            // Re-using generic content reader but pointing to triage path logic if needed
-            // For now, using the generic reader which reads from project root. 
-            // Triage files are in /Triage, so we pass relative path "Triage/filename" 
-            // BUT list_triage_files returns "path" relative to triage folder.
-            // So we need to prepend "Triage/" or rely on the backend being smart.
-            // Let's rely on the paths returned by list_triage_files which are relative to Triage folder.
-            // projects/{id}/files/content expects path relative to project root.
-            const fullRelPath = `Triage/${file.path}`;
-            const res = await fetchWithAuth(`projects/${projectId}/files/content?path=${encodeURIComponent(fullRelPath)}`);
-            const data = await res.json();
-            if (data.content !== undefined) setFileContent(data.content);
-            else setFileContent("Error reading file.");
-        } catch (e) {
-            setFileContent("Error loading content.");
-        }
-    };
-
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-
-        setIsUploading(true);
-        const formData = new FormData();
-        Array.from(files).forEach(file => {
-            formData.append("files", file);
-        });
-
-        try {
-            const res = await fetchWithAuth(`projects/${projectId}/triage/upload`, {
-                method: "POST",
-                body: formData
-            });
-
-            if (res.ok) {
-                await fetchFiles();
-                // Optionally add a log entry if there was a log system here
-            } else {
-                const err = await res.json();
-                alert(`Upload failed: ${err.detail || 'Unknown error'}`);
-            }
-        } catch (err) {
-            console.error("Upload error:", err);
-            alert("Failed to upload files.");
-        } finally {
-            setIsUploading(false);
-            // Reset input
-            e.target.value = '';
-        }
-    };
-
+    // Legacy files loading code removed - now using UnifiedFileExplorer
 
     const handleRunTriage = async () => {
         console.log("DEBUG: handleRunTriage called for projectId:", projectId);
-        // Confirmation for cost
-        const confirmMsg = "This action will run AI agents to analyze the repository. This incurs token costs and processing time.\n\nDo you want to continue?";
 
-        try {
-            if (!window.confirm(confirmMsg)) {
-                console.log("DEBUG: Triage cancelled by user");
-                return;
+        // Check if re-executing a previous stage (rollback warning)
+        const CURRENT_STAGE = 1; // Triage is stage 1
+        if (projectStage !== undefined && projectStage > CURRENT_STAGE) {
+            const phaseNames = ['Discovery', 'Triage', 'Drafting', 'Refinement', 'Governance', 'Handover'];
+            const lostPhases: string[] = [];
+            for (let i = CURRENT_STAGE + 1; i <= projectStage; i++) {
+                if (i < phaseNames.length) lostPhases.push(phaseNames[i]);
             }
-        } catch (confirmError) {
-            console.error("DEBUG: window.confirm error:", confirmError);
+            const rollbackOk = await confirm({
+                variant: 'rollback',
+                title: 'Re-running Triage will roll back progress',
+                description: 'The project will return to Stage 1. Discovery data is preserved.',
+                lostPhases,
+                confirmLabel: 'Yes, roll back & re-run',
+            });
+            if (!rollbackOk) return;
         }
+
+        // Execution confirmation
+        const runOk = await confirm({
+            variant: 'execute',
+            title: 'Run Triage Analysis?',
+            description: 'The following AI agents will analyse every asset in your repository and produce a classification and strategy recommendation.',
+            agents: TRIAGE_AGENTS,
+            confirmLabel: 'Run Triage',
+        });
+        if (!runOk) return;
 
         if (!projectId || projectId === 'undefined' || projectId === '') {
             console.error("DEBUG: Invalid projectId in handleRunTriage:", projectId);
@@ -662,10 +655,10 @@ export default function TriageView({
                 if (data.nodes) setNodes(enrichNodes(data.nodes));
                 if (data.edges) setEdges(data.edges);
                 if (data.log) setTriageLog(data.log);
-                
+
                 await fetchProject();
                 await fetchLayout();
-                onSectionChange('grid');
+                // onSectionChange('grid'); // Removed auto-redirect to keep user on logs
                 setIsTriageRunning(false);
             }
 
@@ -678,7 +671,8 @@ export default function TriageView({
 
 
     const handleReset = async () => {
-        if (!window.confirm("Are you sure you want to reset the project? All triage results and current design will be lost.")) return;
+        const resetOk = await confirm({ variant: 'danger', title: 'Reset project?', description: 'All triage results and current design will be permanently lost. This cannot be undone.', confirmLabel: 'Reset project' });
+        if (!resetOk) return;
 
         setIsTriageRunning(true);
         try {
@@ -701,7 +695,8 @@ export default function TriageView({
     };
 
     const handleCancelTriage = async () => {
-        if (!window.confirm("¿Estás seguro de que deseas cancelar el proceso de análisis?")) return;
+        const cancelOk = await confirm({ variant: 'danger', title: 'Cancel analysis?', description: 'The running process will be stopped. Partial results may be incomplete.', confirmLabel: 'Cancel analysis', cancelLabel: 'Keep running' });
+        if (!cancelOk) return;
 
         try {
             const res = await fetchWithAuth(`projects/${projectId}/cancel`, {
@@ -724,55 +719,39 @@ export default function TriageView({
         }
     };
 
+    // Watch for sidebar action triggers
+    useEffect(() => {
+        if (activeSection === 'run-triage') {
+            if (!isTriageRunning) {
+                handleRunTriage();
+            }
+            // Divert back to logs or origin to show progress
+            onSectionChange('logs');
+        }
+    }, [activeSection, isTriageRunning, onSectionChange]);
+
     return (
-        <ReactFlowProvider>
-            <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'}`}>
-                <StageHeader
-                    title="Stage 2: Technical Triage"
-                    subtitle="Agent R: Reasoning engine for object classification and mapping"
-                    icon={<Cpu className="text-blue-500" />}
-                    helpText="Classification of source objects into Medallion layers and complexity assessment."
-                    onApprove={handleApprove}
-                    approveLabel="Start Drafting"
-                    isApproveDisabled={isTriageRunning || assets.length === 0}
-                    isExecuting={isApproving}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={onToggleFullscreen}
-                    onReset={onReset}
-                    onBackToCurrent={onBackToCurrent}
-                >
-                    <div className="flex gap-2">
-                        <button
-                            onClick={handleRunTriage}
-                            disabled={isTriageRunning}
-                            className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-secondary transition-all shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95"
-                        >
-                            {isTriageRunning ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                            {isTriageRunning ? "Processing..." : "Run Analysis"}
-                        </button>
+        <>
+            <ReactFlowProvider>
+                <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'}`}>
+                    <StageHeader
+                        title="Stage 1: Technical Triage"
+                        subtitle="Agent R: Reasoning engine for object classification and mapping"
+                        icon={<Cpu className="text-blue-500" />}
+                        helpText="Classification of source objects into Medallion layers and complexity assessment."
+                        onApprove={handleApprove}
+                        approveLabel="Next Phase: Drafting"
+                        isApproveDisabled={isTriageRunning || assets.length === 0}
+                        isExecuting={isApproving}
+                        isFullscreen={isFullscreen}
+                        onToggleFullscreen={onToggleFullscreen}
+                        onReset={onReset}
+                        onBackToCurrent={onBackToCurrent}
+                    />
 
-                        {isTriageRunning && (
-                            <button
-                                onClick={handleCancelTriage}
-                                className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-600/20 dark:shadow-none transition-all active:scale-95"
-                            >
-                                <X size={12} />
-                                Cancel
-                            </button>
-                        )}
-
-                        <button
-                            onClick={() => saveLayout(nodes, edges)}
-                            className="px-4 py-2 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
-                        >
-                            <Save size={14} /> Save Design
-                        </button>
-                    </div>
-                </StageHeader>
-
-                {/* GRAPH INTELLIGENCE (HEATMAPS) */}
-                {/* TODO v4+: Graph Intelligence Heatmaps - Feature incomplete, hidden for now */}
-                {/*
+                    {/* GRAPH INTELLIGENCE (HEATMAPS) */}
+                    {/* TODO v4+: Graph Intelligence Heatmaps - Feature incomplete, hidden for now */}
+                    {/*
                 <div className="bg-black/20 border-b border-white/5 px-8 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2">
@@ -805,750 +784,682 @@ export default function TriageView({
                     )}
                 </div>
                 */}
-                
-                {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
-                <div className="flex-1 overflow-hidden relative">
 
-                    {/* FILES TAB (NEW) */}
-                    {activeSection === 'files' && (
-                        <div className="h-full w-full p-8 overflow-y-auto">
-                            <div className="max-w-4xl mx-auto space-y-6">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-black text-white uppercase tracking-wider">Triage Files</h3>
-                                    <div className="flex items-center gap-2">
-                                        <label className={`flex items-center gap-2 p-2 px-4 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 rounded-lg cursor-pointer transition-all border border-cyan-500/30 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                            {isUploading ? (
-                                                <RefreshCw size={16} className="animate-spin" />
-                                            ) : (
-                                                <FileUp size={16} />
-                                            )}
-                                            <span className="text-[10px] font-black uppercase tracking-widest">
-                                                {isUploading ? 'Uploading...' : 'Upload Files'}
-                                            </span>
-                                            <input
-                                                type="file"
-                                                multiple
-                                                className="hidden"
-                                                onChange={handleFileUpload}
-                                                disabled={isUploading}
-                                            />
-                                        </label>
-                                        <button onClick={fetchFiles} className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                                            <RefreshCw size={16} className={loadingFiles ? "animate-spin" : ""} />
-                                        </button>
-                                    </div>
-                                </div>
+                    {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
+                    <div className="flex-1 overflow-hidden relative">
 
-                                {loadingFiles ? (
-                                    <div className="p-12 text-center">
-                                        <RefreshCw size={32} className="mx-auto text-cyan-500 mb-4 animate-spin" />
-                                        <p className="text-gray-500 font-bold">Loading files...</p>
-                                    </div>
-                                ) : triageFiles.length === 0 ? (
-                                    <div className="p-12 text-center border border-dashed border-white/10 rounded-2xl">
-                                        <FolderOpen size={48} className="mx-auto text-gray-600 mb-4" />
-                                        <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">No files found in Triage folder</p>
-                                        <p className="text-gray-600 text-xs mt-2">Upload SSIS packages or source files to begin</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid gap-3">
-                                        {triageFiles.map(file => (
-                                            <div key={file.path} className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-cyan-500/30 transition-all group">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-3 bg-black/20 rounded-lg text-cyan-500">
-                                                        <FileCode size={20} />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-bold text-white">{file.name}</p>
-                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">{(file.size / 1024).toFixed(1)} KB</p>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleViewFile(file)}
-                                                    className="px-4 py-2 bg-black/20 text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-black/40 rounded-lg transition-colors"
-                                                >
-                                                    View Content
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                        {/* ORIGIN ANALYSIS TAB */}
+                        {activeSection === 'origin' && (
+                            <div className="h-full w-full overflow-hidden">
+                                <OriginAnalysisPanel projectId={projectId} />
                             </div>
+                        )}
 
-                            {/* File Viewer Modal */}
-                            {viewingFile && (
-                                <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm">
-                                    <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-5xl h-[80vh] rounded-2xl flex flex-col shadow-2xl">
-                                        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
-                                            <div className="flex items-center gap-3">
-                                                <FileText size={16} className="text-cyan-500" />
-                                                <span className="text-sm font-bold text-white">{viewingFile.name}</span>
-                                            </div>
-                                            <button onClick={() => setViewingFile(null)} className="p-2 hover:bg-white/10 rounded-lg text-gray-400">
-                                                <PanelLeftClose size={18} />
+                        {/* TRANSFORMATIONS MATRIX TAB */}
+                        {activeSection === 'transform' && (
+                            <div className="h-full w-full overflow-hidden">
+                                <TransformationsMatrix projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* SOURCE QUERIES TAB */}
+                        {activeSection === 'queries' && (
+                            <div className="h-full w-full overflow-hidden">
+                                <SourceQueriesViewer projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* QUALITY DASHBOARD TAB */}
+                        {activeSection === 'quality' && (
+                            <div className="h-full w-full overflow-hidden">
+                                <CodeQualityAnalysis projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* SCHEMA VIEWER TAB */}
+                        {activeSection === 'schema' && (
+                            <div className="h-full w-full overflow-hidden bg-[var(--background)]">
+                                <SchemaViewer
+                                    projectId={projectId}
+                                    objectId={selectedAssetForSchema ?? undefined}
+                                    assets={assets.filter(a => a.type !== 'LAYOUT')}
+                                    initialTab={schemaInitialTab}
+                                    onObjectSelect={(id) => setSelectedAssetForSchema(id || null)}
+                                />
+                            </div>
+                        )}
+
+                        {/* PII HEATMAP TAB */}
+                        {activeSection === 'pii' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                                <PIIHeatmap projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* TABLE REGISTRY TAB */}
+                        {activeSection === 'tables' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                                <TableRegistry projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* 1. SCHEMA GRAPH / VISUALIZATION */}
+                        {activeSection === 'graph' && (
+                            <div className="h-full w-full bg-gray-50 dark:bg-gray-900 relative flex overflow-hidden">
+                                {/* Graph Sidebar (Left) */}
+                                {!isReadOnly && (
+                                    <div
+                                        className={`h-full border-r border-gray-100 dark:border-white/5 bg-white dark:bg-[#121212]/30 backdrop-blur-md flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-72' : 'w-0'
+                                            }`}
+                                    >
+                                        <div className="p-4 border-b border-gray-100 dark:border-white/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-tertiary)] bg-gray-50 dark:bg-black/20 flex justify-between items-center whitespace-nowrap">
+                                            <span>Available Components</span>
+                                            <button
+                                                onClick={() => setShowSidebar(false)}
+                                                className="p-1 px-2 hover:bg-cyan-500/10 hover:text-cyan-500 rounded-lg transition-colors"
+                                                title="Hide Panel"
+                                            >
+                                                <PanelLeftClose size={16} />
                                             </button>
                                         </div>
-                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
-                                            <SyntaxHighlighter
-                                                language={viewingFile.name.endsWith('.py') ? 'python' : viewingFile.name.endsWith('.sql') ? 'sql' : viewingFile.name.endsWith('.json') ? 'json' : viewingFile.name.endsWith('.md') ? 'markdown' : 'text'}
-                                                style={vscDarkPlus}
-                                                customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
-                                                showLineNumbers={true}
-                                                wrapLines={true}
-                                            >
-                                                {fileContent}
-                                            </SyntaxHighlighter>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ORIGIN ANALYSIS TAB */}
-                    {activeSection === 'origin' && (
-                        <div className="h-full w-full overflow-hidden">
-                            <OriginAnalysisPanel projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* TRANSFORMATIONS MATRIX TAB */}
-                    {activeSection === 'transform' && (
-                        <div className="h-full w-full overflow-hidden">
-                            <TransformationsMatrix projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* SOURCE QUERIES TAB */}
-                    {activeSection === 'queries' && (
-                        <div className="h-full w-full overflow-hidden">
-                            <SourceQueriesViewer projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* QUALITY DASHBOARD TAB */}
-                    {activeSection === 'quality' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
-                            <QualityDashboard projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* SCHEMA VIEWER TAB */}
-                    {activeSection === 'schema' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
-                            {selectedAssetForSchema ? (
-                                <div className="space-y-4">
-                                    <button
-                                        onClick={() => setSelectedAssetForSchema(null)}
-                                        className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-                                    >
-                                        ← Back to Asset Selection
-                                    </button>
-                                    <SchemaViewer 
-                                        projectId={projectId} 
-                                        objectId={selectedAssetForSchema}
-                                        showHistory={true}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-2xl flex items-center justify-center mb-6">
-                                        <Database size={40} className="text-gray-400" />
-                                    </div>
-                                    <h3 className="text-xl font-bold mb-2">Select an Asset</h3>
-                                    <p className="text-gray-500 max-w-md">
-                                        Go to <span className="font-bold text-cyan-600">Grid</span> tab and click the <Database size={14} className="inline" /> icon next to any asset to view its schema structure.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* PII HEATMAP TAB */}
-                    {activeSection === 'pii' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
-                            <PIIHeatmap projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* PARTITION RECOMMENDATIONS TAB */}
-                    {activeSection === 'partitions' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
-                            <PartitionRecommendations projectId={projectId} />
-                        </div>
-                    )}
-
-                    {/* 1. GRAPH TAB */}
-                    {activeSection === 'graph' && (
-                        <div className="h-full w-full flex relative">
-                            {/* Drag Source Sidebar (Small Grid) */}
-                            {!isReadOnly && (
-                                <div
-                                    className={`h-full border-r border-gray-100 dark:border-white/5 bg-white dark:bg-[#121212]/30 backdrop-blur-md flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${showSidebar ? 'w-72' : 'w-0'
-                                        }`}
-                                >
-                                    <div className="p-4 border-b border-gray-100 dark:border-white/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-tertiary)] bg-gray-50 dark:bg-black/20 flex justify-between items-center whitespace-nowrap">
-                                        <span>Available Components</span>
-                                        <button
-                                            onClick={() => setShowSidebar(false)}
-                                            className="p-1 px-2 hover:bg-cyan-500/10 hover:text-cyan-500 rounded-lg transition-colors"
-                                            title="Hide Panel"
-                                        >
-                                            <PanelLeftClose size={16} />
-                                        </button>
-                                    </div>
-                                    <div className="flex-1 overflow-hidden min-w-[288px] custom-scrollbar">
-                                        <div className="p-4 border-b border-gray-100 dark:border-white/5">
-                                            <DiscoveryDashboard assets={assets} nodes={nodes} />
-                                        </div>
-
-                                        {isInitialLoading ? (
-                                            <div className="p-12 text-center">
-                                                <div className="w-6 h-6 border-2 border-cyan-500 border-b-transparent rounded-full animate-spin mx-auto mb-3" />
-                                                <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Scanning...</span>
+                                        <div className="flex-1 overflow-hidden min-w-[288px] custom-scrollbar">
+                                            <div className="p-4 border-b border-gray-100 dark:border-white/5">
+                                                <DiscoveryDashboard assets={assets} nodes={nodes} />
                                             </div>
-                                        ) : (
-                                            <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-6">
-                                                {/* PENDING REVIEW SECTION */}
-                                                {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length > 0 && (
-                                                    <div className="space-y-3">
-                                                        <h5 className="text-[9px] font-black text-amber-500 uppercase tracking-widest pl-2">
-                                                            Pending Review ({assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length})
-                                                        </h5>
-                                                        {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').map(asset => (
-                                                            <div
-                                                                key={asset.id}
-                                                                draggable
-                                                                onDragStart={(e) => {
-                                                                    e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
-                                                                    e.dataTransfer.effectAllowed = 'move';
-                                                                }}
-                                                                className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 cursor-grab flex items-center gap-4 transition-all group scale-100 hover:scale-[1.02] active:scale-95"
-                                                            >
-                                                                <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
-                                                                    <Activity size={18} className="text-amber-500 group-hover:text-white" />
-                                                                </div>
-                                                                <div className="flex flex-col min-w-0">
-                                                                    <span className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-amber-500 transition-colors">{asset.name}</span>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-tight">Action Required</span>
+
+                                            {isInitialLoading ? (
+                                                <div className="p-12 text-center">
+                                                    <div className="w-6 h-6 border-2 border-cyan-500 border-b-transparent rounded-full animate-spin mx-auto mb-3" />
+                                                    <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest animate-pulse">Scanning...</span>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-y-auto max-h-[calc(100vh-350px)] p-4 space-y-6">
+                                                    {/* PENDING REVIEW SECTION */}
+                                                    {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length > 0 && (
+                                                        <div className="space-y-3">
+                                                            <h5 className="text-[9px] font-black text-amber-500 uppercase tracking-widest pl-2">
+                                                                Pending Review ({assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').length})
+                                                            </h5>
+                                                            {assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT' && a.type !== 'LAYOUT').map(asset => (
+                                                                <div
+                                                                    key={asset.id}
+                                                                    draggable
+                                                                    onDragStart={(e) => {
+                                                                        e.dataTransfer.setData('application/reactflow', JSON.stringify(asset));
+                                                                        e.dataTransfer.effectAllowed = 'move';
+                                                                    }}
+                                                                    className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 cursor-grab flex items-center gap-4 transition-all group scale-100 hover:scale-[1.02] active:scale-95"
+                                                                >
+                                                                    <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                                                        <Activity size={18} className="text-amber-500 group-hover:text-white" />
+                                                                    </div>
+                                                                    <div className="flex flex-col min-w-0">
+                                                                        <span className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-amber-500 transition-colors">{asset.name}</span>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-tight">Action Required</span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                                            ))}
+                                                        </div>
+                                                    )}
 
-                                                {/* ALL OTHER ITEMS */}
-                                                <div className="space-y-3">
-                                                    <h5 className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest pl-2">
-                                                        Unassigned Items
-                                                    </h5>
-                                                    {assets.filter(a => false).length === 0 && assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length === 0 && (
-                                                        <div className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest py-10 italic">All items classified</div>
+                                                    {/* ALL OTHER ITEMS */}
+                                                    <div className="space-y-3">
+                                                        <h5 className="text-[9px] font-black text-[var(--text-tertiary)] uppercase tracking-widest pl-2">
+                                                            Unassigned Items
+                                                        </h5>
+                                                        {assets.filter(a => false).length === 0 && assets.filter(a => a.type !== 'CORE' && a.type !== 'IGNORED' && a.type !== 'SUPPORT').length === 0 && (
+                                                            <div className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest py-10 italic">All items classified</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                    </div>
+                                )}
+
+                                {/* Floating Sidebar Toggle (Only when hidden) */}
+                                {!showSidebar && (
+                                    <button
+                                        onClick={() => setShowSidebar(true)}
+                                        className="absolute top-6 left-6 z-30 p-3 bg-white/90 dark:bg-[#121212]/90 rounded-2xl border border-gray-100 dark:border-white/10 shadow-2xl backdrop-blur-xl text-cyan-500 hover:scale-110 active:scale-95 transition-all"
+                                        title="Show Panel"
+                                    >
+                                        <PanelLeftOpen size={20} />
+                                    </button>
+                                )}
+
+                                {/* Graph Area */}
+                                <div className="flex-1 h-full bg-gray-50 dark:bg-[#0a0a0a] relative" ref={setReactFlowInstance}>
+                                    <MeshGraph
+                                        nodes={nodes}
+                                        edges={edges}
+                                        onNodesChange={onNodesChange}
+                                        onEdgesChange={onEdgesChange}
+                                        onConnect={onConnect}
+                                        onInit={setReactFlowInstance}
+                                        onDrop={onDrop}
+                                        onDragOver={onDragOver}
+                                        onNodeClick={(node) => {
+                                            setSelectedNodeData(node.data);
+                                            setSelectedAssetForSchema(node.id);
+                                        }}
+                                        onNodeDragStop={(_: any, __: any, allNodes: any[]) => {
+                                            if (allNodes) saveLayout(allNodes, edges);
+                                            else saveLayout(nodes, edges);
+                                        }}
+                                        onNodesDelete={(deletedNodes: any[]) => {
+                                            const deletedIds = deletedNodes.map((n: any) => n.id);
+                                            setAssets(prev => prev.map(a => deletedIds.includes(a.id) ? { ...a, type: 'IGNORED' } : a));
+                                        }}
+                                    />
+
+                                    {/* HIGH-RES DETAIL PANEL */}
+                                    {selectedNodeData && (
+                                        <div className="absolute top-6 bottom-6 right-6 w-96 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+                                            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
+                                                <div className="flex items-center gap-3">
+                                                    <Activity size={18} className="text-cyan-500" />
+                                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">Asset Intelligence</h3>
+                                                </div>
+                                                <button
+                                                    onClick={() => setSelectedNodeData(null)}
+                                                    className="p-2 hover:bg-white/10 rounded-xl text-gray-400 font-bold text-[10px] uppercase"
+                                                >
+                                                    Close
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar-slim">
+                                                {/* Header Info */}
+                                                <div>
+                                                    <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">{selectedNodeData.category}</span>
+                                                    <h2 className="text-xl font-bold text-[var(--text-primary)] mt-1 break-all">{selectedNodeData.label}</h2>
+                                                    <p className="text-xs text-[var(--text-tertiary)] font-medium mt-2">{selectedNodeData.id}</p>
+                                                </div>
+
+                                                {/* Metadata Grid */}
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {[
+                                                        { label: 'Volume', value: selectedNodeData.metadata?.volume || 'LOW', color: 'text-emerald-500' },
+                                                        { label: 'Latency', value: selectedNodeData.metadata?.latency || 'BATCH', color: 'text-cyan-500' },
+                                                        { label: 'Criticality', value: selectedNodeData.metadata?.criticality || 'P3', color: 'text-amber-500' },
+                                                        { label: 'Lineage', value: selectedNodeData.metadata?.lineage_group || 'Bronze', color: 'text-purple-500' },
+                                                    ].map(m => (
+                                                        <div key={m.label} className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">{m.label}</span>
+                                                            <span className={`text-xs font-black uppercase ${m.color}`}>{m.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Design Decisions */}
+                                                <div className="space-y-4">
+                                                    <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <ShieldCheck size={14} className="text-emerald-500" />
+                                                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Architect Suggestion</span>
+                                                        </div>
+                                                        <div className="space-y-4">
+                                                            <div>
+                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Target Name:</span>
+                                                                <p className="text-xs font-mono text-cyan-500 mt-1">{selectedNodeData.target_name || 'N/A'}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Partition Strategy:</span>
+                                                                <p className="text-xs font-bold text-white mt-1">{selectedNodeData.metadata?.partition_key || 'No partitioning suggested'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <Zap size={14} className="text-amber-500" />
+                                                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Actionable Intel</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-3 h-3 rounded-full ${selectedNodeData.metadata?.is_pii ? 'bg-red-500' : 'bg-gray-700'}`} />
+                                                            <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                                PII Content: {selectedNodeData.metadata?.is_pii ? 'YES (High Risk)' : 'NO (Clean)'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* ACTION SHORTCUTS */}
+                                                <div className="flex flex-col gap-2 pt-2 pb-4">
+                                                    <button
+                                                        onClick={() => {
+                                                            // ✅ FIXED: Set selected asset FIRST, then navigate
+                                                            setSelectedAssetForSchema(selectedNodeData.id);
+                                                            setSchemaInitialTab('schema');
+                                                            onSectionChange('schema');
+                                                        }}
+                                                        className="w-full py-3 bg-cyan-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-cyan-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20"
+                                                    >
+                                                        <Layers size={14} /> View Schema Details
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            // ✅ FIXED: Set selected asset FIRST, then navigate to mapping
+                                                            setSelectedAssetForSchema(selectedNodeData.id);
+                                                            setSchemaInitialTab('mapping');
+                                                            onSectionChange('schema');
+                                                        }}
+                                                        className="w-full py-3 bg-white/5 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <Database size={14} /> Audit Mapping
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {nodes.length === 0 && (
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <div className="bg-white/80 dark:bg-black/40 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center backdrop-blur-sm">
+                                                <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                                    <Expand className="text-cyan-500" size={32} />
+                                                </div>
+                                                <h4 className="text-lg font-bold mb-1">Empty Canvas</h4>
+                                                <p className="text-sm text-[var(--text-tertiary)]">Drag components from the left to orchestrate resolution.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 2. GRID TAB */}
+                        {activeSection === 'grid' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-[var(--text-primary)]">
+                                    <List className="text-blue-500" /> Package Inventory
+                                </h2>
+                                <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] shadow-sm overflow-hidden">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-[var(--background)] text-[var(--text-secondary)] uppercase text-sm">
+                                            <tr>
+                                                <th className="px-6 py-4">Source</th>
+                                                <th className="px-6 py-4">Target Name</th>
+                                                <th className="px-6 py-4">Entity</th>
+                                                <th className="px-6 py-4">Sovereignty</th>
+                                                <th className="px-6 py-4">Strategy</th>
+                                                <th className="px-6 py-4">Type</th>
+                                                <th className="px-6 py-4">Schema</th>
+                                                <th className="px-6 py-4 text-center">Include</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
+                                            {(() => {
+                                                // Filter out LAYOUT type (system assets)
+                                                const displayAssets = assets.filter(a => a.type !== 'LAYOUT');
+                                                console.log('[TriageView Grid] assets:', assets.length, 'displayAssets:', displayAssets.length);
+                                                return displayAssets.map(asset => (
+                                                    <tr
+                                                        key={asset.id}
+                                                        onClick={() => {
+                                                            setSelectedAssetForSchema(asset.id);
+                                                            setSchemaInitialTab('schema');
+                                                            onSectionChange('schema');
+                                                        }}
+                                                        className={`hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors cursor-pointer group ${selectedAssetForSchema === asset.id ? 'bg-blue-50/50 dark:bg-blue-900/10 ring-1 ring-inset ring-blue-500/30' : ''
+                                                            }`}
+                                                    >
+                                                        <td className="px-6 py-4 font-medium group">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="truncate max-w-[150px]" title={asset.name}>
+                                                                    {asset.name}
+                                                                </div>
+                                                                {assetContexts[asset.id]?.notes && (
+                                                                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse shrink-0" title="Tiene notas de negocio" />
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setEditingAsset(asset);
+                                                                        setAssetNote(asset.business_notes || '');
+                                                                    }}
+                                                                    className="p-1 px-2 bg-white/5 hover:bg-white/10 rounded-md text-gray-500 hover:text-white transition-all order-2"
+                                                                    title="Edit business notes"
+                                                                >
+                                                                    <div className="flex items-center gap-1">
+                                                                        <FileEdit size={10} />
+                                                                        <span className="text-[10px] uppercase font-black">Edit</span>
+                                                                    </div>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedAssetForSchema(asset.id);
+                                                                        setSchemaInitialTab('mapping');
+                                                                        onSectionChange('schema');
+                                                                    }}
+                                                                    className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                                                    title="Column Mapping (Audit)"
+                                                                >
+                                                                    <Database size={12} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedAssetForSchema(asset.id);
+                                                                        setSchemaInitialTab('schema');
+                                                                        onSectionChange('schema');
+                                                                    }}
+                                                                    className="p-1 text-gray-400 hover:text-cyan-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                                                    title="View Schema"
+                                                                >
+                                                                    <Layers size={12} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <input
+                                                                type="text"
+                                                                value={asset.target_name || ''}
+                                                                placeholder={asset.name.split('.')[0].toLowerCase()}
+                                                                onChange={(e) => handleMetadataChange(asset.id, { target_name: e.target.value })}
+                                                                className="bg-transparent border-b border-gray-200 dark:border-gray-800 text-[11px] focus:border-primary focus:ring-0 w-full transition-colors"
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <input
+                                                                type="text"
+                                                                value={asset.business_entity || ''}
+                                                                placeholder="e.g. CUSTOMER"
+                                                                onChange={(e) => handleMetadataChange(asset.id, { business_entity: e.target.value.toUpperCase() })}
+                                                                className="bg-gray-50 dark:bg-gray-900 border-none rounded px-2 py-1 text-xs font-bold uppercase focus:ring-1 focus:ring-primary w-24 transition-all"
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <button
+                                                                onClick={() => handleMetadataChange(asset.id, { is_pii: !asset.is_pii })}
+                                                                className={`p-1.5 rounded-lg transition-all flex items-center gap-2 ${asset.is_pii
+                                                                    ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse'
+                                                                    : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+                                                                    }`}
+                                                                title={asset.is_pii ? "PII Detected" : "Mark as PII"}
+                                                            >
+                                                                {asset.is_pii ? <ShieldAlert size={14} /> : <Shield size={14} />}
+                                                                {asset.is_pii && <span className="text-xs font-bold">PII</span>}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col gap-1">
+                                                                <select
+                                                                    value={asset.load_strategy || 'FULL_OVERWRITE'}
+                                                                    onChange={(e) => handleMetadataChange(asset.id, { load_strategy: e.target.value })}
+                                                                    className={`text-xs font-bold uppercase rounded px-1.5 py-0.5 border-none focus:ring-1 focus:ring-primary w-24 cursor-pointer ${asset.load_strategy === 'INCREMENTAL' ? 'bg-blue-100 text-blue-700' :
+                                                                        asset.load_strategy === 'SCD_2' ? 'bg-indigo-100 text-indigo-700' :
+                                                                            'bg-gray-100 text-gray-600'
+                                                                        }`}
+                                                                >
+                                                                    <option value="FULL_OVERWRITE">FULL</option>
+                                                                    <option value="INCREMENTAL">INCREMENTAL</option>
+                                                                    <option value="SCD_2">SCD TYPE 2</option>
+                                                                </select>
+                                                                <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
+                                                                    <Clock size={8} /> {asset.frequency || 'DAILY'}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <select
+                                                                value={asset.type}
+                                                                onChange={(e) => handleCategoryChange(asset.id, e.target.value)}
+                                                                className={`text-xs font-bold uppercase rounded-md border border-[var(--border)] px-2 py-1 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors ${asset.type === 'CORE' ? 'bg-blue-500/10 text-blue-600' :
+                                                                    asset.type === 'SUPPORT' ? 'bg-purple-500/10 text-purple-600' :
+                                                                        'bg-[var(--background)] text-[var(--text-secondary)]'
+                                                                    }`}
+                                                            >
+                                                                <option value="CORE">CORE</option>
+                                                                <option value="SUPPORT">SUPPORT</option>
+                                                                <option value="IGNORED">IGNORED</option>
+                                                                <option value="OTHER">OTHER</option>
+                                                            </select>
+                                                        </td>
+                                                        {/* Schema / Mismatch badge */}
+                                                        <td className="px-6 py-4">
+                                                            <MismatchBadge
+                                                                projectId={projectId}
+                                                                objectId={asset.id}
+                                                                onClickSchema={() => {
+                                                                    setSelectedAssetForSchema(asset.id);
+                                                                    setSchemaInitialTab('mapping');
+                                                                    onSectionChange('schema');
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={asset.selected || false}
+                                                                onChange={(e) => handleSelectionChange(asset.id, e.target.checked)}
+                                                                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer transition-all"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ));
+                                            })()}
+                                            {assets.filter(a => a.type !== 'LAYOUT').length === 0 && (
+                                                <tr>
+                                                    <td colSpan={8} className="px-6 py-8 text-center text-gray-400">
+                                                        No assets found. {assets.length > 0 && `(${assets.length} system assets hidden)`}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+
+
+                        {/* 3. MAPPING TAB (Same as Schema but with mapping tab open) */}
+                        {activeSection === 'mapping' && (
+                            <div className="h-full w-full overflow-hidden bg-[var(--background)]">
+                                <SchemaViewer
+                                    projectId={projectId}
+                                    objectId={selectedAssetForSchema ?? undefined}
+                                    assets={assets.filter(a => a.type !== 'LAYOUT')}
+                                    initialTab='mapping'
+                                    onObjectSelect={(id) => setSelectedAssetForSchema(id || null)}
+                                />
+                            </div>
+                        )}
+
+                        {/* 4. MANUAL CONTEXT / BUSINESS CONTEXT TAB */}
+                        {activeSection === 'context' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+                                <div className="max-w-7xl mx-auto space-y-10">
+                                    {/* Global Context */}
+                                    <div className="space-y-6 pb-20">
+                                        {/* Warning Banner */}
+                                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-xl p-4 flex items-start gap-4">
+                                            <div className="p-2 bg-yellow-400 dark:bg-yellow-600 rounded-lg shrink-0">
+                                                <FileEdit size={24} className="text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-yellow-900 dark:text-yellow-200 mb-1 flex items-center gap-2">
+                                                    <AlertTriangle size={18} className="text-yellow-600 dark:text-yellow-400" />
+                                                    Editable Area: Source Code Analysis Instructions
+                                                </h3>
+                                                <p className="text-sm text-yellow-800 dark:text-yellow-300 leading-relaxed">
+                                                    <strong className="font-bold">Everything highlighted in this section is editable.</strong> Define global rules that the Agent will apply during <strong>source code analysis and triage</strong>.
+                                                    These instructions directly affect how the system interprets your legacy assets. <strong>After modifying, you must re-execute the Triage</strong> for changes to take effect.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <h2 className="text-xl font-bold flex items-center gap-2">
+                                            <MessageSquare className="text-primary" /> Global Project Context
+                                        </h2>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            Provide analysis guidelines for the agent (e.g., ignore specific schemas, prioritize certain packages, naming conventions). Markdown formatting supported.
+                                        </p>
+
+                                        {/* Split Panel: Editor (Left) + Preview (Right) */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {/* Editor - HIGHLIGHTED IN YELLOW */}
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-yellow-700 dark:text-yellow-400 uppercase flex items-center gap-2">
+                                                    <FileEdit size={14} className="text-yellow-600" />
+                                                    Markdown Editor (Editable)
+                                                </label>
+                                                <textarea
+                                                    value={userContext}
+                                                    onChange={(e) => setUserContext(e.target.value)}
+                                                    placeholder="# Global Rules for Source Analysis\n\n## Exclusions\n- Ignore all 'audit_*' tables\n- Skip 'temp_' schemas\n\n## Priorities\n- Focus on Sales and Finance packages\n\n## Naming Conventions\n- Use 'stg_' prefix for staging layers\n- Use 'dim_' / 'fact_' for data warehouse"
+                                                    className="w-full h-96 p-4 rounded-xl border-2 border-yellow-400 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none shadow-lg resize-none transition-all"
+                                                />
+                                            </div>
+
+                                            {/* Preview */}
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-gray-400 uppercase">Preview</label>
+                                                <div className="w-full h-96 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 overflow-y-auto shadow-sm">
+                                                    {userContext.trim() ? (
+                                                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                                                            <ReactMarkdown>{userContext}</ReactMarkdown>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-gray-400 italic">Start typing to see preview...</p>
                                                     )}
                                                 </div>
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
 
-                                </div>
-                            )}
-
-                            {/* Floating Sidebar Toggle (Only when hidden) */}
-                            {!showSidebar && (
-                                <button
-                                    onClick={() => setShowSidebar(true)}
-                                    className="absolute top-6 left-6 z-30 p-3 bg-white/90 dark:bg-[#121212]/90 rounded-2xl border border-gray-100 dark:border-white/10 shadow-2xl backdrop-blur-xl text-cyan-500 hover:scale-110 active:scale-95 transition-all"
-                                    title="Show Panel"
-                                >
-                                    <PanelLeftOpen size={20} />
-                                </button>
-                            )}
-
-                            {/* Graph Area */}
-                            <div className="flex-1 h-full bg-gray-50 dark:bg-[#0a0a0a] relative" ref={setReactFlowInstance}>
-                                <MeshGraph
-                                    nodes={nodes}
-                                    edges={edges}
-                                    onNodesChange={onNodesChange}
-                                    onEdgesChange={onEdgesChange}
-                                    onConnect={onConnect}
-                                    onInit={setReactFlowInstance}
-                                    onDrop={onDrop}
-                                    onDragOver={onDragOver}
-                                    onNodeClick={(node) => setSelectedNodeData(node.data)}
-                                    onNodeDragStop={(_: any, __: any, allNodes: any[]) => {
-                                        if (allNodes) saveLayout(allNodes, edges);
-                                        else saveLayout(nodes, edges);
-                                    }}
-                                    onNodesDelete={(deletedNodes: any[]) => {
-                                        const deletedIds = deletedNodes.map((n: any) => n.id);
-                                        setAssets(prev => prev.map(a => deletedIds.includes(a.id) ? { ...a, type: 'IGNORED' } : a));
-                                    }}
-                                />
-
-                                {/* HIGH-RES DETAIL PANEL */}
-                                {selectedNodeData && (
-                                    <div className="absolute top-6 bottom-6 right-6 w-96 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
-                                        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
-                                            <div className="flex items-center gap-3">
-                                                <Activity size={18} className="text-cyan-500" />
-                                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">Asset Intelligence</h3>
-                                            </div>
+                                        <div className="flex justify-between items-center">
+                                            <p className="text-xs text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
+                                                <AlertTriangle size={14} />
+                                                <span className="font-bold">Remember: Save changes and re-run Triage to apply new rules</span>
+                                            </p>
                                             <button
-                                                onClick={() => setSelectedNodeData(null)}
-                                                className="p-2 hover:bg-white/10 rounded-xl text-gray-400 font-bold text-[10px] uppercase"
-                                            >
-                                                Close
-                                            </button>
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar-slim">
-                                            {/* Header Info */}
-                                            <div>
-                                                <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">{selectedNodeData.category}</span>
-                                                <h2 className="text-xl font-bold text-[var(--text-primary)] mt-1 break-all">{selectedNodeData.label}</h2>
-                                                <p className="text-xs text-[var(--text-tertiary)] font-medium mt-2">{selectedNodeData.id}</p>
-                                            </div>
-
-                                            {/* Metadata Grid */}
-                                            <div className="grid grid-cols-2 gap-4">
-                                                {[
-                                                    { label: 'Volume', value: selectedNodeData.metadata?.volume || 'LOW', color: 'text-emerald-500' },
-                                                    { label: 'Latency', value: selectedNodeData.metadata?.latency || 'BATCH', color: 'text-cyan-500' },
-                                                    { label: 'Criticality', value: selectedNodeData.metadata?.criticality || 'P3', color: 'text-amber-500' },
-                                                    { label: 'Lineage', value: selectedNodeData.metadata?.lineage_group || 'Bronze', color: 'text-purple-500' },
-                                                ].map(m => (
-                                                    <div key={m.label} className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                                                        <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">{m.label}</span>
-                                                        <span className={`text-xs font-black uppercase ${m.color}`}>{m.value}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-
-                                            {/* Design Decisions */}
-                                            <div className="space-y-4">
-                                                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
-                                                    <div className="flex items-center gap-2 mb-3">
-                                                        <ShieldCheck size={14} className="text-emerald-500" />
-                                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Architect Suggestion</span>
-                                                    </div>
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <span className="text-[9px] font-bold text-gray-600 uppercase">Target Name:</span>
-                                                            <p className="text-xs font-mono text-cyan-500 mt-1">{selectedNodeData.target_name || 'N/A'}</p>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-[9px] font-bold text-gray-600 uppercase">Partition Strategy:</span>
-                                                            <p className="text-xs font-bold text-white mt-1">{selectedNodeData.metadata?.partition_key || 'No partitioning suggested'}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl">
-                                                    <div className="flex items-center gap-2 mb-3">
-                                                        <Zap size={14} className="text-amber-500" />
-                                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Actionable Intel</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-3 h-3 rounded-full ${selectedNodeData.metadata?.is_pii ? 'bg-red-500' : 'bg-gray-700'}`} />
-                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">
-                                                            PII Content: {selectedNodeData.metadata?.is_pii ? 'YES (High Risk)' : 'NO (Clean)'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                                {nodes.length === 0 && (
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className="bg-white/80 dark:bg-black/40 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center backdrop-blur-sm">
-                                            <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                                <Expand className="text-cyan-500" size={32} />
-                                            </div>
-                                            <h4 className="text-lg font-bold mb-1">Empty Canvas</h4>
-                                            <p className="text-sm text-[var(--text-tertiary)]">Drag components from the left to orchestrate resolution.</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 2. GRID TAB */}
-                    {activeSection === 'grid' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
-                            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-[var(--text-primary)]">
-                                <List className="text-blue-500" /> Package Inventory
-                            </h2>
-                            <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] shadow-sm overflow-hidden">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-[var(--background)] text-[var(--text-secondary)] uppercase text-sm">
-                                        <tr>
-                                            <th className="px-6 py-4">Source</th>
-                                            <th className="px-6 py-4">Target Name</th>
-                                            <th className="px-6 py-4">Entity</th>
-                                            <th className="px-6 py-4">Sovereignty</th>
-                                            <th className="px-6 py-4">Strategy</th>
-                                            <th className="px-6 py-4">Type</th>
-                                            <th className="px-6 py-4 text-center">Include</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
-                                        {assets.map(asset => (
-                                            <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
-                                                <td className="px-6 py-4 font-medium group">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="truncate max-w-[150px]" title={asset.name}>
-                                                            {asset.name}
-                                                        </div>
-                                                        {assetContexts[asset.id]?.notes && (
-                                                            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse shrink-0" title="Tiene notas de negocio" />
-                                                        )}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setEditingAsset(asset);
-                                                                setAssetNote(asset.business_notes || '');
-                                                            }}
-                                                            className="p-1 px-2 bg-white/5 hover:bg-white/10 rounded-md text-gray-500 hover:text-white transition-all order-2"
-                                                            title="Edit business notes"
-                                                        >
-                                                            <div className="flex items-center gap-1">
-                                                                <FileEdit size={10} />
-                                                                <span className="text-[10px] uppercase font-black">Edit</span>
-                                                            </div>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedAssetForContext(asset.id);
-                                                                onSectionChange('mapping');
-                                                            }}
-                                                            className="p-1 text-gray-400 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                            title="Column Mapping"
-                                                        >
-                                                            <Database size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedAssetForSchema(asset.id);
-                                                                onSectionChange('schema');
-                                                            }}
-                                                            className="p-1 text-gray-400 hover:text-cyan-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                            title="View Schema"
-                                                        >
-                                                            <Layers size={12} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <input
-                                                        type="text"
-                                                        value={asset.target_name || ''}
-                                                        placeholder={asset.name.split('.')[0].toLowerCase()}
-                                                        onChange={(e) => handleMetadataChange(asset.id, { target_name: e.target.value })}
-                                                        className="bg-transparent border-b border-gray-200 dark:border-gray-800 text-[11px] focus:border-primary focus:ring-0 w-full transition-colors"
-                                                    />
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <input
-                                                        type="text"
-                                                        value={asset.business_entity || ''}
-                                                        placeholder="e.g. CUSTOMER"
-                                                        onChange={(e) => handleMetadataChange(asset.id, { business_entity: e.target.value.toUpperCase() })}
-                                                        className="bg-gray-50 dark:bg-gray-900 border-none rounded px-2 py-1 text-xs font-bold uppercase focus:ring-1 focus:ring-primary w-24 transition-all"
-                                                    />
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <button
-                                                        onClick={() => handleMetadataChange(asset.id, { is_pii: !asset.is_pii })}
-                                                        className={`p-1.5 rounded-lg transition-all flex items-center gap-2 ${asset.is_pii
-                                                            ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse'
-                                                            : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
-                                                            }`}
-                                                        title={asset.is_pii ? "PII Detected" : "Mark as PII"}
-                                                    >
-                                                        {asset.is_pii ? <ShieldAlert size={14} /> : <Shield size={14} />}
-                                                        {asset.is_pii && <span className="text-xs font-bold">PII</span>}
-                                                    </button>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col gap-1">
-                                                        <select
-                                                            value={asset.load_strategy || 'FULL_OVERWRITE'}
-                                                            onChange={(e) => handleMetadataChange(asset.id, { load_strategy: e.target.value })}
-                                                            className={`text-xs font-bold uppercase rounded px-1.5 py-0.5 border-none focus:ring-1 focus:ring-primary w-24 cursor-pointer ${asset.load_strategy === 'INCREMENTAL' ? 'bg-blue-100 text-blue-700' :
-                                                                asset.load_strategy === 'SCD_2' ? 'bg-indigo-100 text-indigo-700' :
-                                                                    'bg-gray-100 text-gray-600'
-                                                                }`}
-                                                        >
-                                                            <option value="FULL_OVERWRITE">FULL</option>
-                                                            <option value="INCREMENTAL">INCREMENTAL</option>
-                                                            <option value="SCD_2">SCD TYPE 2</option>
-                                                        </select>
-                                                        <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
-                                                            <Clock size={8} /> {asset.frequency || 'DAILY'}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <select
-                                                        value={asset.type}
-                                                        onChange={(e) => handleCategoryChange(asset.id, e.target.value)}
-                                                        className={`text-xs font-bold uppercase rounded-md border border-[var(--border)] px-2 py-1 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors ${asset.type === 'CORE' ? 'bg-blue-500/10 text-blue-600' :
-                                                            asset.type === 'SUPPORT' ? 'bg-purple-500/10 text-purple-600' :
-                                                                'bg-[var(--background)] text-[var(--text-secondary)]'
-                                                            }`}
-                                                    >
-                                                        <option value="CORE">CORE</option>
-                                                        <option value="SUPPORT">SUPPORT</option>
-                                                        <option value="IGNORED">IGNORED</option>
-                                                        <option value="OTHER">OTHER</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={asset.selected || false}
-                                                        onChange={(e) => handleSelectionChange(asset.id, e.target.checked)}
-                                                        className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer transition-all"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {assets.length === 0 && (
-                                            <tr>
-                                                <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
-                                                    No assets found.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* 3. MAPPING TAB */}
-                    {activeSection === 'mapping' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background-secondary)]">
-                            <div className="max-w-7xl mx-auto space-y-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <div>
-                                        <h2 className="text-2xl font-black flex items-center gap-3">
-                                            <div className="p-2 bg-primary/10 rounded-xl">
-                                                <Database className="text-primary" size={24} />
-                                            </div>
-                                            Granular Column Mapping
-                                        </h2>
-                                        <p className="text-sm text-[var(--text-secondary)] mt-1">
-                                            Define transformations, data types, and security tags (PII) for each column.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {selectedAssetForContext ? (
-                                    <div className="card-glass border-[var(--primary)]/20 shadow-2xl">
-                                        <ColumnMappingEditor assetId={selectedAssetForContext} />
-                                    </div>
-                                ) : (
-                                    <div className="card-glass flex flex-col items-center justify-center py-20 text-center border-dashed border-2">
-                                        <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
-                                            <Layout size={40} className="text-gray-400" />
-                                        </div>
-                                        <h3 className="text-lg font-bold">No Asset Selected</h3>
-                                        <p className="text-sm text-gray-500 max-w-sm mt-2">
-                                            Select an asset from the Grid or Graph to edit its column mapping.
-                                        </p>
-                                        <button
-                                            onClick={() => onSectionChange('grid')}
-                                            className="mt-6 px-4 py-2 bg-primary text-white rounded-lg font-bold text-xs shadow-lg shadow-primary/20"
-                                        >
-                                            Go to Grid
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-
-
-                    {/* 4. USER INPUT TAB */}
-                    {activeSection === 'context' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-7xl mx-auto space-y-10">
-                                {/* Global Context */}
-                                <div className="space-y-6">
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
-                                        <MessageSquare className="text-primary" /> Global Project Context
-                                    </h2>
-                                    <p className="text-sm text-gray-500">
-                                        Provide general rules that the agent must apply to the whole project (e.g., "Use CamelCase", "Ignore QA schemas").
-                                    </p>
-                                    <textarea
-                                        value={userContext}
-                                        onChange={(e) => setUserContext(e.target.value)}
-                                        placeholder="e.g. Ignore audit tables, prioritize Sales packages, use 'stg_' prefix..."
-                                        className="w-full h-40 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm leading-relaxed focus:ring-2 focus:ring-primary outline-none shadow-sm"
-                                    />
-                                    <div className="flex justify-end">
-                                        <button
-                                            onClick={() => handleSaveContext('__global__', userContext)}
-                                            className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-secondary transition-colors flex items-center gap-2"
-                                            disabled={isSavingContext}
-                                        >
-                                            <Save size={16} /> {isSavingContext ? 'Saving...' : 'Save Global Context'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <hr className="border-gray-200 dark:border-gray-800" />
-
-                                {/* Virtual Step Builder */}
-                                {/* Virtual Step Builder */}
-                                <div className="space-y-6 pb-20">
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
-                                        <RotateCcw className="text-primary" /> Virtual Step Builder
-                                    </h2>
-                                    <p className="text-sm text-gray-500">
-                                        Create manual nodes for processes not in the code. The Agent will logically connect them upon re-triage.
-                                    </p>
-
-                                    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-bold text-gray-400 uppercase">Step Name</label>
-                                                <input id="v-step-name" type="text" placeholder="e.g. Manual Validation" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-bold text-gray-400 uppercase">Depends On (Path)</label>
-                                                <input id="v-step-dep" type="text" placeholder="e.g. schema/table.sql" className="w-full p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-gray-400 uppercase">Agent Instructions</label>
-                                            <textarea id="v-step-desc" placeholder="Describe what this step does and how it connects..." className="w-full h-24 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg text-sm" />
-                                        </div>
-                                        <div className="flex justify-end">
-                                            <button
-                                                onClick={() => {
-                                                    const name = (document.getElementById('v-step-name') as HTMLInputElement).value;
-                                                    const dep = (document.getElementById('v-step-dep') as HTMLInputElement).value;
-                                                    const desc = (document.getElementById('v-step-desc') as HTMLTextAreaElement).value;
-                                                    const virtualId = `virtual_${name.toLowerCase().replace(/\s+/g, '_')}`;
-                                                    const fullNotes = `VIRTUAL_STEP: ${name}\nDEPENDENCY: ${dep}\nINSTRUCTIONS: ${desc}`;
-                                                    handleSaveContext(virtualId, fullNotes);
-                                                }}
-                                                className="px-6 py-2 bg-gray-900 text-white dark:bg-primary dark:text-white rounded-lg font-bold hover:bg-black transition-colors"
+                                                onClick={() => handleSaveContext('__global__', userContext)}
+                                                className="px-6 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-bold transition-colors flex items-center gap-2 shadow-lg"
                                                 disabled={isSavingContext}
                                             >
-                                                + Add Step to Mesh
+                                                <Save size={16} /> {isSavingContext ? 'Saving...' : 'Save Context & Re-run Triage'}
                                             </button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* 5. LOGS TAB */}
-                    {activeSection === 'logs' && (
-                        <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-                            <div className="max-w-5xl mx-auto space-y-4">
-                                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
-                                    <FileText className="text-primary" /> Triage Execution
-                                </h2>
-                                <ProcessProgress
-                                    isRunning={isTriageRunning}
-                                    logs={triageLog.split('\n').filter(l => l.trim())}
-                                    processName="Triage Analysis"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    </div> {/* Close tab content div (flex-1 overflow-hidden relative) */}
-                </div> {/* Close flex container (sidebar + content) */}
-
-            {/* Release 1.1: Context Sidebar Overlay */}
-            {
-                selectedAssetForContext && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-                        <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold text-lg dark:text-white">Business Context</h3>
-                                    <p className="text-sm text-gray-500 truncate w-64">
-                                        {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
-                                    </p>
-                                </div>
-                                <button onClick={() => setSelectedAssetForContext(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                                    <PanelLeftClose size={20} />
-                                </button>
-                            </div>
-
-                            <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-gray-400 uppercase">Description / Notes</label>
-                                    <textarea
-                                        className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
-                                        placeholder="Add specific rules for this file..."
-                                        defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
-                                        id="context-notes"
+                        {/* 5. LOGS TAB */}
+                        {activeSection === 'logs' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+                                <div className="max-w-5xl mx-auto space-y-4">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                                            <Terminal className="text-primary" /> Triage Execution Logs
+                                        </h2>
+                                        {!isTriageRunning && triageLog && (
+                                            <button
+                                                onClick={fetchTriageLogs}
+                                                className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 rounded-lg flex items-center gap-2 transition-colors"
+                                            >
+                                                <RefreshCw size={14} /> Refresh Logs
+                                            </button>
+                                        )}
+                                    </div>
+                                    <UnifiedLogViewer
+                                        mode="realtime"
+                                        projectId={projectId}
+                                        isRunning={isTriageRunning}
+                                        logs={triageLog ? triageLog.split('\n').filter(l => l.trim()) : []}
+                                        processName={isTriageRunning ? "Triage Analysis (Running)" : "Triage Analysis (Last Execution)"}
+                                        variant="panel"
                                     />
                                 </div>
+                            </div>
+                        )}
+                        {/* 6. FILES TAB */}
+                        {activeSection === 'files' && (
+                            <UnifiedFileExplorer projectId={projectId} activeTenantId={activeTenantId} />
+                        )}
+                    </div> {/* Close tab content div (flex-1 overflow-hidden relative) */}
 
-                                <div className="space-y-4">
-                                    <label className="text-sm font-bold text-gray-400 uppercase">Suggested Rules</label>
-                                    <div className="space-y-2">
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
-                                            <span>Ignore Duplicates</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
-                                            <span>Strict Types</span>
-                                        </label>
+                    {/* Release 1.1: Context Sidebar Overlay */}
+                    {
+                        selectedAssetForContext && (
+                            <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+                                <div className="w-96 bg-white dark:bg-gray-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                                    <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-bold text-lg dark:text-white">Business Context</h3>
+                                            <p className="text-sm text-gray-500 truncate w-64">
+                                                {assets.find(a => a.id === selectedAssetForContext)?.name || 'Asset'}
+                                            </p>
+                                        </div>
+                                        <button onClick={() => setSelectedAssetForContext(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                                            <PanelLeftClose size={20} />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-gray-400 uppercase">Description / Notes</label>
+                                            <textarea
+                                                className="w-full h-48 p-3 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary"
+                                                placeholder="Add specific rules for this file..."
+                                                defaultValue={assetContexts[selectedAssetForContext]?.notes || ''}
+                                                id="context-notes"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <label className="text-sm font-bold text-gray-400 uppercase">Suggested Rules</label>
+                                            <div className="space-y-2">
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.ignore_duplicates} id="rule-dedup" />
+                                                    <span>Ignore Duplicates</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    <input type="checkbox" className="rounded" defaultChecked={assetContexts[selectedAssetForContext]?.rules?.strict_types} id="rule-types" />
+                                                    <span>Strict Types</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-6 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => setSelectedAssetForContext(null)}
+                                            className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const notes = (document.getElementById('context-notes') as HTMLTextAreaElement).value;
+                                                const rules = {
+                                                    ignore_duplicates: (document.getElementById('rule-dedup') as HTMLInputElement).checked,
+                                                    strict_types: (document.getElementById('rule-types') as HTMLInputElement).checked,
+                                                };
+                                                // Local state update first
+                                                setAssetContexts(prev => ({
+                                                    ...prev,
+                                                    [selectedAssetForContext]: { notes, rules }
+                                                }));
+                                                // Save to backend
+                                                handleSaveContext(selectedAssetForContext, notes);
+                                            }}
+                                            className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+                                            disabled={isSavingContext}
+                                        >
+                                            {isSavingContext ? 'Saving...' : <><Save size={16} /> Save</>}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="p-6 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-3">
-                                <button
-                                    onClick={() => setSelectedAssetForContext(null)}
-                                    className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const notes = (document.getElementById('context-notes') as HTMLTextAreaElement).value;
-                                        const rules = {
-                                            ignore_duplicates: (document.getElementById('rule-dedup') as HTMLInputElement).checked,
-                                            strict_types: (document.getElementById('rule-types') as HTMLInputElement).checked,
-                                        };
-                                        // Local state update first
-                                        setAssetContexts(prev => ({
-                                            ...prev,
-                                            [selectedAssetForContext]: { notes, rules }
-                                        }));
-                                        // Save to backend
-                                        handleSaveContext(selectedAssetForContext, notes);
-                                    }}
-                                    className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
-                                    disabled={isSavingContext}
-                                >
-                                    {isSavingContext ? 'Saving...' : <><Save size={16} /> Save</>}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-        </ReactFlowProvider>
+                        )
+                    }
+                </div>
+            </ReactFlowProvider>
+            {ConfirmDialog}
+        </>
     );
 }

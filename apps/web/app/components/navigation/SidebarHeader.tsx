@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from 'react';
-import { Home, Search, Code, RefreshCw, Package } from 'lucide-react';
+import { Home, Search, Code, RefreshCw, Package, ShieldCheck } from 'lucide-react';
 import { SidebarMetrics } from '@/app/hooks/useSidebarMetrics';
 
 interface SidebarHeaderProps {
@@ -14,7 +14,8 @@ const STAGE_INFO = {
     1: { name: 'Triage', icon: Search, color: 'text-blue-600 dark:text-blue-400' },
     2: { name: 'Drafting', icon: Code, color: 'text-green-600 dark:text-green-400' },
     3: { name: 'Refinement', icon: RefreshCw, color: 'text-orange-600 dark:text-orange-400' },
-    4: { name: 'Governance', icon: Package, color: 'text-purple-600 dark:text-purple-400' }
+    4: { name: 'Governance', icon: ShieldCheck, color: 'text-purple-600 dark:text-purple-400' },
+    5: { name: 'Handover', icon: Package, color: 'text-emerald-600 dark:text-emerald-400' }
 };
 
 export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
@@ -31,8 +32,9 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
         if (stage === 1) result = (metrics.assetCount || 0) > 0 || metrics.quickAssessment !== undefined;
         if (stage === 2) result = (metrics.filesGenerated || 0) > 0;
         if (stage === 3) result = metrics.issueCount !== undefined || metrics.qualityDelta !== undefined;
-        if (stage === 4) result = !!(metrics.docsGenerated || metrics.bundleReady);
-        
+        if (stage === 4) result = !!(metrics.docsGenerated);
+        if (stage === 5) result = !!(metrics.bundleReady);
+
         console.log('[SidebarHeader] hasData calculation:', {
             stage,
             assetCount: metrics.assetCount,
@@ -40,11 +42,11 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
             filesGenerated: metrics.filesGenerated,
             result
         });
-        
+
         return result;
     }, [stage, metrics]);
 
-    const isRunning = metrics.executionStatus && 
+    const isRunning = metrics.executionStatus &&
         ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING'].includes(metrics.executionStatus);
 
     return (
@@ -84,11 +86,10 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-600 dark:text-gray-400">Score</span>
-                        <span className={`text-lg font-bold ${
-                            metrics.quickAssessment.score >= 80 ? 'text-green-600 dark:text-green-400' :
+                        <span className={`text-lg font-bold ${metrics.quickAssessment.score >= 80 ? 'text-green-600 dark:text-green-400' :
                             metrics.quickAssessment.score >= 50 ? 'text-yellow-600 dark:text-yellow-400' :
-                            'text-red-600 dark:text-red-400'
-                        }`}>
+                                'text-red-600 dark:text-red-400'
+                            }`}>
                             {metrics.quickAssessment.score}
                         </span>
                     </div>
@@ -117,7 +118,7 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
                         </span>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div 
+                        <div
                             className="bg-blue-500 h-2 rounded-full transition-all duration-500"
                             style={{ width: `${metrics.generationProgress}%` }}
                         />
@@ -135,9 +136,8 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                     <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-600 dark:text-gray-400">Quality</span>
-                        <span className={`text-lg font-bold ${
-                            metrics.qualityDelta > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600'
-                        }`}>
+                        <span className={`text-lg font-bold ${metrics.qualityDelta > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600'
+                            }`}>
                             {metrics.qualityDelta > 0 ? '+' : ''}{metrics.qualityDelta}%
                         </span>
                     </div>

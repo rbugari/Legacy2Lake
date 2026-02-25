@@ -2,11 +2,12 @@
 import { useState, useEffect } from "react";
 import { Lock, Sparkles, Save, Trash2, RefreshCw, CheckCircle, Info } from "lucide-react";
 import { fetchWithAuth } from "../lib/auth-client";
-import { getAgentDisplayName, AGENT_METADATA } from "../lib/constants";
+import { getAgentDisplayName, getAgentDescription, AGENT_METADATA } from "../lib/constants";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useAuth } from "../context/AuthContext";
 
 interface PromptsExplorerProps {
     className?: string;
@@ -26,11 +27,15 @@ interface AgentInfo {
     isEnriched?: boolean;
 }
 
+// Only include IMPLEMENTED agents (5 currently active: S, A, C, F, G)
+// Agent D (Deliverer) and legacy agents (B, P, R, O) are NOT implemented yet
 const STAGE_MAP: Record<string, string[]> = {
     triage: ["agent-s", "agent-a"],
     drafting: ["agent-c", "agent-f"],
-    refinement: ["agent-b", "agent-p", "agent-r", "agent-o"],
-    all: ["agent-s", "agent-a", "agent-c", "agent-f", "agent-g", "agent-b", "agent-p", "agent-r", "agent-o"]
+    refinement: ["agent-f", "agent-g"], // Use Critic + Governor for refinement until specialized agents are implemented
+    certification: ["agent-g"], // Only Governor until Agent D is implemented
+    handover: ["agent-g"],
+    all: ["agent-s", "agent-a", "agent-c", "agent-f", "agent-g"]
 };
 
 export default function PromptsExplorer({ className, projectId, stage = 'all', originTech, destTech }: PromptsExplorerProps) {
@@ -42,6 +47,8 @@ export default function PromptsExplorer({ className, projectId, stage = 'all', o
     const [saved, setSaved] = useState(false);
     const [viewMode, setViewMode] = useState<'merged' | 'base' | 'knowledge'>('merged');
     const [renderMode, setRenderMode] = useState<'source' | 'vision'>('vision');
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'ADMIN';
 
     useEffect(() => {
         fetchData();
@@ -280,11 +287,20 @@ export default function PromptsExplorer({ className, projectId, stage = 'all', o
                                 wrapLines={true}
                                 wrapLongLines={true}
                             >
-                                {String(
-                                    viewMode === 'knowledge' ? selectedAgentData?.knowledge :
-                                        viewMode === 'base' ? selectedAgentData?.basePrompt :
-                                            selectedAgentData?.systemPrompt || ""
-                                )}
+                                {(() => {
+                                    const rawText = String(
+                                        viewMode === 'knowledge' ? selectedAgentData?.knowledge :
+                                            viewMode === 'base' ? selectedAgentData?.basePrompt :
+                                                selectedAgentData?.systemPrompt || ""
+                                    );
+
+                                    if (isAdmin) return rawText;
+
+                                    const lines = rawText.split('\n');
+                                    if (lines.length <= 5) return rawText;
+
+                                    return lines.slice(0, 5).join('\n') + '\n\n... (Prompt details are restricted for non-administrators)';
+                                })()}
                             </SyntaxHighlighter>
                         </div>
                     </div>

@@ -29,7 +29,8 @@ Navigate to **"Intelligence Configuration"** to review or customize.
 
 ### 2. Run Drafting Pipeline
 
-1. **Click "Generate Plan"**: Initiates Agent C (Interpreter) in IR mode
+1. **Open Sidebar**: Click the `Settings`/`Actions` icon in the left sidebar to expand it.
+2. **Click "Run Pipeline"**: Initiates Agent C (Interpreter) in IR mode from the sidebar.
 2. **Knowledge Loading**: System automatically:
    - Loads `origins/sqlserver/prompt_v1.md` (source patterns)
    - Loads `destinations/databricks/config_v1.json` (target instructions)
@@ -90,7 +91,7 @@ Navigate to **"Intelligence Configuration"** to review or customize.
 
 - **Review**: Check that business logic was extracted correctly
 - **Override**: Edit IR directly if Agent C missed nuances  
-- **Approve**: Lock the plan to proceed to Refinement (code generation)
+- **Approve**: Click **"Next Phase: Refinement"** in the top header to lock the plan and proceed to code generation.
 
 ## ⚙️ Technical Details
 

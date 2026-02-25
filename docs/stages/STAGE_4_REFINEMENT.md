@@ -14,7 +14,8 @@
 
 ## 👨‍💻 User Guide
 ### 1. The Refinement Loop
-- Click **"Refine & Modernize"**.
+- **Open Sidebar**: Click the `Settings`/`Actions` icon on the left.
+- Click **"Run Refinement"** from the sidebar actions list.
 - The system runs the **Agent C (Coder)** -> **Agent F (Fixer)** loop.
 - It writes code, checks it against the compiler/linter, and fixes errors automatically.
 
@@ -662,7 +663,7 @@ async def generate_with_validation(ir, cartridge, max_iterations=3):
 6. **Analyze Quality Tab** ⭐ → Address violations (v4.0 enhanced with validation data)
 7. **Optimize Performance Tab** ⭐ → Tune efficiency
 8. **Review Analytics** → Track generation outcomes in utm_generation_outcomes
-9. **Approve & Proceed** → Lock artifacts for certification
+9. **Approve & Proceed** → Click **"Next Phase: Governance"** in the top header to lock artifacts for certification
 
 ---
 

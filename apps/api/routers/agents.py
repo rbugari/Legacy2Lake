@@ -1,10 +1,11 @@
-"""
+"""  
 Agents Router
-Handles prompt management and configuration for AI agents (A, C, F, G).
+Handles prompt management and configuration for AI agents (S, A, C, F, G).
 Migrated from main.py for better modularity.
 """
 from apps.api.routers.dependencies import get_db
 from apps.api.services.persistence_service import SupabasePersistence
+from apps.api.services.agent_s_service import AgentSService
 from apps.api.services.agent_a_service import AgentAService
 from apps.api.services.agent_c_service import AgentCService
 from apps.api.services.agent_f_service import AgentFService
@@ -23,6 +24,23 @@ class PromptUpdate(BaseModel):
 
 class PromptResponse(BaseModel):
     prompt: str
+
+
+# --- Agent S (Scout/Technology Detection) ---
+
+@router.get("/agent-s", response_model=PromptResponse)
+async def get_agent_s_prompt(db: SupabasePersistence = Depends(get_db)):
+    """Returns the current default system prompt for Agent S."""
+    agent_s = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
+    return {"prompt": await agent_s._load_prompt()}
+
+
+@router.post("/agent-s")
+async def update_agent_s_prompt(payload: PromptUpdate, db: SupabasePersistence = Depends(get_db)):
+    """Updates the system prompt for Agent S."""
+    agent = AgentSService(tenant_id=db.tenant_id, client_id=db.client_id)
+    await agent.save_prompt(payload.prompt)
+    return {"success": True}
 
 
 # --- Agent A (Triage/Discovery) ---

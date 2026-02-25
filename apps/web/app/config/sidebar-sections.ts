@@ -1,9 +1,9 @@
-import { 
-    Home, Upload, FolderOpen, Settings, Info, Layout, List, Database, 
-    Server, Zap, FileCode, Shield, Lock, Layers, ArrowRight, MessageSquare, 
-    Terminal, Activity, FileText, Code, RefreshCw, Shuffle, FolderTree,
+import {
+    Home, Upload, FolderOpen, Settings, Info, Layout, List, Database,
+    Server, Zap, FileCode, Shield, Lock, Layers, ArrowRight, MessageSquare,
+    Terminal, Activity, FileText, Code, RefreshCw, FolderTree,
     Eye, AlertCircle, CheckCircle, Book, BookOpen, GitBranch, PlayCircle,
-    Package, Archive, Download, Search
+    Package, Archive, Download, Search, BarChart3, ShieldCheck, ShieldAlert, Cpu
 } from 'lucide-react';
 
 export interface SidebarSection {
@@ -15,6 +15,7 @@ export interface SidebarSection {
     children?: SidebarItem[];
     badge?: string;
     status?: boolean;
+    variant?: 'view' | 'action';
 }
 
 export interface SidebarItem {
@@ -24,6 +25,7 @@ export interface SidebarItem {
     badge?: string;
     status?: boolean;
     component?: string;
+    variant?: 'view' | 'action'; // Added for visual distinction
 }
 
 /**
@@ -31,32 +33,42 @@ export interface SidebarItem {
  * Each stage shows only relevant sections
  */
 export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
-    // Stage 0: Discovery (Pre-Triage)
+    // Stage 0: Discovery
     0: [
         {
-            id: 'overview',
-            label: 'Overview',
-            icon: Home,
-            component: 'QuickAssessmentPanel'
+            id: 'quick-info',
+            label: 'Quick Info',
+            icon: Info
         },
         {
-            id: 'upload',
-            label: 'Upload Files',
-            icon: Upload,
-            component: 'FileUploadPanel'
+            id: 'analysis',
+            label: 'Analysis Reports',
+            icon: Search,
+            collapsible: true,
+            children: [
+                { id: 'assessment', label: 'Forensic Assessment', icon: ShieldCheck, variant: 'view' },
+                { id: 'validation', label: 'Tech Validation', icon: Cpu, variant: 'view' }
+            ]
         },
         {
-            id: 'files',
-            label: 'File Browser',
-            icon: FolderOpen,
-            component: 'FileBrowserPanel',
-            badge: 'fileCount'
+            id: 'config',
+            label: 'Project Data',
+            icon: Database,
+            collapsible: true,
+            children: [
+                { id: 'upload', label: 'Tribal Knowledge', icon: Upload, variant: 'action' },
+                { id: 'files', label: 'File Pre-Classification', icon: FolderOpen, badge: 'fileCount', variant: 'view' }
+            ]
         },
         {
-            id: 'settings',
-            label: 'Project Settings',
-            icon: Settings,
-            component: 'ProjectSettingsPanel'
+            id: 'execution',
+            label: 'Execution',
+            icon: PlayCircle,
+            collapsible: true,
+            children: [
+                { id: 'logs', label: 'Execution Logs', icon: Terminal, status: true, variant: 'view' },
+                { id: 'run-scan', label: 'Run Forensic Scan', icon: PlayCircle, variant: 'action' }
+            ]
         }
     ],
 
@@ -65,9 +77,7 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
         {
             id: 'quick-info',
             label: 'Quick Info',
-            icon: Info,
-            component: 'QuickInfoPanel',
-            collapsible: true
+            icon: Info
         },
         {
             id: 'views',
@@ -75,10 +85,10 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Layout,
             collapsible: true,
             children: [
-                { id: 'graph', label: 'Graph', icon: GitBranch, badge: 'nodeCount' },
-                { id: 'grid', label: 'Grid', icon: List, badge: 'assetCount' },
-                { id: 'schema', label: 'Schema', icon: Database, badge: 'tableCount' },
-                { id: 'mapping', label: 'Mapping', icon: ArrowRight, badge: 'mappingCount' }
+                { id: 'graph', label: 'Graph', icon: GitBranch, badge: 'nodeCount', variant: 'view' },
+                { id: 'grid', label: 'Grid', icon: List, badge: 'assetCount', variant: 'view' },
+                { id: 'schema', label: 'Schema', icon: Database, badge: 'tableCount', variant: 'view' },
+                { id: 'mapping', label: 'Mapping', icon: ArrowRight, badge: 'mappingCount', variant: 'view' }
             ]
         },
         {
@@ -87,21 +97,13 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Search,
             collapsible: true,
             children: [
-                { id: 'origin', label: 'Origin', icon: Server, badge: 'sourceSystemCount' },
-                { id: 'transform', label: 'Transformations', icon: Zap, badge: 'transformCount' },
-                { id: 'queries', label: 'Source Queries', icon: FileCode, badge: 'queryCount' },
-                { id: 'quality', label: 'Quality', icon: Shield, badge: 'avgQuality' },
-                { id: 'pii', label: 'PII Detection', icon: Lock, badge: 'piiCount' },
-                { id: 'partitions', label: 'Partitions', icon: Layers, badge: 'partitionRecs' }
+                { id: 'origin', label: 'Origin', icon: Server, badge: 'sourceSystemCount', variant: 'view' },
+                { id: 'transform', label: 'Transformations', icon: Zap, badge: 'transformCount', variant: 'view' },
+                { id: 'queries', label: 'Source Queries', icon: FileCode, badge: 'queryCount', variant: 'view' },
+                { id: 'quality', label: 'Code Quality', icon: Shield, badge: 'avgQuality', variant: 'view' },
+                { id: 'pii', label: 'PII Detection', icon: Lock, badge: 'piiCount', variant: 'view' },
+                { id: 'tables', label: 'Table Registry', icon: Database, badge: 'tableCount', variant: 'view' }
             ]
-        },
-        {
-            id: 'tables',
-            label: 'Table Registry',
-            icon: Database,
-            component: 'TableImpactList',
-            collapsible: true,
-            badge: 'tableCount'
         },
         {
             id: 'config',
@@ -109,85 +111,9 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Settings,
             collapsible: true,
             children: [
-                { id: 'context', label: 'Business Context', icon: MessageSquare, badge: 'contextCount' },
-                { id: 'logs', label: 'Execution Logs', icon: Terminal, status: true },
-                { id: 'files', label: 'File Explorer', icon: FolderOpen, badge: 'fileCount' }
-            ]
-        }
-    ],
-
-    // Stage 2: Drafting (Code Generation)
-    2: [
-        {
-            id: 'progress',
-            label: 'Generation Progress',
-            icon: Activity,
-            component: 'ProcessProgress'
-        },
-        {
-            id: 'output',
-            label: 'Output',
-            icon: FileText,
-            collapsible: true,
-            children: [
-                { id: 'logs', label: 'Logs', icon: Terminal, status: true },
-                { id: 'code', label: 'Generated Code', icon: Code, badge: 'filesGenerated' },
-                { id: 'schema', label: 'Schema Versions', icon: Database, badge: 'versionCount' },
-                { id: 'performance', label: 'Performance', icon: Zap },
-                { id: 'quality', label: 'Quality Score', icon: Shield, badge: 'qualityScore' }
-            ]
-        },
-        {
-            id: 'configuration',
-            label: 'Configuration',
-            icon: Settings,
-            collapsible: true,
-            children: [
-                { id: 'registry', label: 'Design Registry', icon: Database },
-                { id: 'mixer', label: 'Tech Mixer', icon: Shuffle },
-                { id: 'settings', label: 'Settings', icon: Settings },
-                { id: 'prompts', label: 'Prompts', icon: FileText }
-            ]
-        },
-        {
-            id: 'files',
-            label: 'Output Files',
-            icon: FolderTree,
-            component: 'MedallionFileTree',
-            collapsible: true
-        }
-    ],
-
-    // Stage 3: Refinement (Optimization)
-    3: [
-        {
-            id: 'status',
-            label: 'Refinement Status',
-            icon: RefreshCw,
-            component: 'RefinementStatus'
-        },
-        {
-            id: 'review',
-            label: 'Code Review',
-            icon: Eye,
-            collapsible: true,
-            children: [
-                { id: 'logs', label: 'Orchestrator Logs', icon: Terminal, status: true },
-                { id: 'comparison', label: 'Code Review', icon: Code },
-                { id: 'schema', label: 'Schema Validation', icon: Database },
-                { id: 'issues', label: 'Issues', icon: AlertCircle, badge: 'issueCount' }
-            ]
-        },
-        {
-            id: 'optimization',
-            label: 'Optimization',
-            icon: Zap,
-            collapsible: true,
-            children: [
-                { id: 'quality', label: 'Quality', icon: Shield, badge: 'qualityDelta' },
-                { id: 'performance', label: 'Performance', icon: Activity },
-                { id: 'security', label: 'Security', icon: Lock },
-                { id: 'practices', label: 'Best Practices', icon: CheckCircle }
+                { id: 'context', label: 'Business Context', icon: MessageSquare, badge: 'contextCount', variant: 'action' },
+                { id: 'logs', label: 'Execution Logs', icon: Terminal, status: true, variant: 'view' },
+                { id: 'files', label: 'File Explorer', icon: FolderOpen, badge: 'fileCount', variant: 'view' }
             ]
         },
         {
@@ -196,20 +122,129 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Settings,
             collapsible: true,
             children: [
-                { id: 'mixer', label: 'Tech Mixer', icon: Shuffle },
-                { id: 'settings', label: 'Settings', icon: Settings },
-                { id: 'prompts', label: 'Prompts', icon: FileText }
+                { id: 'run-triage', label: 'Run Analysis', icon: PlayCircle, variant: 'action' }
             ]
         }
     ],
 
-    // Stage 4: Governance (Documentation)
+    // Stage 2: Drafting (1:1 Code Generation - "Make it Work")
+    // Philosophy: Direct migration, minimal structure changes, focus on OUTPUT
+    2: [
+        {
+            id: 'quick-info',
+            label: 'Quick Info',
+            icon: Info
+        },
+        {
+            id: 'execution',
+            label: 'Execution',
+            icon: PlayCircle,
+            collapsible: true,
+            children: [
+                { id: 'progress', label: 'Pipeline Status', icon: Activity, status: true, variant: 'view' },
+                { id: 'logs', label: 'Execution Logs', icon: Terminal, status: true, variant: 'view' }
+            ]
+        },
+        {
+            id: 'output',
+            label: 'Generated Output',
+            icon: FileText,
+            collapsible: true,
+            children: [
+                { id: 'code', label: 'Generation Summary', icon: BarChart3, badge: 'filesGenerated', variant: 'view' },
+                { id: 'files', label: 'Output Files', icon: FolderTree, badge: 'fileCount', variant: 'view' },
+                { id: 'stats', label: 'Generation Stats', icon: Activity, variant: 'view' }
+            ]
+        },
+        {
+            id: 'target',
+            label: 'Target Configuration',
+            icon: Settings,
+            collapsible: true,
+            children: [
+                { id: 'cartridge', label: 'Cartridge Settings', icon: Package, variant: 'action' },
+                { id: 'prompts', label: 'Cartridge Prompt', icon: FileCode, variant: 'action' },
+                { id: 'schema', label: 'Target Schema', icon: Database, variant: 'view' }
+            ]
+        },
+        {
+            id: 'actions',
+            label: 'Actions',
+            icon: Settings,
+            collapsible: true,
+            children: [
+                { id: 'run-translation', label: 'Run Pipeline', icon: PlayCircle, variant: 'action' }
+            ]
+        }
+    ],
+
+    // Stage 3: Refinement (Optimization)
+    3: [
+        {
+            id: 'quick-info',
+            label: 'Quick Info',
+            icon: Info
+        },
+        {
+            id: 'status',
+            label: 'Status Dashboard',
+            icon: Activity,
+            component: 'RefinementStatus',
+            variant: 'view'
+        },
+        {
+            id: 'summary',
+            label: 'Refinement Summary',
+            icon: BarChart3,
+            component: 'RefinementSummary',
+            variant: 'view'
+        },
+        {
+            id: 'explorer',
+            label: 'Generated Files',
+            icon: FolderTree,
+            collapsible: true,
+            children: [
+                { id: 'comparison', label: '📂 File Explorer', icon: FolderOpen, badge: 'fileCount', variant: 'view' },
+                { id: 'logs', label: '📋 Execution Logs', icon: Terminal, status: true, variant: 'view' }
+            ]
+        },
+        {
+            id: 'quality',
+            label: 'Quality Metrics',
+            icon: Shield,
+            collapsible: true,
+            children: [
+                { id: 'quality', label: 'Quality Score', icon: BarChart3, badge: 'qualityDelta', variant: 'view' },
+                { id: 'schema', label: 'Schema Validation', icon: Database, variant: 'view' }
+            ]
+        },
+        {
+            id: 'actions',
+            label: 'Configuration',
+            icon: Settings,
+            collapsible: true,
+            children: [
+                { id: 'run-refinement', label: 'Run Refinement', icon: PlayCircle, variant: 'action' },
+                { id: 'settings', label: 'Design Settings', icon: Settings, variant: 'action' },
+                { id: 'prompts', label: 'Cartridge Prompts', icon: FileCode, variant: 'action' }
+            ]
+        }
+    ],
+
+    // Stage 4: Governance (Documentation) - Was 4
     4: [
+        {
+            id: 'quick-info',
+            label: 'Quick Info',
+            icon: Info
+        },
         {
             id: 'completion',
             label: 'Completion Status',
             icon: CheckCircle,
-            component: 'CompletionStatus'
+            component: 'CompletionStatus',
+            variant: 'view'
         },
         {
             id: 'documentation',
@@ -217,21 +252,51 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Book,
             collapsible: true,
             children: [
-                { id: 'technical', label: 'Technical Docs', icon: FileText },
-                { id: 'dictionary', label: 'Data Dictionary', icon: BookOpen },
-                { id: 'lineage', label: 'Lineage Map', icon: GitBranch },
-                { id: 'runbook', label: 'Runbook', icon: PlayCircle }
+                { id: 'technical', label: 'Technical Docs', icon: FileText, variant: 'view' },
+                { id: 'dictionary', label: 'Data Dictionary', icon: BookOpen, variant: 'view' },
+                { id: 'lineage', label: 'Lineage Map', icon: GitBranch, variant: 'view' },
+                { id: 'runbook', label: 'Runbook', icon: PlayCircle, variant: 'view' }
             ]
         },
         {
-            id: 'handover',
-            label: 'Handover',
-            icon: Package,
+            id: 'actions',
+            label: 'Actions',
+            icon: Settings,
             collapsible: true,
             children: [
-                { id: 'bundle', label: 'COP Bundle', icon: Archive },
-                { id: 'download', label: 'Download', icon: Download },
-                { id: 'deploy', label: 'Deploy', icon: Upload }
+                { id: 'generate-governance', label: 'Generate Governance Report', icon: ShieldCheck, variant: 'action' },
+                { id: 'audit', label: 'Run Audit/Certification', icon: ShieldAlert, variant: 'action' }
+            ]
+        }
+    ],
+
+    // Stage 5: Handover
+    5: [
+        {
+            id: 'quick-info',
+            label: 'Quick Info',
+            icon: Info
+        },
+        {
+            id: 'handover-pkg',
+            label: 'Handover Package',
+            icon: Package,
+            variant: 'view',
+            status: true
+        },
+        {
+            id: 'actions',
+            label: 'Actions',
+            icon: Settings,
+            collapsible: true,
+            children: [
+                {
+                    id: 'export',
+                    label: 'Export Options',
+                    icon: Download,
+                    component: 'ExportOptions',
+                    variant: 'action'
+                }
             ]
         }
     ]
@@ -250,14 +315,14 @@ export function getSectionsForStage(stage: number): SidebarSection[] {
 export function getAllSectionIds(stage: number): string[] {
     const sections = getSectionsForStage(stage);
     const ids: string[] = [];
-    
+
     sections.forEach(section => {
         ids.push(section.id);
         if (section.children) {
             section.children.forEach(child => ids.push(child.id));
         }
     });
-    
+
     return ids;
 }
 
@@ -266,15 +331,15 @@ export function getAllSectionIds(stage: number): string[] {
  */
 export function findSectionById(stage: number, sectionId: string): SidebarSection | SidebarItem | null {
     const sections = getSectionsForStage(stage);
-    
+
     for (const section of sections) {
         if (section.id === sectionId) return section;
-        
+
         if (section.children) {
             const child = section.children.find(c => c.id === sectionId);
             if (child) return child;
         }
     }
-    
+
     return null;
 }

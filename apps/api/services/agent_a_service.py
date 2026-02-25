@@ -104,11 +104,25 @@ class AgentAService:
         SUPPORT INTELLIGENCE (Context & Docs from Storage):
         {json.dumps(manifest.get('support_intelligence', []), indent=2)}
 
+        SCHEMA REFERENCE (Parsed DDL Metadata):
+        {json.dumps(manifest.get('schema_reference', {}), indent=2)}
+
         INSTRUCTIONS:
         1. Process the FILE INVENTORY and identify the Lineage Mesh.
-        2. Assign metadata (Volume, Latency, Criticality, PII, Partition Key) based on patterns in filenames and signatures.
-        3. Respect USER CONTEXT as absolute priority.
-        4. Synthesize the Mesh Graph according to the System Prompt format.
+        2. **VALIDATE against SCHEMA REFERENCE**: For each SSIS package/ETL asset:
+           - Verify that source/target tables exist in the parsed DDL schemas
+           - Check that all mapped columns exist in the respective tables
+           - Flag any discrepancies (missing tables, missing columns, type mismatches)
+        3. **PII DETECTION**: Use SCHEMA REFERENCE column names to identify PII:
+           - email, mail → Email PII
+           - ssn, social_security, nss → SSN PII
+           - phone, telefono, mobile, celular → Phone PII
+           - address, direccion, domicilio → Address PII
+           - credit_card, tarjeta → Credit Card PII
+        4. Assign metadata (Volume, Latency, Criticality, Partition Key) based on patterns.
+        5. Respect USER CONTEXT as absolute priority.
+        6. Synthesize the Mesh Graph according to the System Prompt format.
+        7. Include validation findings in `triage_observations`.
         """
         
         logger.info(f"Agent A analyzing manifest for {manifest.get('project_id')}...", "Agent A")

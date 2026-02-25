@@ -14,6 +14,7 @@ interface PIIHeatmapData {
         asset_name: string;
         pii_columns: number;
         pii_types: string[];
+        pii_column_names: string[];  // NEW: Column names
     }>;
 }
 
@@ -198,31 +199,51 @@ export default function PIIHeatmap({ projectId }: { projectId: string }) {
                         {data.high_risk_assets.map((asset) => (
                             <div 
                                 key={asset.asset_id} 
-                                className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg hover:shadow-md transition-all"
+                                className="flex flex-col p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg hover:shadow-md transition-all"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
-                                        <Database size={20} className="text-red-600 dark:text-red-400" />
+                                {/* Header: Asset name + PII count */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+                                            <Database size={20} className="text-red-600 dark:text-red-400" />
+                                        </div>
+                                        <div>
+                                            <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{asset.asset_name}</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                {asset.pii_types?.map((type: string) => (
+                                                    <span 
+                                                        key={type}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded text-xs font-bold text-red-600 dark:text-red-400"
+                                                    >
+                                                        {getPIIIcon(type)}
+                                                        {type}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{asset.asset_name}</p>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            {asset.pii_types?.map((type: string) => (
+                                    <div className="text-right">
+                                        <p className="text-2xl font-black text-red-600 dark:text-red-400">{asset.pii_columns}</p>
+                                        <p className="text-xs text-gray-500 font-bold">PII columns</p>
+                                    </div>
+                                </div>
+                                
+                                {/* NEW: List of PII column names */}
+                                {asset.pii_column_names && asset.pii_column_names.length > 0 && (
+                                    <div className="mt-2 pt-3 border-t border-red-200 dark:border-red-800">
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold mb-2">PII Columns:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {asset.pii_column_names.map((colName: string, idx: number) => (
                                                 <span 
-                                                    key={type}
-                                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded text-xs font-bold text-red-600 dark:text-red-400"
+                                                    key={idx}
+                                                    className="inline-flex items-center px-2 py-1 bg-white dark:bg-gray-800 border border-red-300 dark:border-red-700 rounded text-xs font-mono text-red-700 dark:text-red-300"
                                                 >
-                                                    {getPIIIcon(type)}
-                                                    {type}
+                                                    {colName}
                                                 </span>
                                             ))}
                                         </div>
                                     </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-black text-red-600 dark:text-red-400">{asset.pii_columns}</p>
-                                    <p className="text-xs text-gray-500 font-bold">PII columns</p>
-                                </div>
+                                )}
                             </div>
                         ))}
                     </div>

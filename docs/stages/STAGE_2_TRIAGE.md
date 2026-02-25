@@ -29,14 +29,14 @@ You can review and override the detection in the Triage configuration panel.
 
 ### 3. Actions
 - **Drag & Drop**: Move items between columns to define scope.
-- **Run Analysis**: Activates **Agent A (Architect v2.0)** in Forensics Mode:
+- **Run Analysis (Sidebar)**: Open the left sidebar's **Actions** section and click **Run Analysis** to activate **Agent A (Architect v2.0)** in Forensics Mode:
     - Calculates `Cyclomatic Complexity`
     - Identifies `P1/P2/P3` criticality
     - Detects **PII** exposure risk
     - Estimates **Data Volumes** (Small/Medium/Large)
     - Suggests **Partition Keys** for optimization
 - **Graph View**: Switch to the Graph tab to see a visual dependency mesh.
-- **Approve Triage**: Locks the scope and advances to Drafting stage
+- **Approve Triage**: Click **"Next Phase: Drafting"** in the top header to lock the scope and advance to the Drafting stage.
 
 ### 4. V3.9 Visualization Dashboards ⭐ NEW
 

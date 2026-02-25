@@ -240,8 +240,10 @@ async def _run_orchestration_background(
     project_uuid = project_id
     
     try:
-        # Update status to ORCHESTRATING
-        await db.update_project_status(project_uuid, "ORCHESTRATING")
+        # Clear previous execution logs for this phase (fresh start)
+        await db.clear_execution_logs(project_uuid, phase="MIGRATION")
+        
+        # Log start (but don't change status yet - let run_full_migration validate first)
         await db.log_execution(project_uuid, "MIGRATION", "Starting Migration Orchestrator...", step="SYSTEM")
         
         # Check for cancellation
@@ -356,10 +358,9 @@ async def trigger_orchestration(
         )
     
     # === MAIN ORCHESTRATION LOGIC ===
-    # Update status to ORCHESTRATING and start background task
+    # DO NOT change status here - let run_full_migration do validations first
+    # Update: The background task will change status to ORCHESTRATING after validations
     try:
-        await db.update_project_status(project_id, "ORCHESTRATING")
-        
         # Prepare DB config for background task (thread-safe)
         db_config = {
             "client_id": db.client_id,

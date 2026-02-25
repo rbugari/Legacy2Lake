@@ -1,20 +1,82 @@
 # Documentation Index - Legacy2Lake v4.0
 
-> Last Updated: 2026-02-17  
-> Architecture Version: **4.0 Zero-Hardcode GA** ✅  
-> Status: **PRODUCTION READY** - Sprint 14 Phase 2 Released February 17, 2026
+> Last Updated: 2026-02-24  
+> Architecture Version: **4.0 Zero-Hardcode & UI Consolidation GA** ✅  
+> Status: **PRODUCTION READY** - Sprint 14 Phase 4 UI Consolidation Completed February 24, 2026
 
 ## 🚀 V4.0 LATEST: Zero-Hardcode Architecture (February 2026)
 
-### ⭐ Sprint 14 Phase 2: UI Modernization & Performance (IN PROGRESS)
-**Status:** 🔄 Active Development - Critical Performance Fixes Deployed
+### ⭐ Sprint 14 Phase 4: UI Action Consolidation (COMPLETED ✅)
+**Status:** ✅ Deployed February 24, 2026 - Execution Workflow Standardization
+
+**Major Achievements:**
+- ✅ **Execution Ecosystem Migration**: All stage execution actions (Run Analysis, Run Pipeline, Refine, Export) moved fully to `StageSidebar`.
+- ✅ **Header Deduplication**: `<StageHeader>` components across all 5 stages stripped of execution actions. 
+- ✅ **Standardized Advancement**: Headers now strictly implement a single "Next Phase: [StageName]" primary action.
+- ✅ **Orchestration Lift**: `WorkspacePage` routes `activeSection` state downwards to all Stage views for unified sidebar click handling.
+
+**Components Modified:**
+- `WorkspacePage` (Global State Router)
+- `sidebar-sections.ts` (Added "Actions" configurations to all stages)
+- `<TriageView>`, `<DraftingView>`, `<RefinementView>`, `<GovernanceView>`, `<HandoverView>`
+
+---
+
+### ⭐ Sprint 14 Phase 3: Component Unification (COMPLETED ✅)
+**Status:** ✅ Deployed February 19, 2026 - Unified Component Library
+
+**Major Achievements:**
+- ✅ **UnifiedLogViewer**: Single log viewer replacing 3+ legacy implementations
+- ✅ **UnifiedFileExplorer**: Unified file browser with filtering & timestamps
+- ✅ **File Type Filtering**: Dropdown filter by extension (.py, .sql, .json, etc.)
+- ✅ **Timestamp Display**: Format yy-mm-dd hh:mm for quick age identification
+- ✅ **550+ Lines Eliminated**: Removed duplicate code across stages
+- ✅ **Consistent Branding**: "Enhanced" badges with gradient headers
+
+**Components Created:**
+1. **UnifiedLogViewer** (~250 lines)
+   - Side-panel & embedded variants
+   - Auto-loads historical logs
+   - Real-time streaming during execution
+   - Contextual empty states
+   - Manual refresh button
+
+2. **UnifiedFileExplorer** (~450 lines)
+   - Tree view with collapsible folders
+   - Resizable split panels
+   - Syntax highlighting (12+ languages)
+   - Smart file type filtering (client-side)
+   - Timestamp display on all files
+   - Panel state persistence
+
+**Components Eliminated:**
+- FileManagerTab (~300 lines) - DELETED ✅
+- TriageView custom file viewer (~110 lines) - REMOVED ✅
+- TriageView custom log section (~80 lines) - REPLACED ✅
+- DraftingView custom implementations (~60 lines) - REPLACED ✅
+
+**Migration Status:**
+| Stage | UnifiedLogViewer | UnifiedFileExplorer | Status |
+|-------|------------------|---------------------|--------|
+| Triage | ✅ | ✅ | Complete |
+| Drafting | ✅ | 🔄 | In Progress |
+| Discovery | 🔄 | 🔄 | Planned |
+| Refinement | 🔄 | 🔄 | Planned |
+
+**Documentation:**
+- ✅ [V4.0_DEVELOPER_GUIDE.md](../V4.0_DEVELOPER_GUIDE.md#-sprint-14-component-unification-february-2026) - Complete implementation guide
+
+---
+
+### ⭐ Sprint 14 Phase 2: UI Modernization & Performance (COMPLETED ✅)
+**Status:** ✅ Deployed February 17-18, 2026 - Critical Performance Fixes & Schema Viewer Enhancements
 
 **Major Achievements:**
 - ✅ **Unified Sidebar Architecture**: Lifted-state pattern across all stage views
 - ✅ **95%+ Performance Improvement**: Backend load reduced from 30+ req/s to 0.1 req/s
 - ✅ **Execution Status Feedback**: Visual indicators (⚠️ no data, 🔄 processing, ✅ ready)
 - ✅ **Circular Dependency Elimination**: Zero infinite re-render loops
-- 🔍 **Under Investigation**: Stage mismatch and metrics refresh issues
+- ✅ **Schema Viewer Intelligence** (Feb 18): PK/FK detection, column lineage tracking, usage indicators
 
 **Performance Crisis Resolution:**
 - **Problem**: Backend bombarded with 30+ requests/second, 1-4s each
@@ -160,6 +222,9 @@ INSERT INTO utm_parser_catalog VALUES ('parser-talend', '{...}'::jsonb, ...);
 - **[Function Registry](technical/function_registry.md)** - Cross-platform function mapping
 - **[Transpilation Examples](technical/transpilation_examples.md)** - Code generation samples
 - **[API Contract](technical/api_contract.md)** - REST API endpoints and schemas
+
+### Technical Deep Dives
+- **[Triage Schema Viewer Fix (Feb 18, 2026)](technical/TRIAGE_SCHEMA_VIEWER_FIX_2026-02-18.md)** ⭐ - PK/FK detection, column lineage, usage tracking
 
 ### Quality Assurance
 - **[Test Scenarios](technical/test_scenarios.md)** - Testing strategies and examples

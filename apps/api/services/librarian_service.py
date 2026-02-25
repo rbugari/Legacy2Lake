@@ -38,10 +38,22 @@ class LibrarianService:
     def __init__(self, project_id: str, tenant_id: str = None):
         self.project_id = project_id
         self.tenant_id = tenant_id
-        # Strict I/O: Data flows IN from normalized project path
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
-        # In the new flow, we read from STAGE_TRIAGE where files were uploaded
+        self.storage = PersistenceService.get_storage()
+        
+        # [Fix] Discover Triage folder case-insensitively (identical to DiscoveryService)
         self.inbound_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+        try:
+            root_items = self.storage.list_files(self.base_path, recursive=False)
+            triage_names = [PersistenceService.STAGE_TRIAGE.lower(), "triage", "triaje"]
+            for item in root_items:
+                if item["type"] == "folder" and item["name"].lower() in triage_names:
+                    self.inbound_path = item["path"]
+                    logger.info(f"Librarian resolved inbound path to: {self.inbound_path}", "Librarian")
+                    break
+        except Exception as e:
+            logger.warning(f"Librarian discovery error: {e}", "Librarian")
+
         self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
         
         self.storage = PersistenceService.get_storage()
@@ -130,13 +142,15 @@ class LibrarianService:
                         files.append(n)
                 return files
             
-            sql_files = [f for f in get_all_files(items) if f["name"].lower().endswith(".sql")]
-            logger.info(f"Found {len(sql_files)} SQL files in storage.", "Librarian")
+            all_files = get_all_files(items)
+            sql_files = [f for f in all_files if f["name"].lower().endswith((".sql", ".ddl"))]
+            logger.info(f"Librarian found {len(sql_files)} DDL files out of {len(all_files)} total files in {self.inbound_path}", "Librarian")
             
             for sql_file in sql_files:
                 try:
                     full_key = sql_file["path"]
-                    logger.debug(f"Parsing {sql_file['name']} from {full_key}...", "Librarian")
+                    sql_filename = sql_file["name"]
+                    logger.info(f"[Librarian] Parsing DDL file: {sql_filename}", "Librarian")
                     
                     ddl_content = self.storage.read_file(full_key)
                     if isinstance(ddl_content, bytes):
@@ -150,6 +164,8 @@ class LibrarianService:
                     parsed_tables = self._parse_ddl(clean_ddl, dialect=dialect)
                     
                     for table_name, meta in parsed_tables.items():
+                        # Tag each table with the SQL file it came from
+                        meta["source_file"] = sql_filename
                         schema_reference["tables"][table_name] = meta
                         
                 except Exception as e:
@@ -168,51 +184,91 @@ class LibrarianService:
         if not create_expr.this or not isinstance(create_expr.this, exp.Schema):
             return None
 
-        table_name = create_expr.this.this.this.this # Table name identifier
-        # Safe extraction of schema/db if present
-        # schema = create_expr.this.this.args.get("db") 
+        # Robustly extract table name using sqlglot's find or dedicated properties
+        # create_expr.this is the Schema, create_expr.this.this is the Table
+        table_expr = create_expr.this.this
+        if not isinstance(table_expr, exp.Table):
+            # Fallback for complex structures
+            table_expr = create_expr.find(exp.Table)
         
-        columns = []
-        constraints = {}
+        if not table_expr:
+            return None
+            
+        # Extract name, handle schema-qualified names (e.g. [dbo].[Table])
+        table_name = table_expr.name
+        if not table_name:
+            # Last resort: try to get the string representation of the identifier
+            table_name = str(table_expr.this) if hasattr(table_expr, 'this') else "UNKNOWN_TABLE"
         
-        # Iterate schema definitions (columns and constraints)
+        columns_dict = {} # Use a dictionary for easier lookup by column name
+        table_constraints = [] # To store table-level constraints
+
+        # First pass: Extract column definitions and column-level constraints
         for def_expr in create_expr.this.expressions:
             if isinstance(def_expr, exp.ColumnDef):
-                col_name = def_expr.this.this
-                # Use .sql() to get the string representation (e.g., "INT", "VARCHAR(25)")
+                col_name = def_expr.this.name
                 col_type_str = def_expr.kind.sql() if def_expr.kind else "UNKNOWN"
                 
-                # Check constraints in column definition
                 is_pk = False
-                is_identity = False
                 nullable = True
-                
+                is_foreign_key = False # Initialize for column-level FKs
+
                 if def_expr.args.get("constraints"):
                     for constraint in def_expr.args.get("constraints"):
                         if isinstance(constraint.kind, exp.PrimaryKeyColumnConstraint):
                             is_pk = True
+                        # Column-level NOT NULL constraint
                         if isinstance(constraint.kind, exp.NotNullColumnConstraint):
                             nullable = False
-                        # Identity check might vary by dialect, simplified here
-                        # In sqlglot, identity often parses as a property or constraint
-                        
-                # Dirty check for IDENTITY strings in raw type or constraints if sqlglot didn't catch specific identity node
-                # Or look at properties
                 
                 target_type = self._map_type(col_type_str)
                 
-                columns.append({
+                columns_dict[col_name] = {
                     "name": col_name,
                     "source_type": col_type_str,
                     "target_type": target_type,
                     "is_pk": is_pk,
-                    "nullable": nullable
-                })
+                    "nullable": nullable,
+                    "is_foreign_key": is_foreign_key # Add FK flag
+                }
+            elif isinstance(def_expr, exp.Constraint):
+                # Named constraint (e.g., CONSTRAINT PK_xxx PRIMARY KEY (...))
+                table_constraints.append(def_expr)
+            elif isinstance(def_expr, exp.PrimaryKey):
+                # Unnamed table-level PRIMARY KEY (e.g., PRIMARY KEY (col1, col2))
+                for pk_col_expr in def_expr.expressions:
+                    col_name = pk_col_expr.name
+                    if col_name in columns_dict:
+                        columns_dict[col_name]["is_pk"] = True
+            elif isinstance(def_expr, exp.ForeignKey):
+                # Unnamed table-level FOREIGN KEY
+                for fk_col_expr in def_expr.expressions:
+                    col_name = fk_col_expr.name
+                    if col_name in columns_dict:
+                        columns_dict[col_name]["is_foreign_key"] = True
+
+        # Second pass: Apply named table-level constraints (CONSTRAINT PK_xxx PRIMARY KEY (...))
+        for constraint_expr in table_constraints:
+            if isinstance(constraint_expr.kind, exp.PrimaryKey):
+                # Table-level PRIMARY KEY (e.g., CONSTRAINT PK_xxx PRIMARY KEY (col1, col2))
+                for pk_col_expr in constraint_expr.kind.expressions:
+                    col_name = pk_col_expr.name
+                    if col_name in columns_dict:
+                        columns_dict[col_name]["is_pk"] = True
+            elif isinstance(constraint_expr.kind, exp.ForeignKey):
+                # Table-level FOREIGN KEY (e.g., CONSTRAINT FK_xxx FOREIGN KEY (col1) REFERENCES ...)
+                for fk_col_expr in constraint_expr.kind.expressions:
+                    col_name = fk_col_expr.name
+                    if col_name in columns_dict:
+                        columns_dict[col_name]["is_foreign_key"] = True
+        
+        # Convert columns_dict back to a list
+        columns = list(columns_dict.values())
 
         return {
             "name": table_name,
             "columns": columns,
-            "constraints": constraints,
+            "constraints": {}, # Placeholder for general constraints, not column-specific flags
             # Placeholder for logic inference
             "business_logic": "Standard Table" 
         }
@@ -234,6 +290,9 @@ class LibrarianService:
 
     def _preprocess_sql(self, sql_content: str) -> str:
         """Cleans SQL content to be parser-friendly."""
+        # Remove [cite: ...] markers (from document export tools)
+        sql_content = re.sub(r'\[cite:[^\]]*\]', '', sql_content)
+        
         lines = sql_content.splitlines()
         cleaned_lines = []
         for line in lines:

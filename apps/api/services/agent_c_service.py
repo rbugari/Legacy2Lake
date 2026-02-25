@@ -1,6 +1,7 @@
 import os
 import json
 from typing import Dict, Any, List, Optional
+from datetime import datetime
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -184,6 +185,45 @@ class AgentCService:
                 self.cache_manager = None
                 self.query_optimizer = None
                 self.parallel_processor = None
+    
+    async def _load_project_custom_instructions(self, project_id: str) -> str:
+        """
+        Load project-specific custom instructions from project settings (v4.0).
+        
+        This is Level 3 of the 3-level prompt architecture:
+        - Level 1: Agent System Prompt (platform-managed)
+        - Level 2: Cartridge Prompt (generic tech template)
+        - Level 3: Project Custom Instructions (user-editable)
+        
+        Args:
+            project_id: Project UUID
+            
+        Returns:
+            Custom instructions as markdown string (empty if not set)
+        """
+        try:
+            db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+            settings = await db.get_project_settings(project_id)
+            
+            if settings and isinstance(settings, dict):
+                custom_instructions = settings.get('custom_instructions', '')
+                
+                if custom_instructions and len(custom_instructions.strip()) > 0:
+                    logger.info(
+                        f"[AgentC v4.0] ✅ Loaded project custom instructions: {len(custom_instructions)} chars",
+                        "AgentC"
+                    )
+                    return custom_instructions
+                else:
+                    logger.info("[AgentC v4.0] No custom instructions found for project", "AgentC")
+                    return ""
+            else:
+                logger.warning(f"[AgentC v4.0] Project settings not found for project_id={project_id}", "AgentC")
+                return ""
+                
+        except Exception as e:
+            logger.error(f"[AgentC v4.0] Failed to load custom instructions: {e}", "AgentC")
+            return ""
     
     def _extract_schema_from_code(self, code: str, table_name: str) -> Dict[str, Any]:
         """
@@ -851,42 +891,58 @@ class AgentCService:
                 logger.error(f"[AgentC v4.0] DB prompt generation failed: {e}", "AgentC")
                 template_code = None
 
-        # 3. Dynamic Knowledge Selection (Sprint 1: Database-First)
-        # Priority:
-        #   1. Use cartridge_prompt from node_data if present (Sprint 0 backward compatibility)
-        #   2. Load from utm_prompts using naming convention: cartridge_{tech_id}_{layer}
-        #   3. Fall back to cartridge_instance.get_rules() (legacy)
+        # 3. Dynamic Knowledge Selection (v4.0 Core + Override Architecture)
+        # Level 1: Core System Rules (Read-only, dictates structure)
+        # Level 2: Project-specific Overrides (User-editable extensions)
         
         rules = ""
+        core_rules = ""
+        cartridge_override = ""
         
         if node_data.get("cartridge_prompt"):
             # Backward compatibility: Direct injection (Sprint 0 tests)
-            rules = node_data["cartridge_prompt"]
-            logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(rules)} chars)", "AgentC")
+            core_rules = node_data["cartridge_prompt"]
+            logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(core_rules)} chars)", "AgentC")
         else:
-            # Sprint 1: Database-first approach
+            # v4.0 Database-driven approach
             cartridge_prompt_id = f"cartridge_{target_engine}_{layer}"
             
             try:
-                # Try loading from utm_prompts table
-                logger.info(f"[AgentC] Attempting DB load: {cartridge_prompt_id}", "AgentC")
-                db_prompt = await db.get_prompt(cartridge_prompt_id)
+                await self._initialize_prompts()
                 
-                if db_prompt and len(db_prompt) > 100:  # Valid prompt check
-                    rules = db_prompt
-                    logger.info(f"[AgentC] ✅ Loaded {cartridge_prompt_id} from DB ({len(rules)} chars)", "AgentC")
+                # Fetch CORE rules
+                logger.info(f"[AgentC] Fetching CORE cartridge: {cartridge_prompt_id}", "AgentC")
+                prompt_obj = await self.prompt_service.get_prompt(cartridge_prompt_id)
+                if prompt_obj:
+                    core_rules = prompt_obj.content
+                    logger.info(f"[AgentC] ✅ Loaded {cartridge_prompt_id} from DB ({len(core_rules)} chars)", "AgentC")
                 else:
-                    # Fallback to legacy cartridge.get_rules()
-                    logger.info(f"[AgentC] DB prompt empty/missing, using cartridge.get_rules()", "AgentC")
-                    rules = cartridge_instance.get_rules(node_data)
-                    
+                    logger.warning(f"[AgentC] CORE Prompt {cartridge_prompt_id} not found in utm_prompts", "AgentC")
+                    core_rules = cartridge_instance.get_rules(node_data)
+                
+                # Fetch PROJECT-SPECIFIC OVERRIDE
+                if project_id:
+                    logger.info(f"[AgentC] Fetching OVERRIDE for {cartridge_prompt_id} in project {project_id}", "AgentC")
+                    cartridge_override = await self.prompt_service.get_prompt_override(project_id, cartridge_prompt_id)
+                    if cartridge_override:
+                        logger.info(f"[AgentC] ✅ Loaded project-specific override ({len(cartridge_override)} chars)", "AgentC")
+                
             except Exception as e:
-                logger.error(f"[AgentC] DB prompt load failed: {e}, using cartridge.get_rules()", "AgentC")
-                try:
-                    rules = cartridge_instance.get_rules(node_data)
-                except Exception as rule_err:
-                    logger.error(f"[AgentC] Rule resolution failed: {rule_err}", "AgentC")
-                    rules = "N/A"
+                logger.error(f"[AgentC] DB prompt load failed: {e}, falling back to legacy rules", "AgentC")
+                core_rules = cartridge_instance.get_rules(node_data)
+        
+        # Combine Core + Override
+        rules = f"{core_rules}"
+        if cartridge_override:
+            rules += f"\n\n### PROJECT-SPECIFIC CARTRIDGE RULES (USER OVERRIDES) ###\n"
+            rules += f"The following rules were defined by the user for this project and MUST be followed alongside the core rules above:\n"
+            rules += cartridge_override
+
+        # 3.5. Load Project Custom Instructions (v4.0: 3-Level Architecture)
+        # Level 3: Project-specific user adjustments (editable via UI)
+        custom_instructions = ""
+        if project_id:
+            custom_instructions = await self._load_project_custom_instructions(project_id)
 
         # 4. Neighbors Context (Vector of neighboring tasks)
         neighbor_context = ""
@@ -929,6 +985,9 @@ Current Task to Transpile:
 
 ### MANDATORY TECHNICAL CONSTRAINTS & COMPLIANCE RULES (OVERRIDES ALL INPUTS) ###
 {rules}
+
+### PROJECT CUSTOM INSTRUCTIONS (USER-DEFINED ADJUSTMENTS) ###
+{custom_instructions if custom_instructions else "(No custom instructions defined for this project)"}
 
 Neighboring Context:
 {neighbor_context}
@@ -1100,7 +1159,6 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
         # ================================================================
         # SPRINT 12: QUERY OPTIMIZATION & CACHING
         # ================================================================
-        from datetime import datetime
         
         # Optimize queries in generated code
         if self.query_optimizer and generated_code and validation_result and validation_result.is_valid:

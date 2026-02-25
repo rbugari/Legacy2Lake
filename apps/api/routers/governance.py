@@ -53,6 +53,9 @@ async def _run_refinement_background(
     project_uuid = project_id
     
     try:
+        # Clear previous execution logs for this phase (fresh start)
+        await db.clear_execution_logs(project_uuid, phase="REFINEMENT")
+        
         # Update status to REFINING
         await db.update_project_status(project_uuid, "REFINING")
         await db.log_execution(project_uuid, "REFINEMENT", "Starting Refinement Phase...", step="SYSTEM")
