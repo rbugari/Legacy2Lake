@@ -35,25 +35,41 @@ class LibrarianService:
     Scans DDLs and Flat Files to build a 'Single Source of Truth' (schema_reference.json).
     """
 
-    def __init__(self, project_id: str, tenant_id: str = None):
+    def __init__(self, project_id: str, tenant_id: str = None, source_folder: str = None):
         self.project_id = project_id
         self.tenant_id = tenant_id
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
         self.storage = PersistenceService.get_storage()
         
-        # [Fix] Discover Triage folder case-insensitively (identical to DiscoveryService)
-        self.inbound_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+        target_folder = source_folder or PersistenceService.STAGE_SOURCE
+        
+        # [Fix] Discover Triage/Source folder case-insensitively (identical to DiscoveryService)
+        self.inbound_path = None
         try:
             root_items = self.storage.list_files(self.base_path, recursive=False)
-            triage_names = [PersistenceService.STAGE_TRIAGE.lower(), "triage", "triaje"]
+            
+            # 1. Prioritize explicit target_folder
             for item in root_items:
-                if item["type"] == "folder" and item["name"].lower() in triage_names:
+                if item["type"] == "folder" and item["name"].lower() == target_folder.lower():
                     self.inbound_path = item["path"]
-                    logger.info(f"Librarian resolved inbound path to: {self.inbound_path}", "Librarian")
                     break
+            
+            # 2. Try fallbacks if target_folder not found
+            if not self.inbound_path:
+                triage_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "triaje", "inbound"]
+                for item in root_items:
+                    if item["type"] == "folder" and item["name"].lower() in triage_names:
+                        # Prefer "source" if multiple are found
+                        if not self.inbound_path or item["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
+                            self.inbound_path = item["path"]
+                            
         except Exception as e:
             logger.warning(f"Librarian discovery error: {e}", "Librarian")
 
+        if not self.inbound_path:
+            self.inbound_path = f"{self.base_path.rstrip('/')}/{target_folder}"
+        
+        logger.info(f"Librarian resolved inbound path to: {self.inbound_path}", "Librarian")
         self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
         
         self.storage = PersistenceService.get_storage()

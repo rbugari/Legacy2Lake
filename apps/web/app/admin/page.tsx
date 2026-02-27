@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { fetchWithAuth } from "../lib/auth-client";
+import { fetchWithAuth as baseFetchWithAuth } from "../lib/auth-client";
 import Link from "next/link";
 import { ArrowLeft, Shield, Lock, Eye, EyeOff, Brain, Save, Copy, Database, Server, Plus, X, Terminal, Users, FlaskConical, Download, Upload, Activity, History, ChevronDown, Key, Code2, FileText, Edit3, Edit2, Briefcase, RefreshCw } from "lucide-react";
 import CartridgeList from "../components/admin/CartridgeList";
@@ -15,6 +15,8 @@ interface Prompt {
     name: string;
     content: string;
 }
+
+const fetchWithAuth = (endpoint: string, options: any = {}) => baseFetchWithAuth(endpoint, { ...options, skipImpersonation: true });
 
 export default function SystemPage() {
     const { user } = useAuth();
@@ -169,7 +171,7 @@ export default function SystemPage() {
                 console.error("Error fetching versions:", err);
                 setPromptVersions([]);
             });
-            
+
             // Initialize edited content with selected prompt
             const prompt = prompts.find(p => p.id === selectedPromptId);
             if (prompt) {
@@ -320,7 +322,7 @@ export default function SystemPage() {
         }
     };
 
-    const handleUpdateAgent = async (agentId: string, updates: {display_name?: string, description?: string}) => {
+    const handleUpdateAgent = async (agentId: string, updates: { display_name?: string, description?: string }) => {
         try {
             const res = await fetchWithAuth(`system/agents/${agentId}`, {
                 method: "PUT",
@@ -376,9 +378,9 @@ export default function SystemPage() {
         try {
             const res = await fetchWithAuth(`auth/tenants/${editingTenant.tenant_id}`, {
                 method: "PATCH",
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     display_name: editingTenant.display_name,
-                    tier: editingTenant.tier 
+                    tier: editingTenant.tier
                 })
             });
             if (res.ok) {
@@ -748,8 +750,8 @@ export default function SystemPage() {
                                     <div className="max-w-4xl mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm min-h-[500px]">
                                         {viewMode === 'source' ? (
                                             <div className="p-8">
-                                                <SyntaxHighlighter 
-                                                    language="markdown" 
+                                                <SyntaxHighlighter
+                                                    language="markdown"
                                                     style={vscDarkPlus}
                                                     customStyle={{
                                                         background: 'transparent',
@@ -857,7 +859,7 @@ export default function SystemPage() {
                                                     <input
                                                         type="text"
                                                         value={editingAgent.display_name}
-                                                        onChange={e => setEditingAgent({...editingAgent, display_name: e.target.value})}
+                                                        onChange={e => setEditingAgent({ ...editingAgent, display_name: e.target.value })}
                                                         className="w-full px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background-secondary)] outline-none focus:ring-2 focus:ring-cyan-500/50"
                                                     />
                                                 ) : (
@@ -868,7 +870,7 @@ export default function SystemPage() {
                                                 {editingAgent?.agent_id === agent.agent_id ? (
                                                     <textarea
                                                         value={editingAgent.description}
-                                                        onChange={e => setEditingAgent({...editingAgent, description: e.target.value})}
+                                                        onChange={e => setEditingAgent({ ...editingAgent, description: e.target.value })}
                                                         rows={2}
                                                         className="w-full px-3 py-2 text-xs border border-[var(--border)] rounded-lg bg-[var(--background-secondary)] outline-none focus:ring-2 focus:ring-cyan-500/50 resize-none"
                                                     />
@@ -915,7 +917,7 @@ export default function SystemPage() {
                                                         </div>
                                                     ) : (
                                                         <button
-                                                            onClick={() => setEditingAgent({...agent})}
+                                                            onClick={() => setEditingAgent({ ...agent })}
                                                             className="text-xs text-cyan-500 hover:underline font-bold uppercase tracking-wider"
                                                         >
                                                             Edit
@@ -977,11 +979,10 @@ export default function SystemPage() {
                                                 <div className="text-[10px] font-mono opacity-50 mt-0.5">ID: {t.tenant_id}</div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                    t.tier === 'ENTERPRISE' ? 'bg-purple-500/10 text-purple-500' :
-                                                    t.tier === 'PREMIUM' ? 'bg-cyan-500/10 text-cyan-500' :
-                                                    'bg-gray-500/10 text-gray-500'
-                                                }`}>
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${t.tier === 'ENTERPRISE' ? 'bg-purple-500/10 text-purple-500' :
+                                                        t.tier === 'PREMIUM' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                            'bg-gray-500/10 text-gray-500'
+                                                    }`}>
                                                     {t.tier || 'STANDARD'}
                                                 </span>
                                             </td>
@@ -1128,19 +1129,17 @@ export default function SystemPage() {
                                                         <div className="text-[10px] font-mono opacity-50 mt-0.5">{u.tenant_id.substring(0, 8)}...</div>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                            u.role === 'ADMIN' ? 'bg-purple-500/10 text-purple-500' :
-                                                            u.role === 'MANAGER' ? 'bg-cyan-500/10 text-cyan-500' :
-                                                            u.role === 'COLLABORATOR' ? 'bg-blue-500/10 text-blue-500' :
-                                                            'bg-gray-500/10 text-gray-500'
-                                                        }`}>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.role === 'ADMIN' ? 'bg-purple-500/10 text-purple-500' :
+                                                                u.role === 'MANAGER' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                                    u.role === 'COLLABORATOR' ? 'bg-blue-500/10 text-blue-500' :
+                                                                        'bg-gray-500/10 text-gray-500'
+                                                            }`}>
                                                             {u.role}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                            u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                                                        }`}>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                                                            }`}>
                                                             {u.is_active ? 'ACTIVE' : 'INACTIVE'}
                                                         </span>
                                                     </td>
@@ -1274,11 +1273,10 @@ export default function SystemPage() {
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                                                            lock.status === 'active' 
-                                                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' 
+                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${lock.status === 'active'
+                                                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
                                                                 : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
-                                                        }`}>
+                                                            }`}>
                                                             {lock.status}
                                                         </span>
                                                     </td>
@@ -1730,12 +1728,12 @@ export default function SystemPage() {
                                 <h3 className="text-xl font-bold">Reset Password</h3>
                                 <p className="text-xs text-[var(--text-tertiary)] mt-1">Set new password for {resetPasswordUser.username}</p>
                             </div>
-                            <button 
-                                onClick={() => { 
-                                    setShowResetPasswordModal(false); 
-                                    setResetPasswordUser(null); 
+                            <button
+                                onClick={() => {
+                                    setShowResetPasswordModal(false);
+                                    setResetPasswordUser(null);
                                     setNewPassword("");
-                                }} 
+                                }}
                                 className="p-2 hover:bg-[var(--background)] rounded-full transition-colors text-[var(--text-tertiary)]"
                             >
                                 <X size={24} />
@@ -1784,9 +1782,9 @@ export default function SystemPage() {
 
                         <div className="p-6 bg-[var(--background)]/50 border-t border-[var(--border)] flex justify-end gap-3">
                             <button
-                                onClick={() => { 
-                                    setShowResetPasswordModal(false); 
-                                    setResetPasswordUser(null); 
+                                onClick={() => {
+                                    setShowResetPasswordModal(false);
+                                    setResetPasswordUser(null);
                                     setNewPassword("");
                                 }}
                                 className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[var(--surface)] transition-colors"

@@ -1,12 +1,17 @@
 
 import { API_BASE_URL } from "./config";
 
-export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+export interface FetchAuthOptions extends RequestInit {
+    skipImpersonation?: boolean;
+}
+
+export async function fetchWithAuth(endpoint: string, options: FetchAuthOptions = {}) {
     // 1. Get Credentials from LocalStorage
     const user_id = localStorage.getItem("x_user_id");
     const tenant_id = localStorage.getItem("x_tenant_id");
     const client_id = localStorage.getItem("x_client_id");
     const role = localStorage.getItem("x_role");
+    const impersonate_user_id = localStorage.getItem("x_impersonate_user_id");
 
     // 2. Prepare Headers
     const headers: HeadersInit = {
@@ -25,6 +30,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     }
     if (role) {
         (headers as any)["X-Role"] = role;
+    }
+    if (impersonate_user_id && !(headers as any)["X-Impersonate-User-ID"] && !options.skipImpersonation) {
+        (headers as any)["X-Impersonate-User-ID"] = impersonate_user_id;
     }
 
     // 3. Construct URL

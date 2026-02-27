@@ -1,5 +1,39 @@
 # Release Planning Changelog
 
+## 2026-02-27: Sprint 15 Day 5 — Admin Ghost Mode & Security Hardening
+
+**Focus:** Corrección de errores críticos en Ghost Mode / Impersonación de admin
+
+**Deliverables:**
+- ✅ Fix: Error 500 en todas las requests con Ghost Mode activo (ut_tenants.client_id no existe)
+- ✅ Fix: Error 403 en `/auth/admin/users` y `/auth/tenants` con Ghost Mode activo
+- ✅ Nuevo parámetro `skipImpersonation` en `fetchWithAuth` (auth-client.ts)
+- ✅ Página `/admin` fuerza `skipImpersonation: true` — nunca propaga Ghost Mode
+- ✅ Fix: JSX parse error en `StrategicIntelligenceHub.tsx`
+- ✅ Fix: Dropdown legibility (gris sobre gris) en StrategicIntelligenceHub
+- ✅ Fix: Modal button overflow en UserManagement
+
+**Root causes resueltos:**
+1. `dependencies.py` consultaba `utm_tenants.client_id` (columna eliminada en migración 024 de v3.9)
+2. `fetchWithAuth` en admin page enviaba `X-Impersonate-User-ID`, haciendo que el backend tratara al admin como el usuario impersonado (sin permisos ADMIN)
+
+**Investigación adicional:**
+- Confirmado que `demo3` no tiene proyectos en DB (tenant_id `daac0ee6-...` no tiene filas en `utm_projects`)
+- Los únicos proyectos existentes: `testd` (demo1) y `testn` (ADMIN global)
+- Ghost Mode funciona pero muestra lista vacía para tenants sin proyectos — comportamiento correcto
+
+**Archivos modificados:**
+- `apps/api/routers/dependencies.py`
+- `apps/web/app/lib/auth-client.ts`
+- `apps/web/app/admin/page.tsx`
+- `apps/web/app/components/settings/StrategicIntelligenceHub.tsx`
+- `apps/web/app/components/settings/UserManagement.tsx`
+
+**Documentación:**
+- Creado: [V4.0_STATUS_REPORT.md](V4.0_STATUS_REPORT.md) — Estado consolidado de v4.0
+
+---
+
 ## 2026-02-19: Sprint 14 Phase 2 Day 4 - UI Polish & Status Indicators
 
 **Focus:** User-facing bug fixes, visual feedback systems, and UI modernization

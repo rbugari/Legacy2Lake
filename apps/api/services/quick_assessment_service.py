@@ -375,8 +375,12 @@ Is this migration viable? What are the main risks? Respond in 3-4 lines."""
             
             from langchain_core.messages import SystemMessage, HumanMessage
             
+            prompt_content = await self.db.get_prompt("agent_qa_assessment")
+            if not prompt_content:
+                prompt_content = "You are an expert in ETL migration viability analysis."
+                
             messages = [
-                SystemMessage(content="You are an expert in ETL migration viability analysis."),
+                SystemMessage(content=prompt_content),
                 HumanMessage(content=summary)
             ]
             

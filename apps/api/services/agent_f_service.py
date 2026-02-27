@@ -72,35 +72,53 @@ class AgentFService:
         
         standards = await self._load_prompt("coding_standards")
         
-        # --- CARTRIDGE RULES SYNC ---
+        # --- CARTRIDGE RULES SYNC (v4.0 Zero-Hardcode Database-Driven) ---
         project_id = project_id or task_info.get("project_id")
-        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
         # --- LAYER EXTRACTION (v4.0 Two-Phase Architecture) ---
         layer = task_info.get("layer", "direct")  # "direct", "bronze", "silver", "gold"
         
-        try:
-            registry_raw = await db.get_design_registry(project_id) if project_id else []
-            registry = KnowledgeService.flatten_knowledge(registry_raw)
-            
-            from services.refinement.cartridges.factory import CartridgeFactory
-            cartridge_instance = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id)
-            cartridge_rules = cartridge_instance.get_rules(task_info)
-        except Exception as e:
-            logger.error(f"Failed to load cartridge rules for Agent F: {e}")
-            cartridge_rules = "N/A"
-        
         # Extract Technologies
         source_tech = task_info.get("source_tech", "mssql").upper()
-        target_tech = task_info.get("target_tech", "pyspark").upper()
+        
+        # Consistent with Agent C: Use tech_id if available, fallback to target_tech
+        target_tech_raw = task_info.get("tech_id", task_info.get("target_tech", "pyspark"))
+        target_tech = str(target_tech_raw).lower().replace(" ", "_")
+
+        cartridge_rules = ""
+        cartridge_prompt_id = f"cartridge_{target_tech}_{layer.lower()}"
+        
+        try:
+            from services.prompts.prompt_service import PromptService
+            prompt_service = PromptService(tenant_id=self.tenant_id, client_id=self.client_id)
+            
+            # Fetch CORE rules
+            logger.info(f"[AgentF] Fetching CORE cartridge: {cartridge_prompt_id}", "AgentF")
+            prompt_obj = await prompt_service.get_prompt(cartridge_prompt_id)
+            if prompt_obj:
+                cartridge_rules = prompt_obj.content
+                logger.info(f"[AgentF] ✅ Loaded {cartridge_prompt_id} from DB ({len(cartridge_rules)} chars)", "AgentF")
+            else:
+                logger.warning(f"[AgentF] CORE Prompt {cartridge_prompt_id} not found in utm_prompts. No mock will be used.", "AgentF")
+                
+            # Fetch PROJECT-SPECIFIC OVERRIDE
+            if project_id:
+                logger.info(f"[AgentF] Fetching OVERRIDE for {cartridge_prompt_id} in project {project_id}", "AgentF")
+                cartridge_override = await prompt_service.get_prompt_override(project_id, cartridge_prompt_id)
+                if cartridge_override:
+                    logger.info(f"[AgentF] ✅ Loaded project-specific override ({len(cartridge_override)} chars)", "AgentF")
+                    cartridge_rules += f"\n\n### PROJECT-SPECIFIC CARTRIDGE RULES (USER OVERRIDES) ###\n{cartridge_override}"
+                    
+        except Exception as e:
+            logger.error(f"[AgentF] DB prompt load failed for {cartridge_prompt_id}: {e}. No mock will be used.", "AgentF")
         
         human_content = f"""
         COMPLIANCE CONTEXT:
         LAYER MODE: {layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if layer == "direct" else f"Architectural Enhancement - {layer.upper()} Layer"})
         SOURCE TECHNOLOGY: {source_tech}
-        TARGET TECHNOLOGY: {target_tech}
+        TARGET TECHNOLOGY: {target_tech_raw}
         
-        CODING STANDARDS TO FOLLOW ({target_tech} SPECIFIC):
+        CODING STANDARDS TO FOLLOW ({target_tech_raw} SPECIFIC):
         {standards}
  
         MANDATORY TECHNICAL CONSTRAINTS (USED BY DEVELOPER):

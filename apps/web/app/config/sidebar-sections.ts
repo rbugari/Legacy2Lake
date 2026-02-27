@@ -291,9 +291,16 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             collapsible: true,
             children: [
                 {
-                    id: 'export',
-                    label: 'Export Options',
+                    id: 'export-delivery',
+                    label: 'Download Deployable Code',
                     icon: Download,
+                    component: 'ExportOptions',
+                    variant: 'action'
+                },
+                {
+                    id: 'export-full',
+                    label: 'Download Complete Bundle',
+                    icon: Archive,
                     component: 'ExportOptions',
                     variant: 'action'
                 }

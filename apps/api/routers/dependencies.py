@@ -190,12 +190,7 @@ async def get_identity(
             
             target_user = target_res.data[0]
             
-            # Get client_id from tenant
-            tenant_res = db.client.table("utm_tenants").select(
-                "client_id"
-            ).eq("tenant_id", target_user["tenant_id"]).execute()
-            
-            target_client_id = tenant_res.data[0]["client_id"] if tenant_res.data else "UNKNOWN"
+            target_client_id = x_client_id
             
             print(f"[AUTH] ADMIN {x_user_id} impersonating User {x_impersonate_user_id}")
             

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { fetchWithAuth } from "../../lib/auth-client";
 import { API_BASE_URL } from "../../lib/config";
 import { Users, UserPlus, Edit, Lock, CheckCircle, XCircle, Trash2 } from "lucide-react";
 
@@ -28,7 +29,7 @@ export default function UserManagement() {
   const isManager = user?.role === "MANAGER" || isAdmin;
 
   // Filter users based on search term
-  const filteredUsers = users.filter(u => 
+  const filteredUsers = users.filter(u =>
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (u.display_name && u.display_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -43,13 +44,7 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/auth/users`, {
-        headers: {
-          "x-tenant-id": user?.tenant_id || "",
-          "x-user-id": user?.user_id || "",
-          "x-role": user?.role || ""
-        }
-      });
+      const res = await fetchWithAuth("auth/users");
 
       if (res.ok) {
         const data = await res.json();
@@ -70,14 +65,8 @@ export default function UserManagement() {
     password?: string;
   }) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/users`, {
+      const res = await fetchWithAuth("auth/users", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant-id": user?.tenant_id || "",
-          "x-user-id": user?.user_id || "",
-          "x-role": user?.role || ""
-        },
         body: JSON.stringify(formData)
       });
 
@@ -101,14 +90,8 @@ export default function UserManagement() {
     display_name?: string;
   }) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/users/${userId}`, {
+      const res = await fetchWithAuth(`auth/users/${userId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant-id": user?.tenant_id || "",
-          "x-user-id": user?.user_id || "",
-          "x-role": user?.role || ""
-        },
         body: JSON.stringify(updates)
       });
 
@@ -130,14 +113,8 @@ export default function UserManagement() {
     if (!newPassword) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/users/${userId}/reset-password`, {
+      const res = await fetchWithAuth(`auth/users/${userId}/reset-password`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant-id": user?.tenant_id || "",
-          "x-user-id": user?.user_id || "",
-          "x-role": user?.role || ""
-        },
         body: JSON.stringify({ new_password: newPassword })
       });
 
@@ -229,12 +206,11 @@ export default function UserManagement() {
                 </td>
                 <td className="px-4 py-3 text-sm">{u.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    u.role === 'ADMIN' ? 'bg-red-500/20 text-red-300' :
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${u.role === 'ADMIN' ? 'bg-red-500/20 text-red-300' :
                     u.role === 'MANAGER' ? 'bg-blue-500/20 text-blue-300' :
-                    u.role === 'COLLABORATOR' ? 'bg-green-500/20 text-green-300' :
-                    'bg-gray-500/20 text-gray-300'
-                  }`}>
+                      u.role === 'COLLABORATOR' ? 'bg-green-500/20 text-green-300' :
+                        'bg-gray-500/20 text-gray-300'
+                    }`}>
                     {u.role}
                   </span>
                 </td>
@@ -250,7 +226,7 @@ export default function UserManagement() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                  {u.last_login ? new Date(u.last_login).toLocaleDateString('es-ES', { 
+                  {u.last_login ? new Date(u.last_login).toLocaleDateString('es-ES', {
                     year: 'numeric', month: 'short', day: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                   }) : 'Never'}
@@ -385,7 +361,7 @@ function CreateUserModal({ onClose, onCreate, isAdmin }: {
               Leave empty to auto-generate a secure password
             </p>
           </div>
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-6 mt-4 border-t border-[var(--border)]">
             <button
               type="button"
               onClick={onClose}
@@ -395,7 +371,7 @@ function CreateUserModal({ onClose, onCreate, isAdmin }: {
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
             >
               Create User
             </button>
@@ -477,7 +453,7 @@ function EditUserModal({ user, onClose, onUpdate, isAdmin }: {
             />
             <label htmlFor="is_active" className="text-sm font-medium">Active</label>
           </div>
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-6 mt-4 border-t border-[var(--border)]">
             <button
               type="button"
               onClick={onClose}
@@ -487,7 +463,7 @@ function EditUserModal({ user, onClose, onUpdate, isAdmin }: {
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
             >
               Save Changes
             </button>

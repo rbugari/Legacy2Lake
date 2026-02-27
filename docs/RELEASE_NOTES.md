@@ -1,5 +1,69 @@
 # Release Notes
 
+## Version 4.0 Sprint 15 Day 5 — Admin Ghost Mode Bugfix — 2026-02-27
+
+### 🔧 Bug Fixes — Admin Impersonation (Ghost Mode)
+
+**Collaboration:** @antigravity
+
+#### Bug #1: Error 500 global con Ghost Mode activo
+
+**Síntoma:** Cualquier request al backend retornaba 500 cuando el admin tenía Ghost Mode activo.  
+**Causa raíz:** `get_identity()` en `dependencies.py` consultaba `utm_tenants.client_id` — columna eliminada en la migración 024 de v3.9.  
+**Fix:** `apps/api/routers/dependencies.py` — `target_client_id` ahora proviene del header `X-Client-ID` del administrador, sin consulta adicional a la tabla `utm_tenants`.
+
+```python
+# ANTES (roto)
+tenant_res = db.client.table("utm_tenants").select("client_id")\
+    .eq("tenant_id", target_user["tenant_id"]).execute()
+target_client_id = tenant_res.data[0]["client_id"] if tenant_res.data else "UNKNOWN"
+
+# DESPUÉS (correcto)
+target_client_id = x_client_id
+```
+
+#### Bug #2: Error 403 en página de administración con Ghost Mode activo
+
+**Síntoma:** `/auth/admin/users` y `/auth/tenants` devolvían 403 cuando el admin tenía `x_impersonate_user_id` en localStorage.  
+**Causa raíz:** `fetchWithAuth` enviaba `X-Impersonate-User-ID` en todas las llamadas incluyendo las de la propia página de administración. El backend interpretaba al admin como el usuario impersonado (sin role ADMIN), rechazando el acceso.  
+**Fix (2 partes):**
+
+1. `apps/web/app/lib/auth-client.ts` — nueva interfaz `FetchAuthOptions` con `skipImpersonation?: boolean`
+2. `apps/web/app/admin/page.tsx` — wrapper local que fuerza `skipImpersonation: true` en todos los calls de la página
+
+```typescript
+// auth-client.ts
+export interface FetchAuthOptions extends RequestInit {
+    skipImpersonation?: boolean;
+}
+
+// admin/page.tsx  
+const fetchWithAuth = (endpoint: string, options: any = {}) => 
+    baseFetchWithAuth(endpoint, { ...options, skipImpersonation: true });
+```
+
+#### Bug #3: JSX Parse Error en StrategicIntelligenceHub
+
+**Fix:** Escape incorrecto en template literal dentro de `<style jsx>`. Resuelto.
+
+#### Bug #4: Modal button overflow en UserManagement
+
+**Fix:** Ajuste de layout en modales "Create User" y "Edit User".
+
+#### Bug #5: Dropdown ilegible (gris sobre gris) en StrategicIntelligenceHub
+
+**Fix:** Aplicado `bg-slate-800 text-white` a opciones de `<select>`.
+
+### 🔍 Investigación: demo3 sin proyectos
+
+Confirmado via consulta directa a Supabase: `demo3` y `demo2` no tienen proyectos asociados a sus tenants. Los únicos proyectos en la DB son:
+- `testd` → tenant de `demo1`  
+- `testn` → tenant del ADMIN global (00000000-...)
+
+Ghost Mode funciona correctamente — la lista vacía refleja el estado real de la DB, no un bug.
+
+---
+
 ## Version 4.0 Sprint 14 Phase 2 (UI Modernization & Performance) - 2026-02-17/18 ⭐ IN PROGRESS
 
 This sprint delivers critical UI architecture improvements, massive performance optimizations, and Schema Viewer data intelligence enhancements, laying groundwork for v4.0 Zero-Hardcode Core while addressing severe UX issues discovered in production.

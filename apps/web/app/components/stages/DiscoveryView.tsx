@@ -71,6 +71,11 @@ export default function DiscoveryView({
     const logEndRef = useRef<HTMLDivElement>(null);
 
     const [sourceTech, setSourceTech] = useState("UNKNOWN");
+    const sourceTechRef = useRef(sourceTech);
+
+    useEffect(() => {
+        sourceTechRef.current = sourceTech;
+    }, [sourceTech]);
 
     const normalizeTech = (tech: string) => {
         const t = tech.toUpperCase();
@@ -151,16 +156,17 @@ export default function DiscoveryView({
                 ]);
 
                 // Trigger conflict if low score OR tech mismatch
+                const currentSourceTech = sourceTechRef.current;
                 const detectedNormalized = normalizeTech(data.detected_techs?.[0] || "");
-                const sourceNormalized = normalizeTech(sourceTech);
+                const sourceNormalized = normalizeTech(currentSourceTech);
 
                 const mismatch = data.detected_techs?.[0] &&
-                    sourceTech !== "UNKNOWN" &&
+                    currentSourceTech !== "UNKNOWN" &&
                     detectedNormalized !== sourceNormalized;
 
                 // Only show conflict if there is a real mismatch and we have a decent score
                 // or if it's unknown but we detected something.
-                if (mismatch || (sourceTech === "UNKNOWN" && data.detected_techs?.[0])) {
+                if (mismatch || (currentSourceTech === "UNKNOWN" && data.detected_techs?.[0])) {
                     setShowConflict(true);
                 } else {
                     setShowConflict(false);

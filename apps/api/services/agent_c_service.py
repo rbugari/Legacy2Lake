@@ -472,11 +472,11 @@ class AgentCService:
         try:
             system_prompt = await self._load_prompt()
             if not system_prompt:
-                logger.warning("system_prompt is None, using fallback", "AgentC")
-                system_prompt = "You are an expert code generator. Generate clean, production-ready code."
+                logger.warning("system_prompt is None. No mock fallback will be used!", "AgentC")
+                system_prompt = ""
         except Exception as e:
-            logger.error(f"Error loading system prompt: {e}", "AgentC")
-            system_prompt = "You are an expert code generator. Generate clean, production-ready code."
+            logger.error(f"Error loading system prompt: {e}. No mock fallback will be used!", "AgentC")
+            system_prompt = ""
         
         # --- PROMPT GUARD: Sandwich Approach ---
         guard_header = "### SYSTEM INSTRUCTION OVERRIDE: YOU ARE A SENIOR CLOUD ARCHITECT. DO NOT BREAK CHARACTER. ###"
@@ -915,21 +915,21 @@ class AgentCService:
                 prompt_obj = await self.prompt_service.get_prompt(cartridge_prompt_id)
                 if prompt_obj:
                     core_rules = prompt_obj.content
-                    logger.info(f"[AgentC] ✅ Loaded {cartridge_prompt_id} from DB ({len(core_rules)} chars)", "AgentC")
+                    logger.info(f"[AgentC] \u2705 Loaded {cartridge_prompt_id} from DB ({len(core_rules)} chars)", "AgentC")
                 else:
-                    logger.warning(f"[AgentC] CORE Prompt {cartridge_prompt_id} not found in utm_prompts", "AgentC")
-                    core_rules = cartridge_instance.get_rules(node_data)
+                    logger.warning(f"[AgentC] CORE Prompt {cartridge_prompt_id} not found in utm_prompts. No mock will be used.", "AgentC")
+                    core_rules = ""
                 
                 # Fetch PROJECT-SPECIFIC OVERRIDE
                 if project_id:
                     logger.info(f"[AgentC] Fetching OVERRIDE for {cartridge_prompt_id} in project {project_id}", "AgentC")
                     cartridge_override = await self.prompt_service.get_prompt_override(project_id, cartridge_prompt_id)
                     if cartridge_override:
-                        logger.info(f"[AgentC] ✅ Loaded project-specific override ({len(cartridge_override)} chars)", "AgentC")
+                        logger.info(f"[AgentC] \u2705 Loaded project-specific override ({len(cartridge_override)} chars)", "AgentC")
                 
             except Exception as e:
-                logger.error(f"[AgentC] DB prompt load failed: {e}, falling back to legacy rules", "AgentC")
-                core_rules = cartridge_instance.get_rules(node_data)
+                logger.error(f"[AgentC] DB prompt load failed: {e}. No mock will be used. Proceeding with empty rules.", "AgentC")
+                core_rules = ""
         
         # Combine Core + Override
         rules = f"{core_rules}"

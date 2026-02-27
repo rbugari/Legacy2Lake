@@ -130,7 +130,12 @@ class PromptService:
             )
             
             if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
-                prompt = Prompt(response.data[0])
+                data = response.data[0]
+                
+                # Create prompt object with safe dict defaults
+                prompt = Prompt(data)
+                
+                # Update cache
                 self._cache_prompt(prompt_id, prompt)
                 return prompt
             else:

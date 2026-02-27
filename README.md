@@ -1,24 +1,38 @@
 # Legacy2Lake Documentation Index (v4.0 GA)
 
-> **Version:** v4.0 GA (February 24, 2026) ✅ **RELEASED**  
-> **Status:** Production Ready - Zero-Hardcode Architecture & UI Action Consolidation Complete
+> **Version:** v4.0.1 GA (February 25, 2026) ✅ **RELEASED**  
+> **Status:** Production Ready - Zero-Hardcode Architecture, Two-Layer Prompts & Discovery Enhancements
 
 Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures using advanced AI synthesis.
 
-## 🎉 What's New in v4.0 GA (Feb 2026)
+## 🎉 What's New in v4.0.1 GA (Feb 2026)
+ 
+**Two-Layer Prompt Architecture** (Feb 25):
+- ✔️ **Core System Safety**: Global system prompts locked for safety.
+- ✔️ **Project-Specific Overrides**: Authorized users can now supply project-level rule amendments.
+- ✔️ **Dynamic Assembly**: Cartridges dynamically join core rules and overrides right before execution.
+
+**Identity & Governance Governance** (Feb 25):
+- ✔️ **Role-Based Visibility limits**: Collaborators and Viewers only see assigned projects.
+- ✔️ **Admin Impersonation**: Admins bypass tenant boundaries for full platform visibility and troubleshooting.
 
 **Zero-Hardcode Architecture** (Feb 15):
 - ✔️ **Database-Driven Parser Registry**: Add new tech (Talend, Oracle) via DB inserts, ZERO code changes.
-- ✔️ **Dynamic Prompt Management**: All prompts (Agent A, B, C, F, G) loaded from database, not hardcoded files.
+- ✔️ **Dynamic Prompt Management**: All prompts (Agent A, B, C, F, G) loaded from database.
 - ✔️ **Automatic Versioning**: `utm_prompts_history` tracks all prompt changes.
-
-**UI Componentization & Action Consolidation** (Feb 24):
+ 
+**Robust Discovery & UI Componentization** (Feb 24-25):
+- ✔️ **Pre-Classification Grid**: Categorize assets individually as CORE, SUPPORT, or IGNORE prior to triage. 
+- ✔️ **Robust Folder Heuristics**: Dynamic scanning gracefully identifies historical ("triage") or new ("source") directory definitions natively.
 - ✔️ **Unified File & Log Explorers**: Replaced disparate implementations with unified components.
-- ✔️ **Sidebar Execution Ecosystem**: All execution actions (Run Analysis, Run Pipeline, Refine, Export) moved from header to Sidebar for a cleaner focus.
-- ✔️ **Streamlined Stage Headers**: `<StageHeader>` restricted to only the primary "Next Phase: [Stage]" navigation action.
-- ✔️ **Performance Fixes**: Eliminated circular dependencies reducing backend load by 95%.
+- ✔️ **Sidebar Execution Ecosystem**: Moved actions to Sidebar for a cleaner focus.
+ 
+**Value Delivered**: Scale multi-tenant migrations with highly confident discovery classification and uncompromised core code safety.
 
-**Value Delivered**: $500K annual value across prompt agility, automated extraction, and UX stability.
+### ⏳ Pending to Close v4.0 GA
+1. **Client GitHub Integration**: Export mapped outputs directly to a target client GitHub repository for final deployment.
+2. **Review PDF Reports**: Visual review of formatting, tables, and variable integrations in exported final status PDF reports.
+3. **Comprehensive Testing Plan**: Full validation of all updated flows via end-to-end multi-tenant simulation testing.
 
 ## 🚀 Getting Started
 - **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
@@ -85,5 +99,5 @@ Legacy2Lake utilizes a 6-stage "Compiler Flow" to ensure logic is extracted corr
 - **Hyperscale Storage**: All artifacts stored in high-availability Cloudflare R2.
 
 ---
-*Legacy2Lake Documentation Framework v4.0 GA - Zero-Hardcode & UI Action Consolidation*
-*Released: February 24, 2026*
+*Legacy2Lake Documentation Framework v4.0.1 GA - Zero-Hardcode, Deep RBAC, Pre-Classification*
+*Released: February 25, 2026*

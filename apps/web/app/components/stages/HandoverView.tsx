@@ -171,9 +171,14 @@ export default function HandoverView({
 
     // Listen for sidebar triggers
     React.useEffect(() => {
-        if (activeSection === 'export') {
+        if (activeSection === 'export-delivery') {
             if (!isExporting) {
                 handleExport('delivery');
+            }
+            if (onSectionChange) onSectionChange('handover-pkg');
+        } else if (activeSection === 'export-full') {
+            if (!isExporting) {
+                handleExport('governance');
             }
             if (onSectionChange) onSectionChange('handover-pkg');
         }

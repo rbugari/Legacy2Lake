@@ -368,14 +368,63 @@ async def save_pre_classification(
     try:
         classification = payload.get("classification", {})
         
+        # Helper: Determine project name to locate files
+        project_name = project_id
+        try:
+            name_resp = db.client.table("utm_projects").select("name").eq("project_id", project_id)
+            if db.tenant_id:
+                name_resp = name_resp.eq("tenant_id", db.tenant_id)
+            result = name_resp.execute()
+            if result.data and len(result.data) > 0:
+                project_name = result.data[0].get("name", project_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch project name in pre-classification: {e}")
+
         # Guardar en project settings (método simple)
         current_settings = await db.get_project_settings(project_id) or {}
         current_settings["pre_classification"] = classification
         await db.update_project_settings(project_id, current_settings)
+
+        # Copiar los archivos clasificados como CORE/SUPPORT desde source a triage
+        storage = PersistenceService.get_storage()
+        project_base = PersistenceService.ensure_solution_dir(project_name, tenant_id=db.tenant_id)
         
+        import shutil
+        import os
+
+        # First, ensure Triage folder exists and optionally clear it ? 
+        # For safety we just overwrite.
+        copied_count = 0
+        for file_path, data in classification.items():
+             if data.get("include", False) or data.get("classification") in ["CORE", "SUPPORT"]:
+                  src_fs_path = storage.resolve_absolute_path(file_path)
+                  if src_fs_path and os.path.exists(src_fs_path):
+                       # Extract relative to project_base
+                       # file_path is like tenant/project_name/source/file.sql
+                       # project_base is like tenant/project_name
+                       
+                       # We remove project_base prefix
+                       if file_path.startswith(project_base):
+                            rel_to_project = file_path[len(project_base):].lstrip('/')
+                            parts = rel_to_project.split('/')
+                            # Force the outer folder to be 'triage' (STAGE_TRIAGE)
+                            if len(parts) > 1:
+                                parts[0] = PersistenceService.STAGE_TRIAGE
+                                new_rel = '/'.join(parts)
+                                
+                                dst_file_path = f"{project_base.rstrip('/')}/{new_rel}"
+                                dst_fs_path = storage.resolve_absolute_path(dst_file_path)
+                                
+                                if src_fs_path != dst_fs_path:
+                                     os.makedirs(os.path.dirname(dst_fs_path), exist_ok=True)
+                                     shutil.copy2(src_fs_path, dst_fs_path)
+                                     copied_count += 1
+        
+        logger.info(f"Copied {copied_count} selected files to triage folder.")
+
         return {
             "success": True,
-            "message": f"Pre-classification saved for {len(classification)} files"
+            "message": f"Pre-classification saved and {copied_count} files moved to Triage."
         }
     
     except Exception as e:
@@ -941,79 +990,78 @@ async def list_source_files(project_id: str, db: SupabasePersistence = Depends(g
         triage_files = []
         file_types = {}
         
-        for node in all_files:
-            # We are looking for files starting with "Triage/" or inside Triage folder?
-            # List structure is recursive.
-            # We need to find the "Triage" folder node.
-            
-            def find_triage(nodes):
-                for n in nodes:
-                    if n["name"] == PersistenceService.STAGE_TRIAGE:
-                        return n
-                    if n.get("children"):
-                        found = find_triage(n["children"])
-                        if found: return found
-                return None
-            
-            # The structure from list_files might change (it's list of dictionaries).
-            # But the root of get_project_files returns the contents of the solution dir.
-            # So "Triage" should be a top-level child.
-            
-            # [v4.5] Robust Folder Detection (Align with DiscoveryService)
-            # Find candidate folder case-insensitively
-            candidate_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "inbound"]
-            
-            triage_node = None
-            for n in all_files:
-                if n["type"] == "folder" and n["name"].lower() in candidate_names:
-                    # If we find "source" or "triage", we use it. 
-                    # Prefer "source" if both exist (though unlikely)
-                    if not triage_node or n["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
-                        triage_node = n
-            
-            if not triage_node or (not triage_node.get("children") and triage_node.get("type") == "folder"):
-                 # Return empty if no triage/source folder or it's empty
-                 return {
-                    "success": True,
-                    "project_id": project_id,
-                    "source_path": PersistenceService.STAGE_SOURCE.capitalize(),
-                    "file_count": 0,
-                    "file_types": {},
-                    "files": []
-                }
-            
-            # Now flatten the files inside Triage
-            def collect_files(nodes, parent_path=""):
-                for n in nodes:
-                    if n["type"] == "folder":
-                        collect_files(n.get("children", []), os.path.join(parent_path, n["name"]))
-                    else:
-                        ext = n["name"].split('.')[-1].lower() if '.' in n["name"] else 'no_ext'
-                        file_types[ext] = file_types.get(ext, 0) + 1
-                        
-                        # Fix system file checks (if any)
-                        if n["name"] in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
-                            continue
-
-                        triage_files.append({
-                            "name": n["name"],
-                            "path": n["path"], # This is the full path/key from StorageProvider
-                            "full_path": n["path"], 
-                            "size": n["size"],
-                            "extension": ext,
-                            "type": _classify_file_type(ext)
-                        })
-
-            collect_files(triage_node.get("children", []), "")
-            
-            return {
+        # We are looking for files starting with "Triage/" or inside Triage folder?
+        # List structure is recursive.
+        # We need to find the "Triage" folder node.
+        
+        def find_triage(nodes):
+            for n in nodes:
+                if n["name"] == PersistenceService.STAGE_TRIAGE:
+                    return n
+                if n.get("children"):
+                    found = find_triage(n["children"])
+                    if found: return found
+            return None
+        
+        # The structure from list_files might change (it's list of dictionaries).
+        # But the root of get_project_files returns the contents of the solution dir.
+        # So "Triage" should be a top-level child.
+        
+        # [v4.5] Robust Folder Detection (Align with DiscoveryService)
+        # Find candidate folder case-insensitively
+        candidate_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "inbound"]
+        
+        triage_node = None
+        for n in all_files:
+            if n["type"] == "folder" and n["name"].lower() in candidate_names:
+                # If we find "source" or "triage", we use it. 
+                # Prefer "source" if both exist (though unlikely)
+                if not triage_node or n["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
+                    triage_node = n
+        
+        if not triage_node or (not triage_node.get("children") and triage_node.get("type") == "folder"):
+             # Return empty if no triage/source folder or it's empty
+             return {
                 "success": True,
                 "project_id": project_id,
-                "source_path": "Source", # Conceptual path
-                "file_count": len(triage_files),
-                "file_types": file_types,
-                "files": triage_files
+                "source_path": PersistenceService.STAGE_SOURCE.capitalize(),
+                "file_count": 0,
+                "file_types": {},
+                "files": []
             }
+        
+        # Now flatten the files inside Triage
+        def collect_files(nodes, parent_path=""):
+            for n in nodes:
+                if n["type"] == "folder":
+                    collect_files(n.get("children", []), os.path.join(parent_path, n["name"]))
+                else:
+                    ext = n["name"].split('.')[-1].lower() if '.' in n["name"] else 'no_ext'
+                    file_types[ext] = file_types.get(ext, 0) + 1
+                    
+                    # Fix system file checks (if any)
+                    if n["name"] in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+                        continue
+
+                    triage_files.append({
+                        "name": n["name"],
+                        "path": n["path"], # This is the full path/key from StorageProvider
+                        "full_path": n["path"], 
+                        "size": n["size"],
+                        "extension": ext,
+                        "type": _classify_file_type(ext)
+                    })
+
+        collect_files(triage_node.get("children", []), "")
+        
+        return {
+            "success": True,
+            "project_id": project_id,
+            "source_path": "Source", # Conceptual path
+            "file_count": len(triage_files),
+            "file_types": file_types,
+            "files": triage_files
+        }
             
     except Exception as e:
         import traceback
@@ -1169,9 +1217,9 @@ async def get_sidebar_metrics(
                 qa_result = await qa_service.assess(project_id)
                 metrics["quickAssessment"] = {
                     "score": qa_result.score,
-                    "readability": qa_result.readability_score,
-                    "complexity": qa_result.complexity_score,
-                    "risk": qa_result.estimated_risk
+                    "readability": 0, # Not available in QuickAssessmentResult
+                    "complexity": 0,  # Not available in QuickAssessmentResult
+                    "risk": qa_result.semaforo
                 }
             except Exception as e:
                 logger.warning(f"[SidebarMetrics] Quick assessment failed: {e}", "ProjectsRouter")

@@ -19,22 +19,31 @@ class DiscoveryService:
         project_base = PersistenceService.ensure_solution_dir(project_id, tenant_id)
         storage = PersistenceService.get_storage()
         
-        target_folder = source_folder or PersistenceService.STAGE_TRIAGE
+        target_folder = source_folder or PersistenceService.STAGE_SOURCE
         
         # [Refinement] Find target folder case-insensitively
         triage_path = None
         try:
             root_items = storage.list_files(project_base, recursive=False)
-            triage_names = [target_folder.lower(), "source", "triage", "inbound"]
             
+            # 1. Prioritize the explicitly requested target_folder
             for item in root_items:
-                if item["type"] == "folder" and item["name"].lower() in triage_names:
+                if item["type"] == "folder" and item["name"].lower() == target_folder.lower():
                     triage_path = item["path"]
                     break
+            
+            # 2. If target NOT matched, try fallback heuristics for "source/triage" concepts
+            if not triage_path:
+                triage_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "inbound"]
+                for item in root_items:
+                    if item["type"] == "folder" and item["name"].lower() in triage_names:
+                        # Prefer "source" if multiple matching folders exist
+                        if not triage_path or item["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
+                            triage_path = item["path"]
         except Exception as e:
             print(f"[Discovery] Error listing project root: {e}")
 
-        # Fallback if not found: use default
+        # Fallback if not found: use default string path
         if not triage_path:
             triage_path = f"{project_base.rstrip('/')}/{target_folder}"
         
