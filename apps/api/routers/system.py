@@ -146,6 +146,158 @@ async def create_custom_model(payload: dict, db: SupabasePersistence = Depends(g
     db.client.table("utm_model_catalog").insert(data).execute()
     return {"success": True}
 
+@router.post("/catalog/test")
+async def test_model_connection(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """
+    Pings a specific model with a simple 'Hello, who are you?' message to
+    verify the connection, credentials, and deployment are working.
+    Accepts { model_id } in the body.
+    Returns { success, response, latency_ms, model_id, provider, deployment }.
+    """
+    import time
+    from langchain_core.messages import HumanMessage
+
+    model_id = payload.get("model_id")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="model_id required")
+
+    # 1. Load model config from catalog
+    model_res = db.client.table("utm_model_catalog").select("*").eq("model_id", model_id).execute()
+    if not model_res.data:
+        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found in catalog")
+    model = model_res.data[0]
+
+    provider = (model.get("provider") or "azure").lower()
+    deployment = model.get("deployment_id") or model.get("model_id")
+    api_version = model.get("api_version")
+    api_url = model.get("api_url")
+
+    # 2. Load credentials from vault (tenant-specific)
+    tenant_id = db.tenant_id
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="Tenant context required to access vault credentials")
+
+    vault_res = db.client.table("utm_provider_vault")\
+        .select("api_key, base_url")\
+        .eq("tenant_id", tenant_id)\
+        .ilike("provider_name", provider)\
+        .execute()
+
+    if not vault_res.data or not vault_res.data[0].get("api_key"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No API Key found for provider '{provider}' in vault. Please configure it in Settings > Provider Vault."
+        )
+
+    api_key = vault_res.data[0]["api_key"]
+    vault_url = vault_res.data[0].get("base_url")
+    endpoint = vault_url or api_url
+
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="No endpoint URL found in vault or model config")
+
+    # 3. Build LLM client
+    try:
+        if provider == "azure":
+            from langchain_openai import AzureChatOpenAI
+            llm = AzureChatOpenAI(
+                azure_endpoint=endpoint,
+                azure_deployment=deployment,
+                openai_api_version=api_version or "2024-05-01-preview",
+                api_key=api_key,
+                temperature=0,
+                max_tokens=200
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model=deployment,
+                api_key=api_key,
+                base_url=endpoint,
+                temperature=0,
+                max_tokens=200
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize LLM client: {str(e)}")
+
+    # 4. Send test ping
+    t0 = time.time()
+    try:
+        response = await llm.ainvoke([HumanMessage(content="Hello! Who are you? Answer in one sentence.")])
+        latency_ms = int((time.time() - t0) * 1000)
+        return {
+            "success": True,
+            "response": response.content,
+            "latency_ms": latency_ms,
+            "model_id": model_id,
+            "provider": provider,
+            "deployment": deployment
+        }
+    except Exception as e:
+        latency_ms = int((time.time() - t0) * 1000)
+        error_msg = str(e)
+        # Simplify common Azure error messages
+        if "401" in error_msg or "Unauthorized" in error_msg:
+            error_msg = "Invalid API Key (401 Unauthorized)"
+        elif "404" in error_msg or "DeploymentNotFound" in error_msg:
+            error_msg = f"Deployment '{deployment}' not found (404). Check the deployment name."
+        elif "InvalidURL" in error_msg or "connect" in error_msg.lower():
+            error_msg = f"Cannot connect to endpoint: {endpoint}"
+        raise HTTPException(status_code=502, detail=f"LLM test failed after {latency_ms}ms: {error_msg}")
+
+@router.delete("/catalog")
+async def delete_model(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """
+    Deletes a model from the catalog.
+    Accepts model_id in the request body to avoid URL-encoding issues
+    when the model_id itself is a URL (e.g. https://...).
+    """
+    model_id = payload.get("model_id")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="model_id required")
+    db.client.table("utm_model_catalog").delete().eq("model_id", model_id).execute()
+    return {"success": True}
+
+@router.post("/catalog/toggle")
+async def toggle_model(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """
+    Toggles a model's active state.
+    Accepts model_id in the request body to avoid URL path-routing issues.
+    """
+    model_id = payload.get("model_id")
+    is_active = payload.get("is_active")
+    if model_id is None or is_active is None:
+        raise HTTPException(status_code=400, detail="model_id and is_active required")
+    db.client.table("utm_model_catalog").update({"is_active": is_active}).eq("model_id", model_id).execute()
+    return {"success": True}
+
+@router.post("/catalog/update")
+async def update_model(payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """
+    Updates a model's metadata.
+    Accepts model_id in the request body to avoid URL path-routing issues.
+    """
+    model_id = payload.get("model_id") or payload.get("id")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="model_id required")
+    updates = {}
+    if "name" in payload:
+        updates["label"] = payload["name"]
+    if "label" in payload:
+        updates["label"] = payload["label"]
+    if "context" in payload:
+        updates["context_window"] = int(payload["context"])
+    if "deployment_id" in payload:
+        updates["deployment_id"] = payload["deployment_id"]
+    if "api_version" in payload:
+        updates["api_version"] = payload["api_version"]
+    if "api_url" in payload:
+        updates["api_url"] = payload["api_url"]
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    db.client.table("utm_model_catalog").update(updates).eq("model_id", model_id).execute()
+    return {"success": True}
+
 # --- Agent Matrix ---
 
 @router.get("/matrix")
@@ -207,6 +359,42 @@ async def update_vault(request: Request, payload: dict, db: SupabasePersistence 
         data["provider_name"] = provider
         data["tenant_id"] = tenant_id
         db.client.table("utm_provider_vault").insert(data).execute()
+    return {"success": True}
+
+@router.post("/vault/delete")
+async def delete_vault_provider(request: Request, payload: dict, db: SupabasePersistence = Depends(get_db)):
+    """
+    Deletes a provider from the vault.
+    Blocked if the tenant has models in utm_model_catalog that use this provider.
+    """
+    tenant_id = db.tenant_id or request.headers.get("x-tenant-id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="Missing Tenant Context")
+
+    provider = payload.get("provider")
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider required")
+
+    # Guardian: block if any models still reference this provider
+    models_res = db.client.table("utm_model_catalog")\
+        .select("model_id, label")\
+        .eq("tenant_id", tenant_id)\
+        .ilike("provider", provider)\
+        .execute()
+
+    if models_res.data:
+        model_names = ", ".join([m.get("label") or m.get("model_id") for m in models_res.data[:3]])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete: {len(models_res.data)} model(s) still use this provider ({model_names}). Remove them first from Model Catalog."
+        )
+
+    db.client.table("utm_provider_vault")\
+        .delete()\
+        .eq("tenant_id", tenant_id)\
+        .ilike("provider_name", provider)\
+        .execute()
+
     return {"success": True}
 
 # --- Cartridges ---

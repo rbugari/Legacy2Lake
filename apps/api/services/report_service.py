@@ -38,20 +38,78 @@ class ReportService:
             processed_assets = []
             for a in assets:
                 asset_copy = a.copy()
-                # If category is missing, try to get it from 'type'
-                if not asset_copy.get('category'):
-                    asset_copy['category'] = a.get('type', 'SUPPORT')
+
+                # ── Category (CORE/SUPPORT/IGNORED) ───────────────────────────────────
+                # In utm_objects: 'type' = CORE/SUPPORT/IGNORED (triage class)
+                #                 'category' = migrable/soporte/documentacion (file class)
+                # The template filters on asset.category == 'CORE' so we normalise here.
+                triage_class = (a.get('type') or '').upper()
+                if triage_class in ('CORE', 'SUPPORT', 'IGNORED'):
+                    asset_copy['category'] = triage_class
+                elif (a.get('category') or '').upper() in ('CORE', 'SUPPORT', 'IGNORED'):
+                    asset_copy['category'] = a['category'].upper()
+                else:
+                    asset_copy['category'] = 'SUPPORT'  # safe fallback
+
+                # ── PII flag ──────────────────────────────────────────────────────────
+                # DB stores 'is_pii'; template expects 'has_pii'
+                asset_copy['has_pii'] = bool(a.get('is_pii') or a.get('has_pii'))
+                if asset_copy['has_pii']:
+                    asset_copy['pii_reason'] = (a.get('metadata') or {}).get('pii_reason', 'Flagged by forensic analyser')
+
+                # ── Complexity ────────────────────────────────────────────────────────
+                # Not stored directly; try metadata then derive from criticality.
+                meta = a.get('metadata') or {}
+                complexity = (
+                    a.get('complexity') or
+                    meta.get('complexity') or
+                    meta.get('complexity_level')
+                )
+                if not complexity:
+                    crit = (a.get('criticality') or 'P3').upper()
+                    complexity = {'P1': 'HIGH', 'P2': 'MEDIUM'}.get(crit, 'LOW')
+                asset_copy['complexity'] = complexity.upper()
+
+                # ── Display type (file extension / detected tech) ─────────────────────
+                # 'type' in DB = CORE/SUPPORT/IGNORED — not useful for the Type column.
+                # Use the source path extension or metadata hint instead.
+                src = a.get('source_path') or a.get('filename') or ''
+                ext = src.rsplit('.', 1)[-1].upper() if '.' in src else ''
+                asset_copy['asset_type'] = (
+                    meta.get('asset_type') or
+                    meta.get('detected_tech') or
+                    meta.get('file_type') or
+                    ext or
+                    'Unknown'
+                )
+
                 processed_assets.append(asset_copy)
 
             # Calculate statistics using the corrected mapping
             stats = self._calculate_triage_stats(processed_assets)
             
+            # Sprint 14: schema intelligence stats
+            schema_stats = self._calculate_schema_stats(processed_assets)
+
+            # Quality score distribution
+            quality_dist = {}
+            for a in processed_assets:
+                qs = a.get('quality_score') or (a.get('metadata') or {}).get('quality_score')
+                if qs is not None:
+                    try:
+                        bucket = f"{int(float(qs) // 10) * 10}-{int(float(qs) // 10) * 10 + 9}"
+                        quality_dist[bucket] = quality_dist.get(bucket, 0) + 1
+                    except (TypeError, ValueError):
+                        pass
+
             # Prepare template context
             context = {
                 'project': project,
                 'assets': processed_assets[:1000],  # Increased to 1000 for visibility
                 'stats': stats,
-                'scout': project.get('settings', {}).get('scout_assessment', {}),
+                'schema_stats': schema_stats,
+                'quality_dist': quality_dist,
+                'scout': self._resolve_scout(project),
                 'support_intel': project.get('settings', {}).get('support_intelligence', []),
                 'generated_date': datetime.now().strftime('%B %d, %Y'),
                 'brand_logo': self._to_file_url(self.brand_dir / 'logo.png'),
@@ -77,13 +135,28 @@ class ReportService:
             if assets is None: assets = []
             if outputs is None: outputs = []
             
+            # Sprint 14: Medallion breakdown + governance score
+            medallion_stats = self._calculate_medallion_stats(outputs)
+            governance_score = (
+                project.get('governance_score')
+                or project.get('settings', {}).get('governance_score')
+                or project.get('settings', {}).get('audit_result', {}).get('score')
+            )
+            certification_score = (
+                project.get('certification_score')
+                or project.get('settings', {}).get('certification_score')
+            )
+
             # Prepare template context
             context = {
                 'project': project,
                 'assets': assets,
                 'outputs': outputs,
                 'timeline': timeline,
-                'scout': project.get('settings', {}).get('scout_assessment', {}),
+                'medallion_stats': medallion_stats,
+                'governance_score': governance_score,
+                'certification_score': certification_score,
+                'scout': self._resolve_scout(project),
                 'support_intel': project.get('settings', {}).get('support_intelligence', []),
                 'generated_date': datetime.now().strftime('%B %d, %Y'),
                 'total_outputs': len(outputs),
@@ -102,6 +175,133 @@ class ReportService:
             logger.error(f"Error in generate_final_report: {e}", exc_info=True)
             return b""
     
+    def _calculate_schema_stats(self, assets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract PK/FK detection stats and column profiles from asset metadata (Sprint 14)"""
+        if not assets:
+            return {'pk_count': 0, 'fk_count': 0, 'detection_rate': 0,
+                    'total_columns': 0, 'assets_with_schema': 0, 'column_profiles': []}
+
+        pk_count = 0
+        fk_count = 0
+        total_columns = 0
+        assets_with_schema = 0
+        column_profiles = []
+
+        for a in assets:
+            meta = a.get('metadata') or {}
+            schema = meta.get('schema_analysis') or meta.get('schema') or {}
+            cols = schema.get('columns') or meta.get('columns') or []
+            pks = schema.get('primary_keys') or meta.get('primary_keys') or []
+            fks = schema.get('foreign_keys') or meta.get('foreign_keys') or []
+
+            if cols or pks or fks:
+                assets_with_schema += 1
+                pk_count += len(pks)
+                fk_count += len(fks)
+                total_columns += len(cols)
+
+                column_profiles.append({
+                    'asset': a.get('name', '?'),
+                    'column_count': len(cols),
+                    'pk_count': len(pks),
+                    'fk_count': len(fks),
+                    'pii_columns': sum(1 for c in cols if c.get('is_pii') or c.get('pii')),
+                    'quality_score': meta.get('quality_score') or a.get('quality_score') or '-',
+                    'data_types': ', '.join(sorted(set(
+                        c.get('type') or c.get('data_type', '') for c in cols if c.get('type') or c.get('data_type')
+                    ))[:5]) or '-',
+                })
+
+        detection_rate = (assets_with_schema / len(assets) * 100) if assets else 0
+
+        return {
+            'pk_count': pk_count,
+            'fk_count': fk_count,
+            'detection_rate': round(detection_rate, 1),
+            'total_columns': total_columns,
+            'assets_with_schema': assets_with_schema,
+            'column_profiles': column_profiles[:50],  # limit for report
+        }
+
+    def _calculate_medallion_stats(self, outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Calculate Medallion Architecture breakdown from output artifacts (Sprint 14)"""
+        if not outputs:
+            return {'bronze': 0, 'silver': 0, 'gold': 0, 'other': 0,
+                    'bronze_files': [], 'silver_files': [], 'gold_files': []}
+
+        bronze, silver, gold, other = [], [], [], []
+        for f in outputs:
+            name = (f.get('name') or '').lower()
+            layer = (f.get('layer') or f.get('medallion_layer') or '').lower()
+            # Detect layer from metadata or filename
+            if 'bronze' in layer or 'bronze' in name:
+                bronze.append(f.get('name', ''))
+            elif 'silver' in layer or 'silver' in name:
+                silver.append(f.get('name', ''))
+            elif 'gold' in layer or 'gold' in name:
+                gold.append(f.get('name', ''))
+            else:
+                other.append(f.get('name', ''))
+
+        return {
+            'bronze': len(bronze),
+            'silver': len(silver),
+            'gold': len(gold),
+            'other': len(other),
+            'bronze_files': bronze[:10],
+            'silver_files': silver[:10],
+            'gold_files': gold[:10],
+        }
+
+    def _resolve_scout(self, project: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Returns a scout dict that the triage_report template understands.
+        Priority:
+          1. project.settings.scout_assessment  (older projects, Agent S era)
+          2. project.quick_assessment           (Sprint-14+, Quick Assessment)
+          3. {}                                 (no scan yet — show warning block)
+        """
+        settings = project.get('settings') or {}
+
+        # Legacy path
+        sa = settings.get('scout_assessment') or {}
+        if sa and (sa.get('completeness_score') or sa.get('assessment_summary') or sa.get('detected_gaps')):
+            return sa
+
+        # Sprint-14+ path: quick_assessment is a direct column on utm_projects
+        qa = project.get('quick_assessment') or {}
+        if not qa:
+            return {}
+
+        # Map QuickAssessmentResult fields → template fields
+        blockers = qa.get('blockers') or []
+        detected_gaps = [
+            {
+                'category': 'Blocker',
+                'gap_description': b,
+                'impact': 'HIGH',
+                'suggested_file': None
+            }
+            for b in blockers
+            if isinstance(b, str) and b.strip()
+        ]
+
+        techs = qa.get('detected_techs') or []
+        detected_tech = ', '.join(techs) if techs else None
+
+        return {
+            'completeness_score': qa.get('score', 0),
+            'detected_technology': detected_tech,
+            'assessment_summary': (
+                qa.get('llm_opinion') or
+                f"Quick Assessment completed. Viability score: {qa.get('score', 0)}/100 "
+                f"({qa.get('semaforo', 'yellow')}). "
+                f"{len(qa.get('file_details') or [])} files analysed — "
+                f"{(qa.get('file_breakdown') or {}).get('MIGRABLE', 0)} migratable."
+            ),
+            'detected_gaps': detected_gaps,
+        }
+
     def _calculate_triage_stats(self, assets: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate statistics from assets for triage report - Defensively"""
         if not assets or not isinstance(assets, list):

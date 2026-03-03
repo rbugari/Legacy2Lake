@@ -67,32 +67,39 @@ function WorkspaceContent() {
 
     // Initialize activeSection when activeView changes - Sprint 14
     // Uses activeView (what user is viewing) not projectStage (real stage)
-    // This allows sidebar to sync when user clicks toolbar buttons
     useEffect(() => {
         const sections = getSectionsForStage(activeView);
         if (sections.length === 0) return;
 
-        // Get all valid section IDs (including nested children)
-        const allSectionIds: string[] = [];
+        // Collect LEAF section IDs — skip pure placeholder groups (e.g. 'quick-info')
+        const leafSectionIds: string[] = [];
         sections.forEach(section => {
-            allSectionIds.push(section.id);
-            if (section.children) {
-                section.children.forEach(child => {
-                    allSectionIds.push(child.id);
-                });
+            if (section.children && section.children.length > 0) {
+                section.children.forEach(child => leafSectionIds.push(child.id));
+            } else if (section.id !== 'quick-info') {
+                // Only include top-level sections that aren't the placeholder
+                leafSectionIds.push(section.id);
             }
         });
 
-        // If current activeSection doesn't exist in current stage, reset to first available
-        if (!allSectionIds.includes(activeSection)) {
-            // Prefer first child if section has children, otherwise use section id
-            const firstSection = sections[0];
-            const firstId = firstSection.children && firstSection.children.length > 0
-                ? firstSection.children[0].id
-                : firstSection.id;
-            setActiveSection(firstId);
-        }
-    }, [activeView]); // Changed from projectStage to activeView
+        // If current activeSection is already valid for this stage — keep it
+        if (leafSectionIds.includes(activeSection)) return;
+
+        // Per-stage smart defaults: first match wins
+        const STAGE_DEFAULTS: Record<number, string[]> = {
+            0: ['logs', 'upload', 'files', 'assessment'],
+            1: ['grid', 'graph', 'logs', 'context'],
+            2: ['progress', 'logs', 'code', 'files'],
+            3: ['status', 'logs', 'summary', 'validation'],
+            4: ['report', 'audit', 'quality', 'documentation'],
+            5: ['files', 'output', 'logs'],
+        };
+
+        const preferred = (STAGE_DEFAULTS[activeView] ?? [])
+            .find(id => leafSectionIds.includes(id));
+
+        setActiveSection(preferred ?? leafSectionIds[0] ?? '');
+    }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Mock data for Stage 3
     const [originalCode, setOriginalCode] = useState("-- SQL Legacy Code\nSELECT * FROM Sales WHERE Date > '2023-01-01'");

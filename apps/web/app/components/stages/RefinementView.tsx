@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, FileText, Database, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, ArrowRight, Maximize2, Minimize2, RotateCcw, X, Code, Shield, Zap, AlertCircle, BarChart3 } from 'lucide-react';
+import { Play, FileText, Database, Terminal, Layers, CheckCircle, Search, FolderOpen, ChevronRight, ChevronDown, FileCode, Folder, Settings, Brain, Bot, RefreshCw, Maximize2, Minimize2, RotateCcw, X, Code, Shield, Zap, AlertCircle, BarChart3 } from 'lucide-react';
 import StageHeader from "../StageHeader";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -97,6 +97,7 @@ export default function RefinementView({
     const [isInitialLoading, setIsInitialLoading] = useState(false); // Initial data fetch
     const { confirm, ConfirmDialog } = useConfirm();
     const [isRefinementRunning, setIsRefinementRunning] = useState(false); // Active refinement process
+    const isRefinementRunningRef = useRef(false); // Ref to read in callbacks without adding to deps
     const [isFetchingLogs, setIsFetchingLogs] = useState(false); // True while fetching logs
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
@@ -114,15 +115,40 @@ export default function RefinementView({
     useEffect(() => {
         const fetchState = async () => {
             try {
-                // Load refinement state
-                const res = await fetchWithAuth(`projects/${projectId}/refinement/state`);
-                const data = await res.json();
-
-                if (data.log && data.log.length > 0) {
-                    setLogs(data.log);
+                // Check project status first to decide whether to load old logs
+                const REFINED_OR_BEYOND = ['REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
+                let currentStatus = '';
+                try {
+                    const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
+                    const { status } = await statusRes.json();
+                    currentStatus = status;
+                    if (REFINED_OR_BEYOND.includes(status)) {
+                        console.log('[RefinementView] Restoring isFinished=true from status:', status);
+                        setIsFinished(true);
+                    }
+                } catch (err) {
+                    console.warn('[RefinementView] Could not restore status on mount:', err);
                 }
-                if (data.profile) {
-                    setProfile(data.profile);
+
+                // Only load previous logs if there's an active run or a completed run.
+                // If status is DRAFTED (just entered Refinement), start with empty logs.
+                const shouldLoadLogs = currentStatus === 'REFINING' || REFINED_OR_BEYOND.includes(currentStatus);
+
+                if (shouldLoadLogs) {
+                    const res = await fetchWithAuth(`projects/${projectId}/refinement/state`);
+                    const data = await res.json();
+
+                    if (data.log && data.log.length > 0) {
+                        setLogs(data.log);
+                    }
+                    if (data.profile) {
+                        setProfile(data.profile);
+                    }
+                }
+
+                // If refinement is actively running, start polling
+                if (currentStatus === 'REFINING') {
+                    setIsRefinementRunning(true);
                 }
 
                 // Load assets from discovery for SchemaViewer
@@ -145,6 +171,9 @@ export default function RefinementView({
         fetchState();
     }, [projectId]);
 
+    // Keep ref in sync with state
+    useEffect(() => { isRefinementRunningRef.current = isRefinementRunning; }, [isRefinementRunning]);
+
     const fetchRefinementLogs = useCallback(async () => {
         setIsFetchingLogs(true);
         try {
@@ -166,24 +195,23 @@ export default function RefinementView({
             const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
             const statusData = await statusRes.json();
 
-            // If status is REFINED and we're currently running, process is complete
-            if (statusData.status === "REFINED" && isRefinementRunning) {
-                console.log("[RefinementView] Refinement complete, stopping polling");
-                setIsRefinementRunning(false);
+            // If status is REFINED (or beyond), mark complete unconditionally.
+            // Previously we guarded with isRefinementRunningRef which caused the button
+            // to go dark after navigating away and coming back.
+            const REFINED_OR_BEYOND = ['REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
+            if (REFINED_OR_BEYOND.includes(statusData.status)) {
                 setIsFinished(true);
-
-                // Auto-transition to quality dashboard to see results
-                console.log("[RefinementView] Auto-transitioning to quality view");
-                setTimeout(() => {
-                    onSectionChange('quality');
-                }, 1500); // Small delay to see completion message
+                if (isRefinementRunningRef.current) {
+                    console.log("[RefinementView] Refinement complete, stopping polling");
+                    setIsRefinementRunning(false);
+                }
             }
         } catch (e) {
             console.error("[RefinementView] Failed to load refinement logs", e);
         } finally {
             setIsFetchingLogs(false);
         }
-    }, [projectId, isRefinementRunning, onSectionChange]);
+    }, [projectId]); // Stable ref: no isRefinementRunning or onSectionChange in deps
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -206,7 +234,7 @@ export default function RefinementView({
                 if (interval) clearInterval(interval);
             };
         }
-    }, [isRefinementRunning, fetchRefinementLogs, onSectionChange]);
+    }, [isRefinementRunning, onSectionChange]); // fetchRefinementLogs is now stable (no state in its deps)
 
     // Reload profile data when refinement completes (separate useEffect to avoid loops)
     const prevRefinementRunning = useRef(false);
@@ -700,7 +728,19 @@ export default function RefinementView({
 
                     {/* Logs Section */}
                     {activeSection === 'logs' && (
-                        <div className="max-w-7xl mx-auto space-y-6 flex flex-col h-full">
+                        <div className="max-w-7xl mx-auto flex flex-col h-full gap-4">
+
+                            {/* ── Completion Banner ── show when refinement is done */}
+                            {isComplete && !isRefinementRunning && (
+                                <div className="flex items-center gap-3 px-6 py-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <CheckCircle size={18} className="text-purple-400 shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-black text-purple-400 uppercase tracking-wide">Refinement Complete</p>
+                                        <p className="text-xs text-gray-500 mt-0.5">Code optimized and packaged — use the <strong className="text-gray-400">Next Phase</strong> button above to proceed to Governance.</p>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Fetch indicator */}
                             {isFetchingLogs && (
                                 <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

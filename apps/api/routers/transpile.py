@@ -270,6 +270,8 @@ async def _run_orchestration_background(
         )
         
         await db.log_execution(project_uuid, "MIGRATION", "Running full migration (Agents C → F → G)...", step="SYSTEM")
+        # Set status to DRAFTING before running so the orchestrator's status check passes
+        await db.update_project_status(project_uuid, "DRAFTING")
         result = await orchestrator.run_full_migration(limit=limit)
         
         await db.log_execution(project_uuid, "MIGRATION", f"Migration complete. Result: {result.get('status', 'success')}", step="SYSTEM")
@@ -358,8 +360,9 @@ async def trigger_orchestration(
         )
     
     # === MAIN ORCHESTRATION LOGIC ===
-    # DO NOT change status here - let run_full_migration do validations first
-    # Update: The background task will change status to ORCHESTRATING after validations
+    # Set status to DRAFTING here synchronously so run_full_migration's status check passes
+    await db.update_project_status(project_id, "DRAFTING")
+
     try:
         # Prepare DB config for background task (thread-safe)
         db_config = {

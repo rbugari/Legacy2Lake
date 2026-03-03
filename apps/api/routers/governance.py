@@ -268,16 +268,22 @@ async def get_project_status_gov(project_id: str, db: SupabasePersistence = Depe
 
 @router.get("/projects/{project_id}/governance")
 async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Returns the certification report and lineage for the project."""
+    """Returns the certification report. If cached (from background run), returns instantly. Otherwise generates synchronously."""
+    # Try cached report first — set by background task
+    settings = await db.get_project_settings(project_id) or {}
+    cached = settings.get("governance_report")
+    if cached:
+        return cached
+
     project_name = project_id
     if "-" in project_id:
         n = await db.get_project_name_by_id(project_id)
-        if n: 
+        if n:
             project_name = n
 
     service = GovernanceService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
-        report = await service.get_certification_report(project_id) # Consistent with UUID passing
+        report = await service.get_certification_report(project_id)
         return report
     except Exception as e:
         import traceback
@@ -289,6 +295,89 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
 async def run_audit_endpoint(project_id: str, db: SupabasePersistence = Depends(get_db)):
     """Triggers a fresh audit execution (Alias for /governance)."""
     return await get_governance(project_id, db)
+
+
+async def _run_governance_background(
+    project_id: str,
+    lock_id: str,
+    lock_service,
+    tenant_id: str,
+    client_id: str,
+):
+    """Runs governance certification in background, logging each step."""
+    db = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
+    try:
+        await db.clear_execution_logs(project_id, phase="GOVERNANCE")
+        await db.update_project_status(project_id, "GOVERNING")
+        await db.log_execution(project_id, "GOVERNANCE", "[SYSTEM] Governance pipeline started.", step="SYSTEM")
+        await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Loading refined artifacts and asset inventory...", step="AGENT_G")
+
+        service = GovernanceService(tenant_id=tenant_id, client_id=client_id)
+
+        await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Running compliance audit (Critic + Governor)...", step="AGENT_G")
+        report = await service.get_certification_report(project_id)
+
+        await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion lineage and COP score...", step="AGENT_G")
+
+        # Persist report in project settings for retrieval without re-running Agent G
+        settings = await db.get_project_settings(project_id) or {}
+        settings["governance_report"] = report
+        await db.update_project_settings(project_id, settings)
+
+        await db.update_project_status(project_id, "CERTIFIED")
+        score = report.get("score", 0)
+        await db.log_execution(project_id, "GOVERNANCE", f"[PROGRESS: 100/100] Governance complete. COP Score: {score}/100", step="SYSTEM")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await db.log_execution(project_id, "GOVERNANCE", f"[ERROR] Governance failed: {str(e)}", step="SYSTEM")
+        await db.update_project_status(project_id, "REFINED")  # rollback
+    finally:
+        try:
+            await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+        except Exception:
+            pass
+
+
+@router.post("/projects/{project_id}/governance/run")
+async def run_governance_background(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    identity: dict = Depends(get_identity),
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Starts governance certification in background. Poll /execution-logs?type=governance + project status CERTIFIED."""
+    tenant_id = identity.get("tenant_id")
+    username = identity.get("username", "Unknown User")
+    session_id = request.headers.get("X-Session-ID") or str(uuid.uuid4())
+
+    lock_service = LockService(tenant_id=tenant_id, client_id=identity.get("client_id"))
+    lock_id = None
+    try:
+        lock = await lock_service.acquire_lock(
+            project_id=project_id,
+            process_type="governance",
+            user_id=tenant_id,
+            username=username,
+            session_id=session_id,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.headers.get("x-forwarded-for") or "unknown",
+        )
+        lock_id = lock["lock_id"]
+    except ProcessLockError as e:
+        raise HTTPException(status_code=423, detail={"error": "Process already running", "message": e.message, "locked_by": e.locked_by})
+
+    background_tasks.add_task(
+        _run_governance_background,
+        project_id,
+        lock_id,
+        lock_service,
+        tenant_id,
+        identity.get("client_id"),
+    )
+    return {"status": "RUNNING", "message": "Governance pipeline started in background. Poll /execution-logs?type=governance for progress."}
 
 
 @router.post("/governance/document")
@@ -390,3 +479,70 @@ async def export_delivery(project_id: str, db: SupabasePersistence = Depends(get
         import traceback
         print(f"Delivery Export Error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate package: {str(e)}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Push Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GitHubPushRequest(BaseModel):
+    repo_url: str
+    token: str
+    branch: str = "legacy2lake-migration"
+    target_path: str = "modernized/"
+    commit_message: str = "Legacy2Lake: Add modernized migration code"
+    create_pr: bool = False
+    pr_title: str = "[Legacy2Lake] Modernization Artifacts"
+    pr_body: str = "Migration artifacts generated automatically by Legacy2Lake UTM v4.0."
+
+
+@router.post("/projects/{project_id}/github/push")
+async def push_to_github(
+    project_id: str,
+    payload: GitHubPushRequest,
+    db: SupabasePersistence = Depends(get_db),
+    identity: dict = Depends(get_identity),
+):
+    """
+    Push all generated migration artifacts (drafting + refinement) for a project
+    to a GitHub repository and optionally open a Pull Request.
+    """
+    try:
+        from apps.api.services.github_push_service import GitHubPushService
+
+        tenant_id = identity.get("tenant_id")
+
+        # Resolve project name from UUID
+        project_meta = await db.get_project_metadata(project_id)
+        if not project_meta:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_name = project_meta.get("name") or project_meta.get("project_name") or project_id
+        storage = PersistenceService.get_storage()
+        base_path = PersistenceService.ensure_solution_dir(project_name, tenant_id=tenant_id)
+
+        service = GitHubPushService(tenant_id=tenant_id)
+        result = await service.push_artifacts(
+            project_id=project_name,
+            storage=storage,
+            base_path=base_path,
+            repo_url=payload.repo_url,
+            token=payload.token,
+            branch=payload.branch,
+            target_path=payload.target_path,
+            commit_message=payload.commit_message,
+            create_pr=payload.create_pr,
+            pr_title=payload.pr_title,
+            pr_body=payload.pr_body,
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error", "Push failed"))
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"GitHub push failed: {str(e)}")
+

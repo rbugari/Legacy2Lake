@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchWithAuth } from "../../lib/auth-client";
-import { Database, Zap, Plus, X, Power, Edit2, Save, RefreshCw, Check, Trash2 } from "lucide-react";
+import { Database, Zap, Plus, X, Power, Edit2, Save, RefreshCw, Check, Trash2, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 interface Model {
     id: string;
@@ -32,6 +32,7 @@ export default function ModelCatalog() {
 
     const [availableProviders, setAvailableProviders] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
+    const [testResults, setTestResults] = useState<Record<string, { status: "loading" | "ok" | "error"; msg?: string; latency?: number }>>({});
 
     const fetchCatalog = () => {
         Promise.all([
@@ -65,10 +66,39 @@ export default function ModelCatalog() {
         fetchCatalog();
     }, []);
 
+    const handleTest = async (id: string) => {
+        setTestResults(prev => ({ ...prev, [id]: { status: "loading" } }));
+        try {
+            const res = await fetchWithAuth("system/catalog/test", {
+                method: "POST",
+                body: JSON.stringify({ model_id: id })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setTestResults(prev => ({
+                    ...prev,
+                    [id]: { status: "ok", msg: data.response, latency: data.latency_ms }
+                }));
+            } else {
+                setTestResults(prev => ({
+                    ...prev,
+                    [id]: { status: "error", msg: data.detail || "Unknown error" }
+                }));
+            }
+        } catch {
+            setTestResults(prev => ({ ...prev, [id]: { status: "error", msg: "Network error" } }));
+        }
+        // Auto-clear after 8s
+        setTimeout(() => setTestResults(prev => { const n = { ...prev }; delete n[id]; return n; }), 8000);
+    };
+
     const handleDelete = async (id: string) => {
         if (!confirm("¿Eliminar este modelo?")) return;
         try {
-            await fetchWithAuth(`system/catalog/${id}`, { method: "DELETE" });
+            await fetchWithAuth("system/catalog", {
+                method: "DELETE",
+                body: JSON.stringify({ model_id: id })
+            });
             fetchCatalog();
         } catch (e) {
             console.error("Failed to delete model", e);
@@ -80,10 +110,9 @@ export default function ModelCatalog() {
         setModels(models.map(m => m.id === id ? { ...m, is_active: newState } : m));
 
         try {
-            await fetchWithAuth(`system/catalog/${id}/toggle`, {
+            await fetchWithAuth("system/catalog/toggle", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ is_active: newState })
+                body: JSON.stringify({ model_id: id, is_active: newState })
             });
         } catch (e) {
             console.error("Failed to toggle model", e);
@@ -127,11 +156,11 @@ export default function ModelCatalog() {
         };
 
         try {
-            const endpoint = editMode ? `system/catalog/${currentModelId}/update` : "system/catalog";
+            // Use body-based endpoints to avoid routing issues with URL-shaped model IDs
+            const endpoint = editMode ? "system/catalog/update" : "system/catalog";
             await fetchWithAuth(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(editMode ? { ...payload, model_id: currentModelId } : payload)
             });
             fetchCatalog();
             setShowModal(false);
@@ -188,6 +217,16 @@ export default function ModelCatalog() {
                             </span>
                             <div className="flex gap-2">
                                 <button
+                                    onClick={() => handleTest(model.id)}
+                                    disabled={testResults[model.id]?.status === "loading"}
+                                    className="p-1 rounded text-slate-400 hover:text-cyan-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                                    title="Test Connection"
+                                >
+                                    {testResults[model.id]?.status === "loading"
+                                        ? <Loader2 size={14} className="animate-spin text-cyan-400" />
+                                        : <Zap size={14} />}
+                                </button>
+                                <button
                                     onClick={() => handleOpenEdit(model)}
                                     className="p-1 rounded text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
                                     title="Edit Model"
@@ -222,6 +261,20 @@ export default function ModelCatalog() {
                             </div>
                             {model.deployment_id && (
                                 <p className="text-[10px] text-[var(--text-secondary)] font-mono truncate">Deploy: {model.deployment_id}</p>
+                            )}
+                            {/* Test result badge */}
+                            {testResults[model.id] && testResults[model.id].status !== "loading" && (
+                                <div className={`mt-2 rounded-lg p-2 text-[10px] leading-relaxed ${testResults[model.id].status === "ok"
+                                        ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                                        : "bg-red-500/10 border border-red-500/20 text-red-400"
+                                    }`}>
+                                    <div className="flex items-center gap-1 font-bold mb-1">
+                                        {testResults[model.id].status === "ok"
+                                            ? <><CheckCircle2 size={11} /> Connected · {testResults[model.id].latency}ms</>
+                                            : <><XCircle size={11} /> Failed</>}
+                                    </div>
+                                    <p className="text-[9px] opacity-80 line-clamp-3">{testResults[model.id].msg}</p>
+                                </div>
                             )}
                         </div>
                     </div>

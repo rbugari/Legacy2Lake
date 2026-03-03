@@ -560,7 +560,7 @@ class SupabasePersistence:
             if not resolved_id:
                 return None
 
-            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active").eq("project_id", resolved_id)
+            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment").eq("project_id", resolved_id)
             if self.tenant_id and self.role != "ADMIN":
                 query = query.eq("tenant_id", self.tenant_id)
                 
@@ -974,10 +974,18 @@ class SupabasePersistence:
             print(f"Error updating design registry: {e}")
             return False
 
-    async def initialize_design_registry(self, project_id: str) -> bool:
+    async def initialize_design_registry(self, project_id: str, target_tech: str = None) -> bool:
         """Seeds default design standards for a new project."""
         from apps.api.services.knowledge_service import KnowledgeService
-        defaults = KnowledgeService.get_default_registry_entries(project_id)
+        # If target_tech not explicitly provided, read from project settings so the
+        # auto-initialized target_stack matches the project's chosen destination.
+        if not target_tech:
+            try:
+                settings = await self.get_project_settings(project_id) or {}
+                target_tech = settings.get("target_tech")
+            except Exception:
+                pass
+        defaults = KnowledgeService.get_default_registry_entries(project_id, target_tech=target_tech)
         try:
             # [Release 3.5] Table Renamed: 'design_registry' -> 'utm_design_registry'
             self.client.table("utm_design_registry").upsert(defaults, on_conflict="project_id, category, key").execute()

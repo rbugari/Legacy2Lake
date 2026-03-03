@@ -489,6 +489,50 @@ python sync_agent_f_prompt.py  # Example for Agent F
 
 ---
 
+## 🔧 v4.0 E2E Stabilization Fixes (Marzo 3, 2026)
+
+### Bug #1 — Drafting BLOCKED: Project status is 'TRIAGED'
+
+**Síntoma:** Al clickar "Run Pipeline", el log retornaba inmediatamente `BLOCKED: Project status is 'TRIAGED'`.
+
+**Causa:** `run_full_migration()` valida que el status sea `DRAFTING` o `DRAFTED` al inicio. El endpoint `POST /transpile/orchestrate` lanzaba el background task sin actualizar primero el status.
+
+**Fix** (`apps/api/routers/transpile.py`):
+```python
+# ANTES (roto)
+# DO NOT change status here - let run_full_migration do validations first
+background_tasks.add_task(_run_orchestration_background, ...)
+
+# DESPUÉS (correcto)
+await db.update_project_status(project_id, "DRAFTING")   # ← sincrónico
+background_tasks.add_task(_run_orchestration_background, ...)
+```
+
+### Bug #2 — Logs mostraban ejecución anterior (logs stale)
+
+**Síntoma:** Al navegar a Drafting desde Triage, el panel de logs mostraba la corrida anterior incluyendo errores viejos.
+
+**Fix** (`DraftingView.tsx`):
+
+| Status al montar | Acción |
+|---|---|
+| `TRIAGED` (recién llegado) | Logs vacíos — pantalla limpia |
+| `DRAFTING` (run activo) | Carga logs + arranca polling |
+| `DRAFTED` / beyond (completado) | Carga logs históricos + marca completo |
+
+```tsx
+// DraftingView.tsx — mount
+if (status === 'DRAFTING') {
+    await fetchOrchestrationLogs();
+    setIsOrchestrationRunning(true);
+} else if (DRAFTED_OR_BEYOND.includes(status)) {
+    await fetchOrchestrationLogs();
+    setIsDraftingComplete(true);
+    setProgress(100);
+}
+// Si TRIAGED → logs vacíos, fresh start
+```
+
 > [!TIP]
 > **Optimization Tip**: If Agent C produces overly complex IR, use the "Simplify" button to ask Agent F (Critic) to refactor the logic before code generation.
 
@@ -500,10 +544,10 @@ python sync_agent_f_prompt.py  # Example for Agent F
 
 ---
 
-**Document Version:** 2.0 (v4.0)  
-**Last Updated:** Febrero 17, 2026  
-**Sprint:** Sprint 14 Phase 2  
-**Status:** Zero-Hardcode Generation 100% Complete  
+**Document Version:** 3.0 (v4.0 E2E Stabilization)  
+**Last Updated:** Marzo 3, 2026  
+**Sprint:** E2E Stabilization (Post-Launch)  
+**Status:** ✅ Stable — Drafting BLOCKED bug fixed, stale logs fixed  
 
 **See Also**:
 - [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md) - utm_prompts schema details

@@ -14,72 +14,72 @@ export default function TechnologyMixer({ projectId }: TechnologyMixerProps) {
 
     const normalizeTargetTech = (value: string) => {
         if (!value) return 'pyspark';
+        const lower = value.toLowerCase().trim();
 
-        const mapping: Record<string, string> = {
-            'Microsoft Fabric': 'fabric',
-            'MS Fabric': 'fabric',
-            'Fabric': 'fabric',
-            'Databricks': 'databricks',
-            'Databricks PySpark': 'databricks',
-            'PySpark': 'pyspark',
-            'PySpark Generic': 'pyspark',
-            'PySpark Native': 'pyspark',
-            'Cloudera': 'cloudera',
-            'Cloudera Spark': 'cloudera',
-            'Snowflake': 'snowflake',
-            'Google Cloud': 'gcp',
-            'GCP': 'gcp',
-            'BigQuery': 'gcp',
-            'AWS': 'aws',
-            'Amazon Web Services': 'aws',
-            'Salesforce': 'salesforce',
-            'SQL': 'sql',
-            'Pure SQL': 'sql'
+        // Exact match against known option IDs
+        const KNOWN_IDS = ['databricks', 'pyspark', 'cloudera', 'fabric', 'snowflake', 'gcp', 'aws', 'salesforce', 'sql', 'redshift', 'bigquery'];
+        if (KNOWN_IDS.includes(lower)) return lower;
+
+        // Partial match (e.g. "Google BigQuery" → 'gcp', "Databricks PySpark" → 'databricks')
+        const partialMatch = KNOWN_IDS.find(id => lower.includes(id) || id.includes(lower));
+        if (partialMatch) return partialMatch;
+
+        // Named aliases for display names that come from the DB
+        const aliases: Record<string, string> = {
+            'microsoft fabric': 'fabric', 'ms fabric': 'fabric',
+            'databricks pyspark': 'databricks',
+            'pyspark generic': 'pyspark', 'pyspark native': 'pyspark',
+            'cloudera spark': 'cloudera', 'cdp datahub': 'cloudera',
+            'google cloud': 'gcp', 'google bigquery': 'gcp',
+            'amazon web services': 'aws', 'aws glue': 'aws', 'aws redshift': 'redshift',
+            'pure sql': 'sql', 'stored procedures': 'sql',
+            'salesforce data cloud': 'salesforce'
         };
+        if (aliases[lower]) return aliases[lower];
 
-        // Try exact match first
-        if (mapping[value]) return mapping[value];
-
-        // Try lowercase match (most IDs are already lowercase)
-        const lower = value.toLowerCase();
-        if (['databricks', 'pyspark', 'cloudera', 'fabric', 'snowflake', 'gcp', 'aws', 'salesforce', 'sql'].includes(lower)) {
-            return lower;
-        }
-
-        // Default to pyspark if unknown
-        return 'pyspark';
+        return 'pyspark'; // final fallback
     };
 
     const fetchStack = async () => {
         setLoading(true);
         try {
-            // First, try to get from registry
-            const res = await fetchWithAuth(`/projects/${projectId}/registry`);
-            const data = await res.json();
-            console.log('[TechnologyMixer] Registry data:', data);
+            // Fetch both in parallel — settings is the canonical project-level intent,
+            // registry holds explicit user overrides via this mixer.
+            const [registryRes, settingsRes] = await Promise.all([
+                fetchWithAuth(`/projects/${projectId}/registry`),
+                fetchWithAuth(`/projects/${projectId}/settings`)
+            ]);
 
-            if (data.registry) {
-                const target = data.registry.find((r: any) => r.key === 'target_stack');
-                if (target) {
-                    const normalizedTech = normalizeTargetTech(target.value);
-                    console.log('[TechnologyMixer] Found target_stack in registry:', target.value, '->', normalizedTech);
-                    setStack(normalizedTech);
-                    setLoading(false);
-                    return;
-                }
+            let fromRegistry: string | null = null;
+            let fromSettings: string | null = null;
+
+            if (registryRes.ok) {
+                const data = await registryRes.json();
+                const target = data.registry?.find((r: any) => r.key === 'target_stack');
+                if (target?.value) fromRegistry = normalizeTargetTech(target.value);
             }
 
-            // If not found in registry, get from project settings (default configuration)
-            const settingsRes = await fetchWithAuth(`/projects/${projectId}/settings`);
-            const settings = await settingsRes.json();
-            console.log('[TechnologyMixer] Project settings:', settings);
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                // Endpoint returns flat settings object: { target_tech: "...", ... }
+                const targetTech = settingsData.settings?.target_tech || settingsData.target_tech;
+                if (targetTech) fromSettings = normalizeTargetTech(targetTech);
+            }
 
-            if (settings.target_tech) {
-                const normalizedTech = normalizeTargetTech(settings.target_tech);
-                console.log('[TechnologyMixer] Normalized target_tech:', settings.target_tech, '->', normalizedTech);
-                setStack(normalizedTech);
+            // Priority logic:
+            //  - If registry has a value that is NOT the auto-init default ("pyspark"),
+            //    the user explicitly chose something → trust registry.
+            //  - If registry says "pyspark" but settings says something else,
+            //    the registry was auto-seeded to the wrong default → trust settings.
+            //  - Otherwise use whatever we have.
+            if (fromRegistry && (fromRegistry !== 'pyspark' || !fromSettings || fromSettings === 'pyspark')) {
+                console.log('[TechnologyMixer] Using registry target_stack:', fromRegistry);
+                setStack(fromRegistry);
+            } else if (fromSettings) {
+                console.log('[TechnologyMixer] Using settings target_tech:', fromSettings);
+                setStack(fromSettings);
             } else {
-                console.log('[TechnologyMixer] No target_tech found in settings, using default: pyspark');
+                console.log('[TechnologyMixer] No tech found, keeping default pyspark');
             }
         } catch (e) {
             console.error("Failed to fetch stack", e);

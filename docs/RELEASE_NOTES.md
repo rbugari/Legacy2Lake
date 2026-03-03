@@ -1,5 +1,124 @@
 # Release Notes
 
+## Version 4.0 — Stabilización E2E — 2026-03-03
+
+### 🔧 Bug Fixes — Drafting Bloqueado, Logs Viejos y Sidebar Governance
+
+#### Bug #1 — Drafting BLOCKED: Project status is 'TRIAGED'. Must be DRAFTING or DRAFTED.
+
+**Síntoma:** Al clickar "Run Pipeline" en Drafting, el log mostraba inmediatamente `BLOCKED: Project status is 'TRIAGED'` y la migración no arrancaba.
+
+**Causa raíz:** El endpoint `POST /transpile/orchestrate` lanzaba la migración en background sin actualizar primero el status del proyecto. `run_full_migration()` en `migration_orchestrator.py` valida al inicio que el status sea `DRAFTING` o `DRAFTED`, y como llegaba todavía en `TRIAGED` (el stage anterior) la rechazaba.
+
+El endpoint `POST /projects/{id}/stage` que usa el frontend solo actualiza el entero `stage` — **no** toca el campo `status`. La actualización de status a `DRAFTING` era responsabilidad del `/approve` endpoint (legacy), que ya no se llamaba.
+
+**Fix:** `apps/api/routers/transpile.py` — `trigger_orchestration` ahora llama `await db.update_project_status(project_id, "DRAFTING")` de forma **sincrónica** antes de lanzar el background task. Así cuando `run_full_migration` consulta el status, ya está en `DRAFTING`.
+
+```python
+# ANTES (roto)
+# DO NOT change status here - let run_full_migration do validations first
+background_tasks.add_task(_run_orchestration_background, ...)
+
+# DESPUÉS (correcto)
+await db.update_project_status(project_id, "DRAFTING")   # ← sincrónico
+background_tasks.add_task(_run_orchestration_background, ...)
+```
+
+Adicionalmente, el background task también hace `await db.update_project_status(project_uuid, "DRAFTING")` como backup antes de llamar `run_full_migration`.
+
+**Archivos modificados:** `apps/api/routers/transpile.py`
+
+---
+
+#### Bug #2 — Paneles de logs mostraban ejecución anterior al entrar a una fase
+
+**Síntoma:** Al navegar de Triage → Drafting (o de Drafting → Refinement), el panel de logs mostraba los logs de la corrida anterior incluyendo mensajes de error viejos (como el `BLOCKED` del Bug #1), haciendo creer que había un fallo cuando en realidad era un log stale.
+
+**Causa raíz:** En el `useEffect` de mount, `DraftingView` llamaba `fetchOrchestrationLogs()` incondicionalmente. `RefinementView` cargaba `refinement/state` (que contiene el log histórico) también sin condición. Ninguna chequeaba si había una corrida activa o completada antes de mostrar los logs.
+
+**Fix:** Ambos componentes ahora consultan `discovery/status/{projectId}` en el mount y deciden qué hacer según el status:
+
+| Status al montar | Acción |
+|---|---|
+| `TRIAGED` / `DRAFTED` (recién llegado) | Logs vacíos — pantalla limpia |
+| `DRAFTING` / `REFINING` (run activo) | Carga logs + arranca polling |
+| `DRAFTED` / `REFINED` / beyond (completado) | Carga logs históricos + marca completo |
+
+```tsx
+// DraftingView.tsx — mount
+if (status === 'DRAFTING') {
+    await fetchOrchestrationLogs();
+    setIsOrchestrationRunning(true);
+} else if (DRAFTED_OR_BEYOND.includes(status)) {
+    await fetchOrchestrationLogs();
+    setIsDraftingComplete(true);
+    setProgress(100);
+}
+// Si TRIAGED → logs vacíos, fresh start
+```
+
+**Archivos modificados:** `apps/web/app/components/stages/DraftingView.tsx`, `apps/web/app/components/stages/RefinementView.tsx`
+
+---
+
+#### Bug #3 — Governance (Stage 4) no tenía Quick Info en el sidebar
+
+**Síntoma:** En el stage de Governance, el sidebar no mostraba el ítem "Quick Info" (el modal de ayuda de la fase), siendo el único stage sin él. Los stages 0 (Discovery), 1 (Triage), 2 (Drafting), 3 (Refinement) y 5 (Handover) sí lo tenían.
+
+**Causa raíz:** Omisión en la configuración de `SIDEBAR_SECTIONS[4]` en `sidebar-sections.ts`.
+
+**Fix:** Agregado el bloque `quick-info` al top del array del stage 4. El HTML de ayuda `public/help/stages/4.html` ya existía.
+
+```typescript
+// SIDEBAR_SECTIONS[4] — ANTES
+4: [
+    { id: 'report', label: 'Certification Report', ... },
+    ...
+]
+
+// DESPUÉS
+4: [
+    { id: 'quick-info', label: 'Quick Info', icon: Info },   // ← agregado
+    { id: 'report', label: 'Certification Report', ... },
+    ...
+]
+```
+
+**Archivos modificados:** `apps/web/app/config/sidebar-sections.ts`
+
+---
+
+## Version 4.0 — Post-Launch Stabilization — 2026-03-02
+
+### 🔧 Bug Fixes — Model Routing, Configuration UI & Agent Matrix
+
+#### Bug #1 — DELETE /catalog → 404 (model_id es URL)
+Causa: FastAPI interpretaba la URL del `model_id` como parte de la ruta. Fix: usar body en lugar de path param para DELETE, toggle y update del catálogo.
+
+#### Bug #2 — Model Test Connection ⚡ — Feature nueva
+POST `/catalog/test`: prueba la conexión al LLM con "Hello, who are you?". Resultado inline con latencia y auto-limpia a los 8s.
+
+#### Bug #3 — Provider Vault sin opción de borrado — Feature nueva
+POST `/vault/delete` con guardian: bloquea si hay modelos usando el provider. Icono 🗑️ en cards solo si provider activo y sin modelos.
+
+#### Bug #4 — Agent Matrix "Apply to All" no persistía (stale React state)
+Causa raíz: `setMatrix(newMatrix)` es asincrónico. `handleSave` leía el estado anterior. Fix: `handleApplyAll` llama `saveMatrix(newMatrix)` directamente con los datos nuevos. UX: botón muestra spinner y "✓ Applied & Saved!" en verde.
+
+#### Bug #5 — quick_assessment_service KeyError deployment_name/model
+Causa: claves incorrectas en la construcción del cliente LLM. Fix: `deployment_name` → `deployment`, `config["model"]` → `config["deployment"]`.
+
+#### Bug #6 — Solution Settings en blanco (race condition)
+Causa: dos fetches secuenciales; el config se aplicaba antes de que el catálogo de techs cargara. Fix: `Promise.all` paralelo + normalize dinámico case-insensitive contra catálogo real.
+
+#### Bug #7 — TechnologyMixer no mostraba tech guardada
+Causa 1: acceso incorrecto a `settings.target_tech` (debía ser `settings.settings?.target_tech`).  
+Causa 2: whitelist de normalize desactualizada. Fix: ambos corregidos.
+
+#### Bug #8 — Agentes usando glm-5 en lugar de qwen
+Causa: "Apply to All" tomaba el primer modelo del catálogo (no determinístico). Fix en DB + fix de comportamiento del batch.
+
+---
+
 ## Version 4.0 Sprint 15 Day 5 — Admin Ghost Mode Bugfix — 2026-02-27
 
 ### 🔧 Bug Fixes — Admin Impersonation (Ghost Mode)

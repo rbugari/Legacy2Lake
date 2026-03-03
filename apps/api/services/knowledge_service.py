@@ -21,8 +21,9 @@ class KnowledgeService:
         return flattened
 
     @staticmethod
-    def get_default_registry_entries(project_id: str) -> List[Dict[str, Any]]:
+    def get_default_registry_entries(project_id: str, target_tech: str = None) -> List[Dict[str, Any]]:
         """Returns the base set of design standards for a new project."""
+        default_stack = target_tech.strip().lower() if target_tech else "pyspark"
         return [
             {
                 "project_id": project_id,
@@ -46,7 +47,7 @@ class KnowledgeService:
                 "project_id": project_id,
                 "category": "PATHS",
                 "key": "target_stack",
-                "value": "pyspark"
+                "value": default_stack
             },
             {
                 "project_id": project_id,

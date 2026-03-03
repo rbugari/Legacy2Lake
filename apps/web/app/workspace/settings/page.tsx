@@ -56,46 +56,59 @@ function ProjectSettingsContent() {
 
         const loadData = async () => {
             try {
-                // 1. Fetch Tech Options
-                const techRes = await fetchWithAuth("/config/technologies");
+                // Run both fetches in parallel — avoids race condition
+                const [techRes, projectRes] = await Promise.all([
+                    fetchWithAuth("/config/technologies"),
+                    fetchWithAuth(`/projects/${id}`)
+                ]);
+
+                // 1. Process Tech catalog first
+                let mappedData: { sources: any[], targets: any[] } = { sources: [], targets: [] };
                 if (techRes.ok) {
                     const techData = await techRes.json();
-                    // Map flat list to {sources, targets} expected by the UI
-                    const mappedData = {
+                    mappedData = {
                         sources: techData.filter((t: any) => t.role === "SOURCE"),
                         targets: techData.filter((t: any) => t.role === "TARGET")
                     };
                     setAvailableTech(mappedData);
                 }
 
-                // 2. Fetch Project Details to get current settings
-                const projectRes = await fetchWithAuth(`/projects/${id}`);
+                // 2. Process project settings — normalize against actual catalog IDs
                 if (projectRes.ok) {
                     const pData = await projectRes.json();
                     setProject(pData);
+
                     if (pData.settings) {
-                        // Normalize display names to lowercase tech IDs
-                        const normalizeValue = (value: string) => {
+                        // Case-insensitive match against actual catalog tech_ids
+                        const normalizeTechId = (value: string, catalog: any[]) => {
                             if (!value) return '';
-                            // Map common display names to tech IDs
-                            const mapping: Record<string, string> = {
-                                'Microsoft Fabric': 'fabric',
-                                'MS Fabric': 'fabric',
-                                'Fabric': 'fabric',
-                                'Microsoft SSIS': 'ssis',
-                                'SQL Server': 'sqlserver',
-                                'PySpark': 'pyspark',
-                                'Snowflake': 'snowflake',
-                                'Google Cloud': 'gcp',
-                                'AWS': 'aws',
-                                'Salesforce': 'salesforce'
-                            };
-                            return mapping[value] || value.toLowerCase();
+                            const lower = value.toLowerCase().trim();
+                            // Try exact match first
+                            const exact = catalog.find((t: any) => t.tech_id === value);
+                            if (exact) return exact.tech_id;
+                            // Try case-insensitive match
+                            const ci = catalog.find((t: any) =>
+                                t.tech_id?.toLowerCase() === lower ||
+                                t.name?.toLowerCase() === lower ||
+                                t.name?.toLowerCase().includes(lower) ||
+                                lower.includes(t.tech_id?.toLowerCase())
+                            );
+                            if (ci) return ci.tech_id;
+                            return value.toLowerCase(); // fallback
                         };
 
+                        const savedSource = pData.settings.source_tech;
+                        const savedTarget = pData.settings.target_tech;
+
                         setConfig({
-                            source_tech: normalizeValue(pData.settings.source_tech || "ssis"),
-                            target_tech: normalizeValue(pData.settings.target_tech || "pyspark")
+                            source_tech: normalizeTechId(savedSource, mappedData.sources),
+                            target_tech: normalizeTechId(savedTarget, mappedData.targets)
+                        });
+                    } else {
+                        // No settings saved yet — default to first available tech
+                        setConfig({
+                            source_tech: mappedData.sources[0]?.tech_id || "ssis",
+                            target_tech: mappedData.targets[0]?.tech_id || "pyspark"
                         });
                     }
                 }

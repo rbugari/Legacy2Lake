@@ -51,6 +51,93 @@
             </div>
         </div>
 
+        <!-- Sprint 14: Medallion Architecture Breakdown -->
+        {% if medallion_stats and (medallion_stats.bronze + medallion_stats.silver + medallion_stats.gold) > 0 %}
+        <h2>Medallion Architecture Breakdown</h2>
+        <div class="stat-grid">
+            <div class="stat-card" style="background: #92400e;">
+                <span class="stat-value">{{ medallion_stats.bronze }}</span>
+                <span class="stat-label">🥉 Bronze Layer</span>
+            </div>
+            <div class="stat-card" style="background: #374151;">
+                <span class="stat-value">{{ medallion_stats.silver }}</span>
+                <span class="stat-label">🥈 Silver Layer</span>
+            </div>
+            <div class="stat-card" style="background: #78350f;">
+                <span class="stat-value">{{ medallion_stats.gold }}</span>
+                <span class="stat-label">🥇 Gold Layer</span>
+            </div>
+        </div>
+        <table style="margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th>Layer</th>
+                    <th>Description</th>
+                    <th>Files</th>
+                    <th>Sample Artifacts</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge" style="background:#fed7aa;color:#92400e;">🥉 Bronze</span></td>
+                    <td>Raw ingestion — landed as-is from source systems</td>
+                    <td>{{ medallion_stats.bronze }}</td>
+                    <td style="font-size:10px;font-family:monospace;">{{ medallion_stats.bronze_files[:3]|join(', ') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td><span class="badge" style="background:#e2e8f0;color:#374151;">🥈 Silver</span></td>
+                    <td>Cleansed &amp; conformed — business rules applied</td>
+                    <td>{{ medallion_stats.silver }}</td>
+                    <td style="font-size:10px;font-family:monospace;">{{ medallion_stats.silver_files[:3]|join(', ') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td><span class="badge" style="background:#fef3c7;color:#78350f;">🥇 Gold</span></td>
+                    <td>Aggregated &amp; enriched — consumption-ready analytics</td>
+                    <td>{{ medallion_stats.gold }}</td>
+                    <td style="font-size:10px;font-family:monospace;">{{ medallion_stats.gold_files[:3]|join(', ') or '—' }}</td>
+                </tr>
+                {% if medallion_stats.other > 0 %}
+                <tr>
+                    <td><span class="badge badge-ignored">Other</span></td>
+                    <td>Utility / config files not mapped to medallion layers</td>
+                    <td>{{ medallion_stats.other }}</td>
+                    <td>—</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <!-- Certification Score -->
+        {% if certification_score or governance_score %}
+        <h2 style="margin-top: 30px;">Governance &amp; Certification Score</h2>
+        <div style="display:flex; gap:20px; align-items:center; padding:20px; background:#f0fdf4; border-radius:12px; border: 1px solid #dcfce7;">
+            {% if certification_score %}
+            <div style="text-align:center; min-width:100px;">
+                <div style="font-size:36px; font-weight:900; color:#059669;">{{ certification_score }}</div>
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b7280;">COP Score</div>
+            </div>
+            {% endif %}
+            {% if governance_score %}
+            <div style="text-align:center; min-width:100px;">
+                <div style="font-size:36px; font-weight:900; color:#0284c7;">{{ governance_score }}</div>
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#6b7280;">Governance Audit</div>
+            </div>
+            {% endif %}
+            <div style="flex:1; font-size:12px; color:#475569; line-height:1.8;">
+                Migration artifacts reviewed by <strong>Agent F (Critic)</strong> and
+                certified by <strong>Agent G (Governance)</strong>.
+                {% if certification_score and certification_score|float >= 80 %}
+                ✅ <strong style="color:#059669;">Production-ready</strong> — all quality gates passed.
+                {% elif certification_score and certification_score|float >= 60 %}
+                ⚠️ <strong style="color:#d97706;">Manual review recommended</strong> for flagged sections.
+                {% else %}
+                📋 Certification complete. Review agent notes in Governance stage.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <h2>Migration Timeline</h2>
         <table>
             <thead>
@@ -337,7 +424,7 @@
                 <tr>
                     <td>Code quality (COP) scored</td>
                     <td>✅ Pass</td>
-                    <td>Average COP score: 85/100</td>
+                    <td>COP score: {% if certification_score %}{{ certification_score }}/100{% else %}N/A — see Governance stage{% endif %}</td>
                 </tr>
             </tbody>
         </table>

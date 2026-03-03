@@ -1,4 +1,73 @@
-# Release Planning Changelog
+## 2026-03-02: Post-v4.0 Stabilization — Model Routing, Settings & Agent Matrix
+
+**Focus:** Corrección de bugs de configuración, routing de modelos LLM y UX de ajustes
+
+### Bugs Corregidos
+
+**BUG-001 — DELETE /catalog devolvía 404**
+- Causa: `model_id` es una URL (`https://...`) — FastAPI la interpretaba como sub-ruta
+- Fix: `DELETE /catalog`, `POST /catalog/toggle`, `POST /catalog/update` ahora usan el `model_id` en el **body**, no como path param
+- Archivos: `apps/api/routers/system.py`, `apps/web/app/components/settings/ModelCatalog.tsx`
+
+**BUG-002 — Reset de contraseña desde panel admin daba 404**
+- Causa: Frontend llamaba `/auth/users/{id}/reset-password`, backend tenía `/auth/admin/users/{id}/reset-password`
+- Fix: Corrección del endpoint en frontend
+
+**BUG-003 — Model Test Connection (⚡) — 502 en modelos mal configurados**
+- Feature nueva: botón ⚡ en cada card de modelo para probar conexión al LLM
+- Backend: `POST /catalog/test` — carga config del vault y hace ping con "Hello, who are you?"
+- Frontend: resultado inline (verde/rojo) con latencia, auto-limpia a los 8s
+- Fix colateral: Kimi-K2.5 estaba con `provider=azure` → corregido a `openrouter`
+
+**BUG-004 — Provider Vault sin opción de borrado**
+- Feature nueva: icono 🗑️ en cards de provider (solo si activo, solo si sin modelos)
+- Backend: `POST /vault/delete` con guardian check → bloquea si hay modelos usando el provider
+- Archivos: `apps/api/routers/system.py`, `apps/web/app/components/settings/VaultEditor.tsx`
+
+**BUG-005 — Agent Matrix "Apply to All" no persistía correctamente**
+- Causa raíz: `setMatrix(newMatrix)` es async en React; `handleSave` leía el estado viejo (stale closure)
+- Fix: `handleApplyAll` llama directamente `saveMatrix(newMatrix)` con los datos nuevos — no depende del estado React
+- UX mejorado: botón cambia a "✓ Applied & Saved!" (verde) con spinner durante guardado
+- Fix adicional: default del batch ahora pre-selecciona el modelo más usado (no el primero del catálogo)
+- Archivos: `apps/web/app/components/settings/AgentMatrix.tsx`
+
+**BUG-006 — quick_assessment_service.py KeyError 'deployment_name' y 'model'**
+- Causa: `resolve_agent_model()` devuelve `config["deployment"]` pero el servicio usaba `config["deployment_name"]` y `config["model"]`
+- Fix: claves corregidas, también `api_version` → `openai_api_version` (LangChain v0.2+), `base_url` → `endpoint`
+- Archivos: `apps/api/services/quick_assessment_service.py`
+
+**BUG-007 — Solution Settings no mostraba la tech guardada (en blanco)**
+- Causa: race condition — las dos fetches eran secuenciales; si el proyecto llegaba antes que el catálogo, `isActive` no matcheaba ningún botón
+- Fix secundario: normalización hardcodeada reemplazada por matching dinámico case-insensitive contra el catálogo real
+- Archivos: `apps/web/app/workspace/settings/page.tsx`
+
+**BUG-008 — TechnologyMixer (Drafting) no mostraba el target seleccionado**
+- Causa 1: `settings.target_tech` incorrecto — la respuesta del endpoint es `{ settings: { target_tech } }` (un nivel extra de nesting)
+- Causa 2: función `normalizeTargetTech` con whitelist desactualizada que no cubría `redshift`, `bigquery`, nombres compuestos
+- Fix: accede a `settingsData.settings?.target_tech || settingsData.target_tech` + normalize dinámico
+- Archivos: `apps/web/app/components/stages/TechnologyMixer.tsx`
+
+**BUG-009 — Agent Matrix — agentes usando glm-5 en lugar de qwen configurado**
+- Causa: "Apply to All" guardaba el primer modelo del catálogo (orden no garantizado), no el que el usuario seleccionó manualmente
+- Fix en DB: todos los agentes del tenant `daac0ee6-...` actualizados a `qwen/qwen3.5-flash-02-23` vía OpenRouter
+- Archivos: DB `utm_agent_matrix` + `AgentMatrix.tsx` (BUG-005)
+
+### Configuración de modelo corregida en DB
+- `qwen/qwen3.5-flash-02-23` (catálogo): `provider` corregido de `azure` → `openrouter`
+- Todos los agentes (`agent-a` a `system`, excepto `agent-p`): migrados de `glm-5`/`azure-gpt-4o` → `qwen/qwen3.5-flash-02-23`
+
+### Archivos Modificados
+| Archivo | Cambio |
+|---|---|
+| `apps/api/routers/system.py` | DELETE/toggle/update catalog por body; POST /catalog/test; POST /vault/delete |
+| `apps/api/services/quick_assessment_service.py` | Fix KeyError deployment_name, model, base_url |
+| `apps/web/app/components/settings/ModelCatalog.tsx` | Fix handleDelete/toggle/update endpoints |
+| `apps/web/app/components/settings/VaultEditor.tsx` | Botón borrar provider + handleDeleteProvider |
+| `apps/web/app/components/settings/AgentMatrix.tsx` | Fix stale state + Apply to All guarda inmediatamente + UX feedback |
+| `apps/web/app/workspace/settings/page.tsx` | Fix race condition + normalize dinámico |
+| `apps/web/app/components/stages/TechnologyMixer.tsx` | Fix nesting settings + normalize robusto |
+
+---
 
 ## 2026-02-27: Sprint 15 Day 5 — Admin Ghost Mode & Security Hardening
 

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchWithAuth } from "../../lib/auth-client";
-import { CheckCircle, XCircle, Key, Save, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Key, Save, Loader2, Trash2 } from "lucide-react";
 
 interface Credential {
     provider_name: string;
@@ -64,6 +64,24 @@ export default function VaultEditor() {
     useEffect(() => {
         fetchVault();
     }, []);
+
+    const handleDeleteProvider = async (providerId: string) => {
+        if (!confirm(`¿Eliminar el provider "${providerId}" del vault? Esta acción no puede deshacerse.`)) return;
+        try {
+            const res = await fetchWithAuth("system/vault/delete", {
+                method: "POST",
+                body: JSON.stringify({ provider: providerId })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                await fetchVault();
+            } else {
+                alert(data.detail || "No se pudo eliminar el provider");
+            }
+        } catch {
+            alert("Error de red");
+        }
+    };
 
     const handleEdit = (providerId: string) => {
         const cred = credentials.find(c => c.provider_name.toLowerCase() === providerId.toLowerCase());
@@ -156,15 +174,26 @@ export default function VaultEditor() {
                                         <p className="text-xs text-[var(--text-secondary)]">{p.description}</p>
                                     </div>
                                 </div>
-                                {isActive ? (
-                                    <span className="flex items-center text-xs font-medium text-green-600 gap-1 bg-green-100 dark:bg-green-900/20 px-2 py-1 rounded-full">
-                                        <CheckCircle className="w-3 h-3" /> Active
-                                    </span>
-                                ) : (
-                                    <span className="flex items-center text-xs font-medium text-slate-500 gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
-                                        <XCircle className="w-3 h-3" /> Missing
-                                    </span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {isActive ? (
+                                        <span className="flex items-center text-xs font-medium text-green-600 gap-1 bg-green-100 dark:bg-green-900/20 px-2 py-1 rounded-full">
+                                            <CheckCircle className="w-3 h-3" /> Active
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center text-xs font-medium text-slate-500 gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+                                            <XCircle className="w-3 h-3" /> Missing
+                                        </span>
+                                    )}
+                                    {isActive && !isEditing && (
+                                        <button
+                                            onClick={() => handleDeleteProvider(p.id)}
+                                            className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Eliminar provider del vault"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {isEditing ? (

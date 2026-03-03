@@ -9,6 +9,8 @@
 
 > **v3.9 GA Status**: ✅ **COMPLETE** - Visualization dashboards integrated (Feb 13, 2026). Deployment readiness dashboards available in Refinement phase with 4 validation tabs.
 
+> **v4.0 E2E Fix (Marzo 3, 2026)**: ✅ **Quick Info sidebar item added** - Governance was the only stage missing the Quick Info help item in the sidebar. Fixed in `sidebar-sections.ts` (`SIDEBAR_SECTIONS[4]`).
+
 ## 🎯 Objectives
 - **Security Audit**: Detect PII exposure, SQL injection risks, hardcoded credentials
 - **Performance Review**: Validate join strategies, partitioning, caching
@@ -245,3 +247,9 @@ project_demo1_certified_2026-02-01.zip
 
 > [!IMPORTANT]
 > **Certification Lock**: Once certified, the code version is frozen. Any changes require re-certification to maintain compliance traceability.
+
+---
+
+**Document Version:** 2.0 (v4.0 E2E Stabilization)  
+**Last Updated:** Marzo 3, 2026  
+**Status:** ✅ Stable — Quick Info sidebar item added to Governance stage

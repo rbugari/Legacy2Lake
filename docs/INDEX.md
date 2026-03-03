@@ -1,8 +1,20 @@
 # Documentation Index - Legacy2Lake v4.0
 
-> Last Updated: 2026-02-24  
-> Architecture Version: **4.0 Zero-Hardcode & UI Consolidation GA** ✅  
-> Status: **PRODUCTION READY** - Sprint 14 Phase 4 UI Consolidation Completed February 24, 2026
+> Last Updated: 2026-03-03  
+> Architecture Version: **4.0 GA — Zero-Hardcode, Two-Layer Prompts, RBAC ✅**  
+> Status: **PRODUCTION** — Post-launch E2E stabilization (Marzo 3, 2026)
+
+## 🔧 V4.0 E2E STABILIZATION (Marzo 3, 2026)
+
+### ⚡ Pipeline End-to-End — 3 Bugs Corregidos
+**Status:** ✅ Deployed March 3, 2026 — Full pipeline TRIAGED→DRAFTED→REFINED verified
+
+**Bug Fixes:**
+- ✅ **Drafting BLOCKED**: `trigger_orchestration` now sets status `DRAFTING` synchronously before background task. Fixed: `transpile.py`
+- ✅ **Stale Logs**: `DraftingView` and `RefinementView` now check `discovery/status` on mount — fresh start when `TRIAGED`, load history when `DRAFTED/REFINED`. Fixed: `DraftingView.tsx`, `RefinementView.tsx`
+- ✅ **Governance Quick Info**: Added `quick-info` sidebar item to Stage 4 — the only stage missing it. Fixed: `sidebar-sections.ts`
+
+---
 
 ## 🚀 V4.0 LATEST: Zero-Hardcode Architecture (February 2026)
 

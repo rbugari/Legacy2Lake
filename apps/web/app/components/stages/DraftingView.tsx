@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Play, X, Code } from "lucide-react";
+import { Play, X, Code, CheckCircle } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
 import UnifiedLogViewer from "../UnifiedLogViewer";
 import UnifiedFileExplorer from "../UnifiedFileExplorer";
@@ -88,12 +88,17 @@ export default function DraftingView({
 }: DraftingViewProps) {
     const [isInitialLoading, setIsInitialLoading] = useState(true); // Initial data fetch
     const [isOrchestrationRunning, setIsOrchestrationRunning] = useState(false); // Active orchestration process
+    const isOrchestrationRunningRef = useRef(false); // Ref to read in callbacks without adding to deps
+    const [isDraftingComplete, setIsDraftingComplete] = useState(false); // True when project is in DRAFTED status
     const { confirm, ConfirmDialog } = useConfirm();
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
     const [isApproving, setIsApproving] = useState(false);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
+
+    // Keep ref in sync with state
+    useEffect(() => { isOrchestrationRunningRef.current = isOrchestrationRunning; }, [isOrchestrationRunning]);
 
     // Process Lock Modal state
     const [isLockModalOpen, setIsLockModalOpen] = useState(false);
@@ -120,21 +125,51 @@ export default function DraftingView({
             });
             const statusData = await statusRes.json();
 
-            // If status is DRAFTED and we're currently running, process is complete
-            if (statusData.status === "DRAFTED" && isOrchestrationRunning) {
-                console.log("[DraftingView] Orchestration complete, stopping polling");
+            // Always mark complete when status is DRAFTED or any later stage
+            // (e.g. user moves to Refinement stage then comes back — status will be REFINED)
+            const DRAFTED_OR_BEYOND = ['DRAFTED', 'REFINING', 'REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
+            if (DRAFTED_OR_BEYOND.includes(statusData.status)) {
+                setIsDraftingComplete(true);
                 setProgress(100);
-                setIsOrchestrationRunning(false);
-                // onCompletion will be called in separate useEffect to avoid re-render issues
+                if (isOrchestrationRunningRef.current) {
+                    console.log("[DraftingView] Orchestration complete, stopping polling");
+                    setIsOrchestrationRunning(false);
+                }
             }
         } catch (e) {
             console.error("Failed to load logs", e);
         }
-    }, [projectId, activeTenantId, isOrchestrationRunning]);
+    }, [projectId, activeTenantId]); // Stable ref: no isOrchestrationRunning dependency
 
     // Load base data on mount
     useEffect(() => {
-        fetchOrchestrationLogs();
+        // Only load previous logs if there's an active run or a completed run.
+        // If status is TRIAGED (just entered Drafting), start with empty logs.
+        const initLogs = async () => {
+            try {
+                const statusRes = await fetchWithAuth(`discovery/status/${projectId}`, {
+                    headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+                });
+                const statusData = await statusRes.json();
+                const status = statusData.status;
+
+                const DRAFTED_OR_BEYOND = ['DRAFTED', 'REFINING', 'REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
+                if (status === 'DRAFTING') {
+                    // Run is in progress — load logs and start polling
+                    await fetchOrchestrationLogs();
+                    setIsOrchestrationRunning(true);
+                } else if (DRAFTED_OR_BEYOND.includes(status)) {
+                    // Completed run — load final logs and show completion state
+                    await fetchOrchestrationLogs();
+                    setIsDraftingComplete(true);
+                    setProgress(100);
+                }
+                // Otherwise (TRIAGED, etc.) — leave logs empty, fresh start
+            } catch (e) {
+                console.error("Failed to init logs", e);
+            }
+        };
+        initLogs();
 
         // Fetch Project Settings to sync migration limit
         const loadSettings = async () => {
@@ -186,7 +221,7 @@ export default function DraftingView({
             if (interval) clearInterval(interval);
             if (initialTimeout) clearTimeout(initialTimeout);
         };
-    }, [isOrchestrationRunning, fetchOrchestrationLogs]);
+    }, [isOrchestrationRunning]); // fetchOrchestrationLogs is now stable (no state in its deps)
 
     // Call onCompletion when orchestration finishes (separate useEffect to avoid re-render loops)
     const prevOrchestrationRunning = useRef(false);
@@ -233,6 +268,7 @@ export default function DraftingView({
         }
 
         setIsOrchestrationRunning(true);
+        setIsDraftingComplete(false); // Reset completion flag on new run
         setProgress(0); // Reset progress to 0% at start
         // Initial feedback
         setLogs(["Starting Migration Orchestrator in background..."]);
@@ -353,7 +389,7 @@ export default function DraftingView({
                 helpText="Generation of optimized PySpark, dbt or Snowflake code based on the approved design."
                 onApprove={handleApprove}
                 approveLabel="Next Phase: Refinement"
-                isApproveDisabled={isOrchestrationRunning || progress < 100}
+                isApproveDisabled={isOrchestrationRunning || !isDraftingComplete}
                 isExecuting={isApproving}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={onToggleFullscreen}
@@ -366,15 +402,29 @@ export default function DraftingView({
                 {/* EXECUTION GROUP */}
                 {/* Logs Section (handles both 'logs' and 'progress' from sidebar) */}
                 {(activeSection === "logs" || activeSection === "progress") && (
-                    <div className="h-full max-w-7xl mx-auto">
-                        <UnifiedLogViewer
-                            mode="realtime"
-                            projectId={projectId}
-                            isRunning={isOrchestrationRunning}
-                            logs={logs}
-                            processName="Drafting Pipeline"
-                            variant="panel"
-                        />
+                    <div className="h-full max-w-7xl mx-auto flex flex-col gap-4">
+
+                        {/* ── Completion Banner ── informational only; Next button is in StageHeader */}
+                        {isDraftingComplete && !isOrchestrationRunning && (
+                            <div className="flex items-center gap-3 px-6 py-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <CheckCircle size={18} className="text-emerald-400 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">All assets processed successfully — review the output or use the <strong className="text-gray-400">Next Phase</strong> button above to proceed to Refinement.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex-1 min-h-0">
+                            <UnifiedLogViewer
+                                mode="realtime"
+                                projectId={projectId}
+                                isRunning={isOrchestrationRunning}
+                                logs={logs}
+                                processName="Drafting Pipeline"
+                                variant="panel"
+                            />
+                        </div>
                     </div>
                 )}
 

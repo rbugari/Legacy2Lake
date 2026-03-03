@@ -342,26 +342,33 @@ export default function UnifiedFileExplorer({
                                     <div className="flex items-center justify-center h-full text-gray-400 gap-2">
                                         <RefreshCw size={16} className="animate-spin" /> Loading content...
                                     </div>
-                                ) : (
-                                    <div className="min-w-max">
-                                        <SyntaxHighlighter
-                                            language={getLanguage(selectedFile.name)}
-                                            style={vscDarkPlus}
-                                            customStyle={{ 
-                                                margin: 0, 
-                                                padding: variant === 'compact' ? '1rem' : '1.5rem', 
-                                                background: '#0a0a0a', 
-                                                fontSize: variant === 'compact' ? '12px' : '13px', 
-                                                lineHeight: '1.5', 
-                                                maxWidth: '100%' 
-                                            }}
-                                            showLineNumbers={true}
-                                            wrapLines={false}
-                                        >
-                                            {fileContent}
-                                        </SyntaxHighlighter>
-                                    </div>
-                                )}
+                                ) : (() => {
+                                    // Data/config files: wrap long lines to fit the panel
+                                    // Code files: keep horizontal scroll (no forced wrap)
+                                    const wrapLong = /\.(json|yaml|yml|xml|md|html|css|txt)$/i.test(selectedFile.name);
+                                    return (
+                                        <div className={wrapLong ? "w-full" : "min-w-max"}>
+                                            <SyntaxHighlighter
+                                                language={getLanguage(selectedFile.name)}
+                                                style={vscDarkPlus}
+                                                customStyle={{ 
+                                                    margin: 0, 
+                                                    padding: variant === 'compact' ? '1rem' : '1.5rem', 
+                                                    background: '#0a0a0a', 
+                                                    fontSize: variant === 'compact' ? '12px' : '13px', 
+                                                    lineHeight: '1.5',
+                                                    whiteSpace: wrapLong ? 'pre-wrap' : 'pre',
+                                                    wordBreak: wrapLong ? 'break-all' : undefined,
+                                                }}
+                                                showLineNumbers={true}
+                                                wrapLines={wrapLong}
+                                                wrapLongLines={wrapLong}
+                                            >
+                                                {fileContent}
+                                            </SyntaxHighlighter>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </>
                     ) : (

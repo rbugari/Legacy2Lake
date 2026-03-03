@@ -1,7 +1,7 @@
 # Legacy2Lake UTM - Database Schema Documentation
 
-**Fecha:** Febrero 17, 2026  
-**Versión:** v4.0 (85% Complete)  
+**Fecha:** Marzo 2026  
+**Versión:** v4.0 ✅ Completo + Post-Launch Stabilization  
 **Database:** PostgreSQL (Supabase)  
 **RLS:** Enabled (Row Level Security)
 
@@ -35,9 +35,14 @@
 
 **Agent & Execution (4)**
 - **utm_agent_catalog** - LLM agent definitions
-- **utm_agent_matrix** - Agent-phase-tech mappings
+- **utm_agent_matrix** - Agent model assignments per tenant (model_id + provider)
 - **utm_execution_logs** - Process execution logs
 - **utm_process_locks** - Concurrent process management
+
+**Model & Provider Management (3)** ⭐ POST-LAUNCH v4.0
+- **utm_model_catalog** - Catálogo de modelos LLM por tenant (model_id, label, provider, deployment_id, api_version, base_url)
+- **utm_provider_vault** - API keys y endpoints por provider/tenant (api_key, base_url, is_active)
+- *(utm_agent_matrix ahora incluye model_id + provider para asignación directa agent→modelo)*
 
 **v4.0 Zero-Hardcode & Intelligence (6)** ⭐ NEW
 - **utm_prompts** - Global prompts with automatic versioning

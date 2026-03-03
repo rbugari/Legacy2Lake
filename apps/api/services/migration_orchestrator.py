@@ -208,6 +208,12 @@ class MigrationOrchestrator:
         # Create metadata lookup map
         metadata_map = { pm["package_name"]: pm for pm in package_metadatas }
 
+        # Count total assets for accurate frontend progress tracking
+        total_assets = sum(len(p.get("packages", [])) for p in orchestration["dag_execution"])
+        processed_count = 0
+        await self._log_persistence(f"[PIPELINE START] {total_assets} assets queued for processing...")
+        logger.info(f"Total assets to process: {total_assets}", "Orchestrator")
+
         for phase in orchestration["dag_execution"]:
             # Check for cancellation before processing each phase
             if await self._check_cancellation():
@@ -244,8 +250,9 @@ class MigrationOrchestrator:
                 if limit > 0 and len(results["succeeded"]) + len(results["failed"]) >= limit:
                     break
                 
-                logger.info(f"Processing: {pkg_name}", "Orchestrator")
-                await self._log_persistence(f"Processing: {pkg_name}...")
+                processed_count += 1
+                logger.info(f"Processing [{processed_count}/{total_assets}]: {pkg_name}", "Orchestrator")
+                await self._log_persistence(f"[PROGRESS: {processed_count}/{total_assets}] Processing: {pkg_name}...")
                 
                 # A. Prepare Task Context
                 pm = metadata_map.get(pkg_name, {})
@@ -479,7 +486,12 @@ class MigrationOrchestrator:
         await self._log_persistence("Migration Bitácora generated.", step="Handover")
 
         logger.info(f"Migration Complete. Succeeded: {len(results['succeeded'])}, Failed: {len(results['failed'])}", "Orchestrator")
-        await self._log_persistence("Migration Complete.")
+        await self._log_persistence("=" * 60)
+        await self._log_persistence(
+            f"PIPELINE COMPLETE — {len(results['succeeded'])} assets migrated successfully, "
+            f"{len(results['failed'])} failed."
+        )
+        await self._log_persistence("=" * 60)
         return results
 
     def _save_artifact(self, filename: str, content: str):

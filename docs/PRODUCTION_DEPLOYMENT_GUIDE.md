@@ -1,8 +1,8 @@
 # Legacy2Lake UTM - Production Deployment Guide
 
-**Fecha:** Febrero 10, 2026  
-**Versión:** v3.9 + Sprint 1  
-**Target:** Dev → Pre-Prod → Production  
+**Fecha:** Marzo 3, 2026  
+**Versión:** v4.0 GA (Post-Launch Stabilization)  
+**Target:** Dev → Production  
 **Deployment Type:** Full Database + Code Deployment
 
 ---
@@ -26,10 +26,10 @@
 ## 📋 Pre-Deployment Checklist
 
 ### Code Validation ✅
-- [ ] Sprint 0: 21/24 tests passing (87.5%)
-- [ ] Sprint 1: Database migration tested
-- [ ] All critical features validated
-- [ ] No P0 bugs in backlog
+- [x] v4.0 GA: All 6 pipeline stages validated end-to-end
+- [x] Post-launch stabilization: 9 bugs fixed (BUG-001 → BUG-009 + 3 E2E bugs)
+- [x] All critical features validated (Zero-Hardcode, RBAC, Ghost Mode, Agent Matrix)
+- [x] No P0 bugs in backlog
 - [ ] Git repo clean (no uncommitted changes)
 - [ ] All PRs merged to main branch
 
@@ -735,8 +735,8 @@ Rollback:    Must be possible within 1 hour
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** Febrero 10, 2026  
+**Document Version:** 2.0  
+**Last Updated:** Marzo 3, 2026  
 **Owner:** DevOps Team  
-**Status:** Ready for Deployment  
+**Status:** ✅ v4.0 GA — Ready for Production Deployment  
 **Next Review:** Post-deployment (within 48 hours)

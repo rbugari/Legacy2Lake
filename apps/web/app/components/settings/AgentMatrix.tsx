@@ -40,8 +40,25 @@ export default function AgentMatrix() {
             }));
             setCatalog(mappedCatalog);
 
-            // Set default batch values if available
-            if (mappedCatalog.length > 0) {
+            // Pre-select batch model based on most common model in current matrix
+            // This avoids accidentally applying the wrong provider when using "Apply to All"
+            const currentMatrix: MatrixEntry[] = matrixData.matrix || [];
+            if (currentMatrix.length > 0) {
+                // Find the most common model_id in the existing matrix
+                const freq: Record<string, number> = {};
+                for (const entry of currentMatrix) {
+                    if (entry.model) freq[entry.model] = (freq[entry.model] || 0) + 1;
+                }
+                const mostUsedModel = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0];
+                const mostUsedEntry = currentMatrix.find(e => e.model === mostUsedModel);
+                if (mostUsedEntry && mappedCatalog.find((m: Model) => m.id === mostUsedModel)) {
+                    setBatchProvider(mostUsedEntry.provider);
+                    setBatchModel(mostUsedEntry.model);
+                } else if (mappedCatalog.length > 0) {
+                    setBatchProvider(mappedCatalog[0].provider);
+                    setBatchModel(mappedCatalog[0].id);
+                }
+            } else if (mappedCatalog.length > 0) {
                 setBatchProvider(mappedCatalog[0].provider);
                 setBatchModel(mappedCatalog[0].id);
             }
@@ -66,33 +83,47 @@ export default function AgentMatrix() {
         setMatrix(newMatrix);
     };
 
-    const handleApplyAll = () => {
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+    // Core save function — takes entries explicitly to avoid stale React state
+    const saveMatrix = async (entries: MatrixEntry[]) => {
+        setSaving(true);
+        setSaveStatus('saving');
+        try {
+            await Promise.all(
+                entries.map(entry =>
+                    fetchWithAuth("matrix", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(entry)
+                    })
+                )
+            );
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2500);
+        } catch (e) {
+            console.error("Failed to save matrix", e);
+            setSaveStatus('error');
+            alert("Could not save configuration");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleApplyAll = async () => {
         if (!batchModel) return;
+        // Build new matrix locally — do NOT rely on setMatrix having flushed
         const newMatrix = matrix.map(entry => ({
             ...entry,
             provider: batchProvider,
             model: batchModel
         }));
-        setMatrix(newMatrix);
+        setMatrix(newMatrix);          // update UI
+        await saveMatrix(newMatrix);   // save with the actual new data, not stale state
     };
 
     const handleSave = async () => {
-        setSaving(true);
-        try {
-            const updates = matrix.map(entry =>
-                fetchWithAuth("matrix", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(entry)
-                })
-            );
-            await Promise.all(updates);
-        } catch (e) {
-            console.error("Failed to save matrix", e);
-            alert("Could not save configuration");
-        } finally {
-            setSaving(false);
-        }
+        await saveMatrix(matrix);      // save current visible state
     };
 
     // Derived providers from catalog
@@ -135,10 +166,18 @@ export default function AgentMatrix() {
 
                 <button
                     onClick={handleApplyAll}
-                    disabled={!batchModel}
-                    className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    disabled={!batchModel || saving}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50 ${saveStatus === 'saved'
+                            ? 'bg-green-600 text-white'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
                 >
-                    Apply to All
+                    {saving ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : saveStatus === 'saved' ? (
+                        <Check className="w-3 h-3" />
+                    ) : null}
+                    {saving ? 'Saving...' : saveStatus === 'saved' ? 'Applied & Saved!' : 'Apply to All'}
                 </button>
             </div>
 

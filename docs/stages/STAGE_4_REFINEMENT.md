@@ -667,6 +667,22 @@ async def generate_with_validation(ir, cartridge, max_iterations=3):
 
 ---
 
+## 🔧 v4.0 E2E Stabilization Fix (Marzo 3, 2026)
+
+### Bug — Logs mostraban ejecución anterior al entrar a Refinement (logs stale)
+
+**Síntoma:** Al navegar de Drafting → Refinement, el panel de logs mostraba los logs de la corrida anterior, haciendo creer que había un fallo cuando era un log stale.
+
+**Fix** (`RefinementView.tsx`):
+
+| Status al montar | Acción |
+|---|---|
+| `DRAFTED` (recién llegado) | Logs vacíos — pantalla limpia |
+| `REFINING` (run activo) | Carga logs + arranca polling |
+| `REFINED` / beyond (completado) | Carga estado histórico + marca completo |
+
+---
+
 > [!TIP]
 > **Optimization**: Enable "Fast Mode" to skip Agent F review for simple transformations (flat file loads). Use "Quality Mode" for complex business logic.
 
@@ -678,10 +694,10 @@ async def generate_with_validation(ir, cartridge, max_iterations=3):
 
 ---
 
-**Document Version:** 2.0 (v4.0)  
-**Last Updated:** Febrero 17, 2026  
-**Sprint:** Sprint 14 Phase 2  
-**Status:** Real-Time Validation 100% Complete  
+**Document Version:** 3.0 (v4.0 E2E Stabilization)  
+**Last Updated:** Marzo 3, 2026  
+**Sprint:** E2E Stabilization (Post-Launch)  
+**Status:** ✅ Stable — Real-Time Validation 100% Complete. Stale logs bug fixed.  
 
 **See Also**:
 - [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md) - utm_generation_outcomes schema

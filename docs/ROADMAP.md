@@ -3,14 +3,15 @@
 > [!NOTE]
 > **Product Strategy**: Legacy2Lake operates as a high-fidelity **Artifact Generator**. Our roadmap focuses on generating production-ready code, IaC, and Orchestration manifests while maintaining a zero-access security posture relative to client infrastructure.
 
-> **Current Release**: v3.9 GA ✅ (Feb 13, 2026) - Multi-User + Visualization Integration COMPLETE  
-> **In Progress**: v4.0 "Zero-Hardcode Core" - **95% Complete** (Backend 100%, Frontend 70%)  
-> **Target Release**: Late March 2026
+> **Current Release**: v4.0 GA ✅ (Marzo 2026) - Zero-Hardcode Core, Two-Layer Prompts, Discovery Enhancements  
+> **Status**: Post-Launch Stabilization — 3 E2E bugs fixed (Drafting BLOCKED, stale logs, Governance sidebar)  
+> **Next**: v4.1 — Design system audit, full E2E integration testing, DB indices
 >
-> **Sprint 14 Status:**
+> **Sprint 14 Status (completed):**
 > - ✅ Phase 1: Parser Catalog (100% - Database-driven technology registry)
 > - ✅ Phase 2: UI Performance (95%+ backend load reduction, unified sidebar)
 > - ✅ Phase 3: Component Unification (100% - UnifiedLogViewer + UnifiedFileExplorer deployed)
+> - ✅ Phase 4: Action Consolidation (100% - All execution actions in Sidebar)
 
 ---
 
@@ -32,7 +33,7 @@ See [Simple Release Plan](planning/RELEASE_PLAN_SIMPLE_v3.9.md) for v3.9 details
 
 ## 🚀 Next Release (Committed)
 
-### v4.0 - Zero-Hardcode Core (Q2 2026) 🚀 **95% COMPLETE**
+### v4.0 - Zero-Hardcode Core ✅ **RELEASED** (Marzo 2026)
 **Theme**: "Prompt-Driven Foundation" (SIMPLIFIED & STREAMLINED)
 
 **Feature Status** (Feb 19, 2026):
@@ -91,15 +92,15 @@ See [Simple Release Plan](planning/RELEASE_PLAN_SIMPLE_v3.9.md) for v3.9 details
 - 🔮 Security scanning → v5.1
 - 🔮 Lineage tracking → v5.2
 
-**Duration**: ~3 weeks (reduced from original 4)  
+**Duration**: Completed March 2026  
 **Business Impact**: $650K annual value (prompts + quality + validation + UI consistency)  
-**Timeline**: Target late March 2026 → **ON TRACK** ✅
+**Status**: ✅ PRODUCTION — Post-launch stabilization in progress
 
-**Recent Milestones**:
-- Feb 19: Sprint 14 Phase 3 Component Unification completed
-- Feb 18: Schema Viewer PK/FK detection + column lineage
-- Feb 17: Sprint 14 Phase 2 Performance optimization (95% load reduction)
-- Feb 15: Zero-hardcode backend infrastructure complete
+**Post-Launch Milestones**:
+- Mar 03: E2E stabilization — Drafting BLOCKED fix, stale logs fix, Governance Quick Info fix
+- Mar 02: BUG-001 → BUG-009 post-launch fixes (Agent Matrix, Model Catalog, Provider Vault)
+- Feb 27: Ghost Mode Bug #1/2/3/4/5 fixed (dependencies.py, auth-client.ts, admin page.tsx)
+- Feb 25/24: Feature complete — Two-Layer Prompts, Pre-Classification Grid, Action Consolidation
 
 ---
 

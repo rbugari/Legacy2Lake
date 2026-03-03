@@ -232,7 +232,7 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
         }
     ],
 
-    // Stage 4: Governance (Documentation) - Was 4
+    // Stage 4: Governance & Certification
     4: [
         {
             id: 'quick-info',
@@ -240,33 +240,36 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Info
         },
         {
-            id: 'completion',
-            label: 'Completion Status',
-            icon: CheckCircle,
-            component: 'CompletionStatus',
+            id: 'report',
+            label: 'Certification Report',
+            icon: ShieldCheck,
+            variant: 'view',
+            status: true
+        },
+        {
+            id: 'logs',
+            label: 'Execution Logs',
+            icon: Terminal,
+            variant: 'view',
+            status: true
+        },
+        {
+            id: 'audit',
+            label: 'Audit Checks',
+            icon: ShieldAlert,
+            variant: 'view'
+        },
+        {
+            id: 'quality',
+            label: 'Quality Metrics',
+            icon: BarChart3,
             variant: 'view'
         },
         {
             id: 'documentation',
-            label: 'Documentation',
-            icon: Book,
-            collapsible: true,
-            children: [
-                { id: 'technical', label: 'Technical Docs', icon: FileText, variant: 'view' },
-                { id: 'dictionary', label: 'Data Dictionary', icon: BookOpen, variant: 'view' },
-                { id: 'lineage', label: 'Lineage Map', icon: GitBranch, variant: 'view' },
-                { id: 'runbook', label: 'Runbook', icon: PlayCircle, variant: 'view' }
-            ]
-        },
-        {
-            id: 'actions',
-            label: 'Actions',
-            icon: Settings,
-            collapsible: true,
-            children: [
-                { id: 'generate-governance', label: 'Generate Governance Report', icon: ShieldCheck, variant: 'action' },
-                { id: 'audit', label: 'Run Audit/Certification', icon: ShieldAlert, variant: 'action' }
-            ]
+            label: 'Lineage & Runbook',
+            icon: GitBranch,
+            variant: 'view'
         }
     ],
 

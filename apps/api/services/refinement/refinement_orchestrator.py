@@ -157,7 +157,7 @@ class RefinementOrchestrator:
             # 1. Profile (Agent P)
             local_log.append(f"--- [PHASE 1] PROFILER: {models['Profiler']} ---")
             print(f"[ORCHESTRATOR DEBUG] Starting Phase 1: PROFILER")
-            msg = await _log("Starting analysis...", "Profiler")
+            msg = await _log("[PHASE PROGRESS: 1/4] Starting analysis...", "Profiler")
             local_log.append(msg)
             
             profile_meta = await self.profiler.analyze_codebase(project_id, local_log, project_name=self.project_name)
@@ -178,7 +178,7 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 2] ARCHITECT: {models['Architect']} ---")
             print(f"[ORCHESTRATOR DEBUG] Starting Phase 2: ARCHITECT")
             print(f"[ORCHESTRATOR DEBUG] Calling architect.refine_project() with profile_meta")
-            msg = await _log("Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
+            msg = await _log("[PHASE PROGRESS: 2/4] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)
             architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name)
             print(f"[ORCHESTRATOR DEBUG] Architect complete. architect_out keys: {architect_out.keys() if architect_out else 'None'}")
@@ -196,7 +196,7 @@ class RefinementOrchestrator:
             
             # 3. Refactoring (Agent R)
             local_log.append(f"--- [PHASE 3] REFACTORING: {models['Refactoring']} ---")
-            msg = await _log("Applying Spark Optimizations and Security Controls...", "Refactoring")
+            msg = await _log("[PHASE PROGRESS: 3/4] Applying Spark Optimizations and Security Controls...", "Refactoring")
             local_log.append(msg)
             refactor_out = await self.refactorer.refactor_project(project_id, architect_out, local_log, project_name=self.project_name)
             
@@ -212,7 +212,7 @@ class RefinementOrchestrator:
             
             # 4. Ops Auditor (Agent O)
             local_log.append(f"--- [PHASE 4] OPS AUDITOR: {models['OpsAuditor']} ---")
-            msg = await _log("Validating operational readiness and generating DevOps assets...", "OpsAuditor")
+            msg = await _log("[PHASE PROGRESS: 4/4] Validating operational readiness and generating DevOps assets...", "OpsAuditor")
             local_log.append(msg)
             ops_out = await self.ops_auditor.audit_project(project_id, architect_out, local_log, project_name=self.project_name)
             

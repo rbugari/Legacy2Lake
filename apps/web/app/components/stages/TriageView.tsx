@@ -116,6 +116,7 @@ export default function TriageView({
     const [isInitialLoading, setIsInitialLoading] = useState(true); // Only for initial load
     const { confirm, ConfirmDialog } = useConfirm();
     const [isTriageRunning, setIsTriageRunning] = useState(false); // For active triage/regenerate processes
+    const [isTriageComplete, setIsTriageComplete] = useState(false); // True once triage finishes successfully
 
     // Graph State
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
@@ -319,6 +320,12 @@ export default function TriageView({
             // Allow loading for any post-discovery status
             const validStatuses = ['COMPLETED', 'TRIAGED', 'TRIAGE', 'DRAFTING', 'DRAFTED', 'REFINING', 'REFINED', 'DELIVERED'];
             if (validStatuses.includes(statusData.status)) {
+                // Mark triage complete for TRIAGED or any later stage so the
+                // completion banner is visible even if the user returns after advancing.
+                const TRIAGED_OR_BEYOND = ['TRIAGED', 'DRAFTING', 'DRAFTED', 'REFINING', 'REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
+                if (TRIAGED_OR_BEYOND.includes(statusData.status)) {
+                    setIsTriageComplete(true);
+                }
                 const projectRes = await fetchWithAuth(`discovery/project/${projectId}`);
                 const projectData = await projectRes.json();
                 console.log('[TriageView fetchProject] Project data:', {
@@ -538,12 +545,8 @@ export default function TriageView({
 
                 // Stop polling - data will reload via useEffect when isTriageRunning changes
                 setIsTriageRunning(false);
-
-                // Auto-redirect to grid to show results
-                console.log("DEBUG: Triage success, auto-transitioning to grid view");
-                onSectionChange('grid');
-
-                console.log("DEBUG: Polling stopped, component will reload data");
+                setIsTriageComplete(true);
+                // Stay on log view — user reviews results and navigates manually
             }
         } catch (e) {
             console.error("Failed to load logs", e);
@@ -621,6 +624,7 @@ export default function TriageView({
 
         console.log("DEBUG: Starting Triage process...");
         setIsTriageRunning(true);
+        setIsTriageComplete(false);
         onSectionChange('logs'); // Show logs initially to see progress
         setTriageLog("Initializing Triage process in background..."); // Reset log
 
@@ -675,6 +679,7 @@ export default function TriageView({
         if (!resetOk) return;
 
         setIsTriageRunning(true);
+        setIsTriageComplete(false);
         try {
             const res = await fetchWithAuth(`projects/${projectId}/reset`, {
                 method: 'POST'
@@ -1352,6 +1357,34 @@ export default function TriageView({
                         {activeSection === 'logs' && (
                             <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                                 <div className="max-w-5xl mx-auto space-y-4">
+
+                                    {/* ── Completion Banner ── */}
+                                    {isTriageComplete && !isTriageRunning && (
+                                        <div className="flex items-center justify-between px-6 py-4 bg-sky-500/10 border border-sky-500/30 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div className="flex items-center gap-3">
+                                                <CheckCircle size={18} className="text-sky-400 shrink-0" />
+                                                <div>
+                                                    <p className="text-sm font-black text-sky-400 uppercase tracking-wide">Triage Complete</p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">All assets classified — review the grid or proceed to Drafting.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => onSectionChange('grid')}
+                                                    className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-sky-500/10 border border-white/10 hover:border-sky-500/30 text-sky-300 text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                                                >
+                                                    View Grid
+                                                </button>
+                                                <button
+                                                    onClick={() => onStageChange?.(2)}
+                                                    className="flex items-center gap-2 px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                                                >
+                                                    Next: Drafting <ArrowRight size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="flex items-center justify-between mb-6">
                                         <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                                             <Terminal className="text-primary" /> Triage Execution Logs

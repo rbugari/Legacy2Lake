@@ -246,7 +246,7 @@
                 {% if asset.category == 'CORE' %}
                 <tr>
                     <td style="font-weight: 600;">{{ asset.name }}</td>
-                    <td>{{ asset.type or 'Unknown' }}</td>
+                    <td>{{ asset.asset_type or asset.type or 'Unknown' }}</td>
                     <td>
                         <span class="badge badge-{{ (asset.complexity or 'medium')|lower }}">
                             {{ asset.complexity or 'MEDIUM' }}
@@ -283,7 +283,7 @@
                 {% if asset.category == 'SUPPORT' %}
                 <tr>
                     <td style="font-weight: 600;">{{ asset.name }}</td>
-                    <td>{{ asset.type or 'Unknown' }}</td>
+                    <td>{{ asset.asset_type or asset.type or 'Unknown' }}</td>
                     <td>
                         <span class="badge badge-{{ (asset.complexity or 'medium')|lower }}">
                             {{ asset.complexity or 'MEDIUM' }}
@@ -415,7 +415,7 @@
             {% for asset in assets %}
             {% if asset.complexity == 'HIGH' %}
             <li>
-                <strong>{{ asset.name }}</strong> ({{ asset.type or 'Unknown Type' }})
+                <strong>{{ asset.name }}</strong> ({{ asset.asset_type or asset.type or 'Unknown Type' }})
                 - Requires expert validation
             </li>
             {% endif %}
@@ -437,6 +437,125 @@
                 pipeline.</li>
             <li>Establish rollback procedures for critical business processes.</li>
         </ol>
+    </div>
+
+    <!-- Schema Intelligence: Sprint 14 Data Quality & PK/FK Detection -->
+    <div class="page">
+        <h1>Schema Intelligence</h1>
+        <p style="margin-bottom: 20px; font-size: 13px; color: #666;">
+            Automated schema profiling results from <strong>Sprint 14</strong> deep-analysis pipeline.
+            Primary key, foreign key, and column-level metadata extracted during forensic triage.
+        </p>
+
+        <!-- Detection Summary -->
+        <div class="stat-grid">
+            <div class="stat-card" style="background: #0284c7;">
+                <span class="stat-value">{{ schema_stats.pk_count }}</span>
+                <span class="stat-label">Primary Keys Detected</span>
+            </div>
+            <div class="stat-card" style="background: #7c3aed;">
+                <span class="stat-value">{{ schema_stats.fk_count }}</span>
+                <span class="stat-label">Foreign Keys Detected</span>
+            </div>
+            <div class="stat-card" style="background: #059669;">
+                <span class="stat-value">{{ schema_stats.detection_rate }}%</span>
+                <span class="stat-label">Schema Detection Rate</span>
+            </div>
+        </div>
+
+        <div class="stat-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 10px;">
+            <div class="stat-card" style="background: #64748b;">
+                <span class="stat-value">{{ schema_stats.total_columns }}</span>
+                <span class="stat-label">Total Columns Profiled</span>
+            </div>
+            <div class="stat-card" style="background: #64748b;">
+                <span class="stat-value">{{ schema_stats.assets_with_schema }} / {{ stats.total }}</span>
+                <span class="stat-label">Assets with Schema Data</span>
+            </div>
+        </div>
+
+        {% if schema_stats.column_profiles %}
+        <h2 style="margin-top: 30px;">Column Profile per Asset</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset Name</th>
+                    <th>Columns</th>
+                    <th>PKs</th>
+                    <th>FKs</th>
+                    <th>PII Cols</th>
+                    <th>Data Types</th>
+                    <th>Quality Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in schema_stats.column_profiles %}
+                <tr>
+                    <td style="font-weight: 600;">{{ p.asset }}</td>
+                    <td style="text-align: center;">{{ p.column_count }}</td>
+                    <td style="text-align: center;">
+                        {% if p.pk_count > 0 %}
+                        <span class="badge badge-core">{{ p.pk_count }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if p.fk_count > 0 %}
+                        <span class="badge badge-support">{{ p.fk_count }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if p.pii_columns > 0 %}
+                        <span class="badge badge-high">🔒 {{ p.pii_columns }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="font-size: 10px; color: #475569;">{{ p.data_types }}</td>
+                    <td style="text-align: center;">
+                        {% if p.quality_score != '-' %}
+                        <span class="badge badge-{{ 'low' if p.quality_score|float >= 80 else ('medium' if p.quality_score|float >= 60 else 'high') }}">
+                            {{ p.quality_score }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="padding: 20px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; color: #9a3412; font-size: 13px; margin-top: 20px;">
+            ⚠️ <strong>Schema profiles not available.</strong> Re-run the Triage phase to populate PK/FK and column-level metadata.
+        </div>
+        {% endif %}
+
+        {% if quality_dist %}
+        <h2 style="margin-top: 30px;">Quality Score Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Score Range</th>
+                    <th>Asset Count</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bucket, count in quality_dist.items() | sort %}
+                <tr>
+                    <td style="font-weight: 600;">{{ bucket }}</td>
+                    <td>{{ count }}</td>
+                    <td>
+                        {% set score = bucket.split('-')[0]|int %}
+                        {% if score >= 80 %}
+                        <span class="badge badge-low">✅ Good</span>
+                        {% elif score >= 60 %}
+                        <span class="badge badge-medium">⚠️ Fair</span>
+                        {% else %}
+                        <span class="badge badge-high">❌ Needs Review</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
     </div>
 
     <!-- Next Steps -->

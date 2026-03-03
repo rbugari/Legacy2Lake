@@ -943,9 +943,10 @@ async def get_project_execution_logs(
     Release 3.5: Moved to 'utm_execution_logs'.
     """
     phase_map = {
-        "triage": "TRIAGE", 
-        "migration": "MIGRATION", 
-        "refinement": "REFINEMENT"
+        "triage": "TRIAGE",
+        "migration": "MIGRATION",
+        "refinement": "REFINEMENT",
+        "governance": "GOVERNANCE",
     }
     phase = phase_map.get(type.lower(), "TRIAGE")
     
@@ -1402,7 +1403,8 @@ async def get_design_registry(
         # Auto-initialize if empty (Sprint 14 - User Experience Fix)
         if not registry or len(registry) == 0:
             logger.info(f"[Registry] No registry found for project {project_id}, initializing defaults", "Registry")
-            await db.initialize_design_registry(project_id)
+            # Pass None so initialize_design_registry looks up project settings itself
+            await db.initialize_design_registry(project_id, target_tech=None)
             registry = await db.get_design_registry(project_id)
         
         return {"registry": registry, "count": len(registry)}

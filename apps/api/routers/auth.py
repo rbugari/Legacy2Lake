@@ -566,7 +566,7 @@ async def reset_user_password(
     }
 
 
-@router.patch("/auth/users/{user_id}/reset-password")
+@router.post("/admin/users/{user_id}/reset-password")
 async def admin_reset_user_password(
     user_id: str,
     payload: UserPasswordReset,
@@ -575,6 +575,7 @@ async def admin_reset_user_password(
     """
     Platform ADMIN endpoint to reset any user's password across all tenants.
     Used by All Users Dashboard for cross-tenant user management.
+    Route: POST /auth/admin/users/{user_id}/reset-password
     """
     # Platform ADMIN can reset ANY user password without tenant restrictions
     db = SupabasePersistence(tenant_id=admin.get("tenant_id"))

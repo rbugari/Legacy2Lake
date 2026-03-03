@@ -28,7 +28,23 @@ async def generate_triage_report(
         project = await db.get_project_metadata(project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-        
+
+        # Ensure source_tech / target_tech are populated (get_project_metadata does not
+        # extract them from settings the way list_projects does)
+        _s = project.get('settings') or {}
+        _c = project.get('config') or {}
+        if not project.get('source_tech'):
+            project['source_tech'] = (
+                _s.get('source_tech') or _c.get('source_tech') or
+                _c.get('origin_tech') or _s.get('detected_technology')
+            )
+        if not project.get('target_tech'):
+            project['target_tech'] = (
+                _s.get('target_tech') or _c.get('target_tech') or _c.get('dest_tech')
+            )
+        if not project.get('name'):
+            project['name'] = _s.get('name') or project.get('project_name', 'Unknown')
+
         assets = await db.get_project_assets(project_id)
         logger.info(f"Found {len(assets)} assets for project {project_id}")
         

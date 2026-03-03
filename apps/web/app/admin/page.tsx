@@ -479,8 +479,8 @@ export default function SystemPage() {
         }
         setIsResettingPassword(true);
         try {
-            const res = await fetchWithAuth(`auth/users/${resetPasswordUser.user_id}/reset-password`, {
-                method: "PATCH",
+            const res = await fetchWithAuth(`auth/admin/users/${resetPasswordUser.user_id}/reset-password`, {
+                method: "POST",
                 body: JSON.stringify({ new_password: newPassword })
             });
             if (res.ok) {
@@ -980,8 +980,8 @@ export default function SystemPage() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${t.tier === 'ENTERPRISE' ? 'bg-purple-500/10 text-purple-500' :
-                                                        t.tier === 'PREMIUM' ? 'bg-cyan-500/10 text-cyan-500' :
-                                                            'bg-gray-500/10 text-gray-500'
+                                                    t.tier === 'PREMIUM' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                        'bg-gray-500/10 text-gray-500'
                                                     }`}>
                                                     {t.tier || 'STANDARD'}
                                                 </span>
@@ -1130,9 +1130,9 @@ export default function SystemPage() {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.role === 'ADMIN' ? 'bg-purple-500/10 text-purple-500' :
-                                                                u.role === 'MANAGER' ? 'bg-cyan-500/10 text-cyan-500' :
-                                                                    u.role === 'COLLABORATOR' ? 'bg-blue-500/10 text-blue-500' :
-                                                                        'bg-gray-500/10 text-gray-500'
+                                                            u.role === 'MANAGER' ? 'bg-cyan-500/10 text-cyan-500' :
+                                                                u.role === 'COLLABORATOR' ? 'bg-blue-500/10 text-blue-500' :
+                                                                    'bg-gray-500/10 text-gray-500'
                                                             }`}>
                                                             {u.role}
                                                         </span>
@@ -1274,8 +1274,8 @@ export default function SystemPage() {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${lock.status === 'active'
-                                                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                                                                : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
+                                                            ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                                                            : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
                                                             }`}>
                                                             {lock.status}
                                                         </span>

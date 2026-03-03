@@ -358,18 +358,18 @@ Is this migration viable? What are the main risks? Respond in 3-4 lines."""
             if config["provider"] == "azure":
                 from langchain_openai import AzureChatOpenAI
                 llm = AzureChatOpenAI(
-                    deployment_name=config["deployment_name"],
+                    azure_deployment=config["deployment"],  # key is 'deployment', not 'deployment_name'
                     api_key=config["api_key"],
                     azure_endpoint=config["endpoint"],
-                    api_version=config.get("api_version", "2024-05-01-preview"),
+                    openai_api_version=config.get("api_version", "2024-05-01-preview"),
                     temperature=0.3
                 )
-            else:  # openai, groq
+            else:  # openrouter, openai, groq, etc.
                 from langchain_openai import ChatOpenAI
                 llm = ChatOpenAI(
-                    model=config["model"],
+                    model=config["deployment"],  # key is 'deployment', not 'model'
                     api_key=config["api_key"],
-                    base_url=config.get("base_url"),
+                    base_url=config.get("endpoint"),
                     temperature=0.3
                 )
             
