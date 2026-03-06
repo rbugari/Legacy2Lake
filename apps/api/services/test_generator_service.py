@@ -140,6 +140,11 @@ def sample_dataframe(spark):
         
         metadata = metadata or {}
         
+        # SQL-based targets: Use basic SQL test plan instead of pytest (since SQL isn't Python)
+        sql_targets = ['snowflake', 'snowflake_sql', 'snowflake_sql_direct', 'mssql', 'postgresql', 'oracle', 'bigquery', 'redshift']
+        if tech_id.lower() in sql_targets or tech_id.lower().endswith('_sql'):
+            return self._generate_sql_test_plan(code, tech_id, metadata)
+        
         # Extract functions from code
         functions = self._extract_functions(code)
         
@@ -165,16 +170,46 @@ def sample_dataframe(spark):
         
         return test_file
     
+    def _generate_sql_test_plan(self, code: str, tech_id: str, metadata: Dict[str, Any]) -> str:
+        """Generate a basic SQL validation plan for SQL targets."""
+        table_name = metadata.get('target_table', 'YOUR_TABLE')
+        
+        plan = f"""-- SQL Validation Plan for {tech_id.upper()}
+-- Generated: {datetime.utcnow().isoformat()}
+
+-- 1. Structural Validation
+SELECT * FROM {table_name} LIMIT 0;
+
+-- 2. Data Quality Checks
+-- Check for nulls in key columns
+SELECT COUNT(*) as null_violations 
+FROM {table_name} 
+WHERE 1=0; -- TODO: Add key columns
+
+-- 3. Row Count Verification
+SELECT COUNT(*) as total_rows FROM {table_name};
+
+-- 4. Sample Data Review
+SELECT * FROM {table_name} LIMIT 10;
+"""
+        return plan
     
     def _extract_functions(self, code: str) -> List[FunctionInfo]:
         """Extract function definitions from code using AST"""
         functions = []
         
+        if not code or not code.strip():
+            return functions
+
+        # Simple check to avoid parsing SQL with AST
+        if code.strip().upper().startswith(('SELECT', 'CREATE', 'INSERT', 'UPDATE', 'DELETE', 'WITH', 'DROP', 'ALTER')):
+            return functions
+        
         try:
             tree = ast.parse(code)
             
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     # Extract function metadata
                     func_name = node.name
                     
@@ -209,8 +244,8 @@ def sample_dataframe(spark):
                         line_number=node.lineno
                     ))
         
-        except SyntaxError as e:
-            logger.warning(f"[TestGen] Failed to parse code: {e}", "TestGen")
+        except (SyntaxError, ValueError) as e:
+            logger.warning(f"[TestGen] Failed to parse code as Python: {e}", "TestGen")
         
         return functions
     

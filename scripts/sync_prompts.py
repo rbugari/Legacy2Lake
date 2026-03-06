@@ -108,7 +108,7 @@ def sync_to_db():
                 'tech_id': metadata['tech_id'],
                 'layer': metadata['layer'],
                 'prompt_content': content,
-                'source_file': str(md_file.relative_to(project_root)),
+                'source_file': str(md_file.absolute().relative_to(project_root)),
                 'version': metadata.get('version', '1.0.0'),
                 'is_active': True,
                 'updated_at': datetime.utcnow().isoformat()
@@ -117,12 +117,12 @@ def sync_to_db():
             # Upsert to database (assuming table exists)
             # Note: This will fail if table doesn't exist yet (expected in Sprint 0)
             try:
-                supabase.table('utm_system_prompts').upsert(data).execute()
+                supabase.table('utm_prompts').upsert(data).execute()
                 print(f"✅ {metadata['tech_id']}/{metadata['layer']}: {md_file.name}")
                 synced += 1
             except Exception as db_error:
                 if 'does not exist' in str(db_error):
-                    print(f"⚠️  Table utm_system_prompts not found (expected in Sprint 0)")
+                    print(f"⚠️  Table utm_prompts not found (expected in Sprint 0)")
                     print(f"   File prepared: {md_file.name}")
                     synced += 1
                 else:
@@ -150,7 +150,7 @@ def sync_from_db():
     
     try:
         # Fetch all active prompts
-        response = supabase.table('utm_system_prompts') \
+        response = supabase.table('utm_prompts') \
             .select('*') \
             .eq('is_active', True) \
             .execute()

@@ -27,15 +27,14 @@ interface AgentInfo {
     isEnriched?: boolean;
 }
 
-// Only include IMPLEMENTED agents (5 currently active: S, A, C, F, G)
-// Agent D (Deliverer) and legacy agents (B, P, R, O) are NOT implemented yet
+// LLM Agents by phase — all 7 active agents using tenant-configured models
 const STAGE_MAP: Record<string, string[]> = {
-    triage: ["agent-s", "agent-a"],
-    drafting: ["agent-c", "agent-f"],
-    refinement: ["agent-f", "agent-g"], // Use Critic + Governor for refinement until specialized agents are implemented
-    certification: ["agent-g"], // Only Governor until Agent D is implemented
+    triage: ["agent-qa", "agent-s", "agent-a"],
+    drafting: ["agent-c", "agent-f", "agent-g"],
+    refinement: ["agent-d", "agent-g"],
+    certification: ["agent-d", "agent-g"],
     handover: ["agent-g"],
-    all: ["agent-s", "agent-a", "agent-c", "agent-f", "agent-g"]
+    all: ["agent-qa", "agent-s", "agent-a", "agent-c", "agent-f", "agent-g", "agent-d"]
 };
 
 export default function PromptsExplorer({ className, projectId, stage = 'all', originTech, destTech }: PromptsExplorerProps) {

@@ -52,7 +52,8 @@ TECH_MAPPING = {
 LAYER_MAPPING = {
     "bronze_layer.md": "bronze",
     "silver_layer.md": "silver",
-    "gold_layer.md": "gold"
+    "gold_layer.md": "gold",
+    "direct_layer.md": "direct"
 }
 
 def discover_cartridge_prompts():

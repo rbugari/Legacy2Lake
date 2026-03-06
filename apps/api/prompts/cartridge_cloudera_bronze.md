@@ -1,17 +1,17 @@
-# Cloudera Spark Bronze Layer Cartridge Rules
+# Cloudera CDP — Bronze Layer Cartridge Rules
 
 ## 🎯 CRITICAL COMPLIANCE REQUIREMENTS (Zero-Hardcode Policy)
 
 ### 1. MANDATORY L2L MODERNIZATION TRACE HEADER
 ```python
 # ================================================================
-# L2L MODERNIZATION TRACE: {{layer}} Layer - {{asset_name}}
+# L2L MODERNIZATION TRACE: Bronze Layer - {{asset_name}}
 # ================================================================
 # Source Asset: {{source_asset_name}}
 # Source Technology: {{source_tech}}
-# Target Platform: Cloudera CDP Datahub (Spark)
+# Target Platform: Cloudera CDP (Apache Iceberg + Spark 3.x)
 # Medallion Layer: bronze
-# Component Type: Data Pipeline
+# Component Type: Data Ingestion Pipeline
 # Business Entity: {{business_entity}}
 # Load Strategy: {{load_strategy}}
 # Generated At: {{timestamp}}
@@ -19,84 +19,261 @@
 # ================================================================
 ```
 
-### 2. ZERO-HARDCODE CONFIGURATION
+### 2. CLOUDERA CDP PLATFORM NOTES
+
+- **Table format**: Apache Iceberg (default on CDP 7.x). No Delta Lake, no `DeltaTable` API.
+- **Catalog**: `spark_catalog` (Hive Metastore-backed). Use `spark_catalog.schema.table`.
+- **No `dbutils`**: Secrets and paths come from `config` injected by orchestrator.
+- **Kerberos**: Authentication is pre-handled by CDP environment. No credential lines in code.
+- **Storage**: HDFS or Ozone — paths always from `config`. Never hardcode `hdfs://` or `ofs://`.
+- **MERGE**: Use `spark.sql("MERGE INTO ...")` — Iceberg MERGE is fully SQL-native on CDP.
+- **Partitioning**: Iceberg hidden partitioning (`PARTITIONED BY (days(event_date))`) — set at DDL level, no `repartition()` needed in code.
+
+### 3. ZERO-HARDCODE CONFIGURATION
 **❌ FORBIDDEN: Hardcoded values anywhere in code**
-- NO hardcoded paths: `hdfs://...`, `ozone://...`
-- NO example credentials: `<JDBC_URL>`, `<USER>`, `<PASSWORD>`  
+- NO hardcoded paths: `hdfs://namenode/...`, `ofs://ozone/...`
+- NO hardcoded JDBC URLs, credential strings, catalog/schema names
 - NO sample configs in `main()` functions
 
-**✅ REQUIRED: All paths and configs from orchestrator context**
+**✅ REQUIRED: All from orchestrator config**
 ```python
 def execute_task(spark, config):
-    # Extract ALL values from config dictionary
-    bronze_path = config['bronze_path']
-    catalog = config.get('catalog_name', 'hive_metastore')
-    schema = config.get('bronze_schema', 'bronze_raw')
-    jdbc_url = config['jdbc_url']  # Injected by orchestrator
+    catalog        = config.get('catalog_name', 'spark_catalog')
+    bronze_schema  = config.get('bronze_schema', 'bronze_raw')
+    table_name     = config['table_name']
+    business_keys  = config.get('business_keys', ['id'])
+    watermark_col  = config.get('watermark_col')
+    watermark_value= config.get('watermark_value', '1900-01-01')
+    load_mode      = config.get('load_mode', 'merge')     # merge | overwrite | append
+    source_type    = config.get('source_type', 'jdbc')    # jdbc | file | hive
 ```
 
-### 3. PARAMETERIZED EXTRACTION (Required)
+### 4. DATA EXTRACTION PATTERNS
+
+**Pattern A: JDBC (SQL Server, Oracle, PostgreSQL)**
 ```python
-# CORRECT - Use config parameters for incremental logic
-min_id = config.get('min_custid', 0)
-query = f"""
-    (SELECT * FROM Sales.Customers 
-     WHERE custid > {min_id}) AS source
-"""
+props = {
+    "driver"  : config['jdbc_driver'],
+    "user"    : config['jdbc_user'],
+    "password": config['jdbc_password']
+}
+
+# Incremental via watermark
+if watermark_col and watermark_value:
+    query = f"""(
+        SELECT * FROM {config['source_table']}
+        WHERE {watermark_col} > '{watermark_value}'
+    ) AS incremental_src"""
+else:
+    query = f"({config['source_query']}) AS full_src"
+
 df = spark.read.jdbc(
     url=config['jdbc_url'],
     table=query,
-    properties={
-        "user": config['jdbc_user'],
-        "password": config['jdbc_password']
-    }
+    properties=props
 )
+logger.info(f"[EXTRACT] JDBC: {df.count()} rows")
 ```
 
-### 4. BRONZE LAYER METADATA COLUMNS (Required)
+**Pattern B: File (HDFS / Ozone — path from config)**
 ```python
-# Add mandatory audit columns for bronze layer
-import pyspark.sql.functions as F
-df_bronze = df_typed.withColumn(
-    "_ingestion_timestamp", F.current_timestamp()
-).withColumn(
-    "_ingestion_date", F.current_date()
-).withColumn(
-    "_source_file", F.lit(config.get('source_file', 'jdbc_extract'))
-).withColumn(
-    "_record_hash", F.sha2(F.concat_ws("||", *df_typed.columns), 256)
-)
-```
+file_path   = config['source_file_path']   # e.g. 'hdfs:///data/landing/orders/'
+file_format = config.get('file_format', 'parquet')  # parquet | csv | json | orc
 
-### 5. CLOUDERA / ICEBERG OUTPUT
-```python
-# Typically use Iceberg on Cloudera instead of Delta Lake
-table_name = f"{catalog}.{schema}.{{{{table_name}}}}"
-output_format = config.get('output_format', 'iceberg')
-
-if output_format == 'iceberg':
-    # Merge using Spark SQL for Iceberg
-    df_bronze.createOrReplaceTempView("bronze_updates")
-    
-    merge_sql = f"""
-    MERGE INTO {table_name} t
-    USING bronze_updates s
-    ON t.business_key = s.business_key
-    WHEN MATCHED THEN UPDATE SET *
-    WHEN NOT MATCHED THEN INSERT *
-    """
-    spark.sql(merge_sql)
+if file_format == 'csv':
+    df = spark.read.option("header", "true") \
+                   .option("inferSchema", "false") \
+                   .csv(file_path)
 else:
-    df_bronze.write.format(output_format).mode("append").saveAsTable(table_name)
+    df = spark.read.format(file_format).load(file_path)
+
+logger.info(f"[EXTRACT] File: {file_format} from {file_path}: {df.count()} rows")
 ```
 
-### 6. FUNCTION STRUCTURE (Mandatory)
-**✅ ONLY expose `execute_task(spark, config)` - NO main() function**
-- Return a dict with `status` and `rows_extracted`.
-- Embed Error handling and logging.
+**Pattern C: Existing Hive/Iceberg table as source**
+```python
+source_full = f"{catalog}.{config['source_schema']}.{config['source_table']}"
+df = spark.read.table(source_full)
+if watermark_col:
+    df = df.filter(F.col(watermark_col) > F.lit(watermark_value))
+logger.info(f"[EXTRACT] Hive/Iceberg table: {df.count()} rows")
+```
+
+### 5. EXPLICIT TYPE CASTING (Required)
+```python
+import pyspark.sql.functions as F
+from pyspark.sql.types import (
+    StringType, IntegerType, LongType, DecimalType,
+    DateType, TimestampType, BooleanType
+)
+
+def _resolve_type(dtype_str: str):
+    """Map triage metadata type → Spark DataType."""
+    mapping = {
+        'STRING'   : StringType(),
+        'INT'      : IntegerType(),
+        'BIGINT'   : LongType(),
+        'DECIMAL'  : DecimalType(18, 4),
+        'DATE'     : DateType(),
+        'TIMESTAMP': TimestampType(),
+        'BOOLEAN'  : BooleanType(),
+    }
+    return mapping.get(dtype_str.upper(), StringType())
+
+columns_meta = config.get('columns', [])
+if columns_meta:
+    df_typed = df.select([
+        F.col(c['name']).cast(_resolve_type(c['data_type'])).alias(c['name'])
+        for c in columns_meta
+    ])
+else:
+    df_typed = df
+    logger.warning("[CAST] No column metadata — types inferred")
+```
+
+### 6. AUDIT COLUMNS (Bronze Layer)
+```python
+# Mandatory L2L audit columns for Bronze traceability
+df_bronze = df_typed \
+    .withColumn("_ingestion_timestamp", F.current_timestamp()) \
+    .withColumn("_ingestion_date",      F.current_date()) \
+    .withColumn("_source_file",         F.lit(config.get('source_file', 'jdbc_extract'))) \
+    .withColumn(
+        "_record_hash",
+        F.sha2(F.concat_ws("||", *[F.col(c['name']) for c in (columns_meta or [])]), 256)
+        if columns_meta else F.sha2(F.concat_ws("||", *df_typed.columns), 256)
+    )
+```
+
+### 7. ICEBERG MERGE PATTERN (Mandatory — idempotent loads)
+```python
+table_full = f"{catalog}.{bronze_schema}.{table_name}"
+
+# Create Iceberg table if not exists
+try:
+    spark.read.table(table_full).count()
+    table_exists = True
+except Exception:
+    table_exists = False
+    df_bronze.writeTo(table_full) \
+        .using("iceberg") \
+        .tableProperty("write.format.default", "parquet") \
+        .createOrReplace()
+    logger.info(f"[INIT] Created Iceberg Bronze table: {table_full}")
+
+if table_exists and load_mode == 'merge':
+    df_bronze.createOrReplaceTempView("bronze_incoming")
+
+    merge_on   = " AND ".join([f"t.{k} = s.{k}" for k in business_keys])
+    update_set = ", ".join([f"t.{c} = s.{c}" for c in df_bronze.columns if c not in business_keys])
+
+    spark.sql(f"""
+        MERGE INTO {table_full} t
+        USING bronze_incoming s
+        ON {merge_on}
+        WHEN MATCHED THEN UPDATE SET {update_set}
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+    logger.info(f"[LOAD] Iceberg MERGE completed: {table_full}")
+
+elif table_exists and load_mode == 'append':
+    df_bronze.writeTo(table_full).using("iceberg").append()
+    logger.info(f"[LOAD] Iceberg APPEND: {table_full}")
+
+elif table_exists and load_mode == 'overwrite':
+    df_bronze.write.format("iceberg").mode("overwrite").saveAsTable(table_full)
+    logger.info(f"[LOAD] Iceberg OVERWRITE: {table_full}")
+
+target_count = spark.read.table(table_full).count()
+logger.info(f"[LOAD] Bronze table now has {target_count} rows")
+```
+
+### 8. ICEBERG TABLE MAINTENANCE (Post-Load)
+```python
+# Compact small files — important for HDFS/Ozone performance
+if config.get('run_compaction', False):
+    spark.sql(f"""
+        CALL spark_catalog.system.rewrite_data_files(
+            table => '{table_full}',
+            strategy => 'binpack',
+            options => map('target-file-size-bytes', '134217728')
+        )
+    """)
+    logger.info(f"[MAINTENANCE] Iceberg compaction complete: {table_full}")
+
+# Expire old snapshots (Iceberg time-travel control)
+if config.get('expire_snapshots', False):
+    spark.sql(f"""
+        CALL spark_catalog.system.expire_snapshots(
+            table => '{table_full}',
+            older_than => TIMESTAMP '{config.get('expire_before', '2000-01-01 00:00:00')}'
+        )
+    """)
+```
+
+### 9. FUNCTION STRUCTURE (Mandatory)
+```python
+def execute_task(spark, config):
+    """
+    Bronze ingestion for {{asset_name}} on Cloudera CDP (Apache Iceberg + Spark 3.x).
+
+    Responsibilities:
+    - Read from JDBC, HDFS/Ozone file, or source Hive/Iceberg table
+    - Apply explicit type casting from triage column metadata
+    - Add L2L audit columns (_ingestion_timestamp, _record_hash)
+    - Write to Iceberg Bronze table via MERGE (idempotent)
+
+    Required config keys:
+      catalog_name    : Spark catalog (default 'spark_catalog')
+      bronze_schema   : Target schema (e.g. 'bronze_raw')
+      table_name      : Target Bronze table name
+      business_keys   : list[str] — MERGE join columns
+      source_type     : 'jdbc' | 'file' | 'hive'
+      jdbc_url        : JDBC connection string (if source_type='jdbc')
+      jdbc_user/pass  : Injected by orchestrator
+      source_file_path: HDFS/Ozone path (if source_type='file')
+      watermark_col   : Incremental column (optional)
+      watermark_value : Watermark value (optional)
+      load_mode       : 'merge' | 'overwrite' | 'append'
+      columns         : list[{name, data_type}] from triage
+    """
+    import logging
+    import pyspark.sql.functions as F
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"[START] Bronze ingestion: {{{{asset_name}}}}")
+
+    try:
+        # [EXTRACT] — Section 4
+        source_count = 0   # replace with df.count()
+
+        # [TRANSFORM] — Sections 5 + 6
+
+        # [LOAD] — Section 7 (Iceberg MERGE)
+
+        return {
+            "status"       : "SUCCESS",
+            "rows_source"  : source_count,
+            "rows_in_bronze": target_count
+        }
+
+    except Exception as e:
+        logger.error(f"[ERROR] Bronze ingestion failed: {str(e)}")
+        raise
+
+def _resolve_type(dtype_str: str): ...
+
+# NO if __name__ == "__main__": block
+```
 
 ## 🎯 OUTPUT REQUIREMENTS
-1. Return ONLY valid Cloudera Spark compatible PySpark code.
-2. Must address parameters dynamically from the `config` context.
-3. Assume Iceberg default handling if merge operations are requested on CDP.
-4. Include L2L Medallion Tracking Header.
+1. Return ONLY valid Cloudera CDP PySpark code
+2. Must pass Agent-F compliance check (score ≥ 8)
+3. Zero hardcoded values — all from `config`
+4. **Apache Iceberg** as table format (no Delta Lake, no `DeltaTable` API)
+5. `spark.sql("MERGE INTO ...")` for idempotent Bronze loads
+6. `writeTo().using("iceberg").createOrReplace()` for table creation
+7. No `dbutils` — credentials via config (Kerberos pre-auth by CDP)
+8. L2L header: `Target Platform: Cloudera CDP`, `Medallion Layer: bronze`
+9. `_resolve_type()` helper for explicit casting
+10. Section markers: `# [EXTRACT]`, `# [TRANSFORM]`, `# [LOAD]`, `# [RETURN]`

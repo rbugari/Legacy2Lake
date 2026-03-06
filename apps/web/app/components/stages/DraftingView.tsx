@@ -204,9 +204,12 @@ export default function DraftingView({
     }, [projectId]);
 
     // Poll logs when orchestration is running (every 3 seconds)
+    // Safety: auto-stop after 45 minutes to prevent infinite polling if backend dies
+    const MAX_POLL_MS = 45 * 60 * 1000;
     useEffect(() => {
         let interval: NodeJS.Timeout;
         let initialTimeout: NodeJS.Timeout;
+        let safetyTimeout: NodeJS.Timeout;
 
         if (isOrchestrationRunning) {
             // Wait 1.5 seconds before first fetch to allow backend to clear old logs
@@ -215,11 +218,19 @@ export default function DraftingView({
                 // Then poll every 3 seconds
                 interval = setInterval(fetchOrchestrationLogs, 3000);
             }, 1500);
+
+            // Safety timeout: stop polling after MAX_POLL_MS even if backend never responds
+            safetyTimeout = setTimeout(() => {
+                console.warn('[DraftingView] Safety timeout reached — stopping polling.');
+                setIsOrchestrationRunning(false);
+                setLogs(prev => [...prev, '[TIMEOUT] Process monitoring stopped after 45 minutes. Check server logs.']);
+            }, MAX_POLL_MS);
         }
 
         return () => {
             if (interval) clearInterval(interval);
             if (initialTimeout) clearTimeout(initialTimeout);
+            if (safetyTimeout) clearTimeout(safetyTimeout);
         };
     }, [isOrchestrationRunning]); // fetchOrchestrationLogs is now stable (no state in its deps)
 
@@ -371,14 +382,15 @@ export default function DraftingView({
 
 
     // Watch for sidebar action triggers
+    // IMPORTANT: clear the section FIRST to avoid re-trigger loop, THEN run the confirm dialog
     useEffect(() => {
         if (activeSection === 'run-translation') {
+            onSectionChange('logs'); // Go to logs immediately so user sees the confirm dialog
             if (!isOrchestrationRunning) {
-                handleRunMigration();
+                handleRunMigration(); // This already has confirm() inside — user must approve
             }
-            onSectionChange('logs');
         }
-    }, [activeSection, isOrchestrationRunning, onSectionChange]);
+    }, [activeSection]); // Only trigger on section change, NOT on isOrchestrationRunning
 
     return (
         <div className="flex flex-col h-full bg-[var(--background)]">
@@ -403,6 +415,24 @@ export default function DraftingView({
                 {/* Logs Section (handles both 'logs' and 'progress' from sidebar) */}
                 {(activeSection === "logs" || activeSection === "progress") && (
                     <div className="h-full max-w-7xl mx-auto flex flex-col gap-4">
+
+                        {/* ── Running Banner with Cancel button ── */}
+                        {isOrchestrationRunning && (
+                            <div className="flex items-center justify-between gap-3 px-6 py-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                    <p className="text-sm font-semibold text-amber-400">Pipeline running...</p>
+                                    <p className="text-xs text-gray-500">AI agents are generating your migration code</p>
+                                </div>
+                                <button
+                                    onClick={handleCancelMigration}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors"
+                                >
+                                    <X size={12} />
+                                    Stop
+                                </button>
+                            </div>
+                        )}
 
                         {/* ── Completion Banner ── informational only; Next button is in StageHeader */}
                         {isDraftingComplete && !isOrchestrationRunning && (

@@ -336,6 +336,11 @@ class AgentCService:
     
     @logger.llm_debug("Agent-C-Developer")
     async def transpile_task(self, node_data: Dict[str, Any], context: Dict[str, Any] = None, set_context: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        def _json_serialize(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            return str(obj)
+        
         """
         Transpiles a task using the configured Destination Generator.
         'set_context' provides visibility into neighboring tasks for consistency.
@@ -840,7 +845,7 @@ class AgentCService:
                 logger.error(f"[AgentC Sprint11] Data quality validation failed: {e}", "AgentC")
         
         # v4.0: Generate code using database-driven prompts (if schema + params available)
-        if schema_context and parameters_context and target_engine in ['pyspark', 'spark']:
+        if schema_context and parameters_context:
             try:
                 logger.info(f"[AgentC v4.0] Generating code from DB prompt for layer={layer}", "AgentC")
                 
@@ -905,7 +910,7 @@ class AgentCService:
             logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(core_rules)} chars)", "AgentC")
         else:
             # v4.0 Database-driven approach
-            cartridge_prompt_id = f"cartridge_{target_engine}_{layer}"
+            cartridge_prompt_id = f"agent_c_{layer}_{target_engine}"
             
             try:
                 await self._initialize_prompts()
@@ -938,6 +943,34 @@ class AgentCService:
             rules += f"The following rules were defined by the user for this project and MUST be followed alongside the core rules above:\n"
             rules += cartridge_override
 
+        # v4.0: Pre-resolve variables in Level 2 prompts (Cartridges)
+        # This ensures placeholders like {gold_schema} are resolved before reaching the LLM
+        if rules and (schema_context or parameters_context):
+            try:
+                logger.info(f"[AgentC v4.0] Pre-resolving variables in cartridge rules", "AgentC")
+                await self._initialize_prompts()
+                
+                # Build resolution context (flat for alias matching)
+                res_context = {
+                    'layer': layer,
+                    'target_engine': target_engine
+                }
+                if parameters_context:
+                    res_context.update(parameters_context)
+                if schema_context:
+                    res_context.update(schema_context)
+                
+                # Enrich and build
+                res_context = self.prompt_assembler.enrich_context(res_context)
+                rules = self.prompt_assembler.build(
+                    base_prompt=rules,
+                    context=res_context,
+                    format="simple"
+                )
+                logger.info(f"[AgentC v4.0] ✅ Cartridge rules resolved ({len(rules)} chars)", "AgentC")
+            except Exception as e:
+                logger.error(f"[AgentC v4.0] Failed to resolve cartridge variables: {e}", "AgentC")
+
         # 3.5. Load Project Custom Instructions (v4.0: 3-Level Architecture)
         # Level 3: Project-specific user adjustments (editable via UI)
         custom_instructions = ""
@@ -952,15 +985,15 @@ class AgentCService:
 
         human_prompt = f"""
 {dialect_instruction}
-Project Context: {json.dumps(context or {}, indent=2)}
-Architectural Registry: {json.dumps(registry, indent=2)}
+Project Context: {json.dumps(context or {}, indent=2, default=_json_serialize)}
+Architectural Registry: {json.dumps(registry, indent=2, default=_json_serialize)}
 
 ### SPRINT 9: ZERO-HARDCODE SCHEMA & PARAMETERS (USE THESE FOR ALL CODE GENERATION) ###
 Schema Metadata:
-{json.dumps(schema_context, indent=2) if schema_context else "N/A"}
+{json.dumps(schema_context, indent=2, default=_json_serialize) if schema_context else "N/A"}
 
 Project Parameters:
-{json.dumps(parameters_context, indent=2) if parameters_context else "N/A"}
+{json.dumps(parameters_context, indent=2, default=_json_serialize) if parameters_context else "N/A"}
 
 Template Code (Reference):
 ```python
@@ -975,13 +1008,13 @@ IMPORTANT: Use the schema metadata and project parameters above to generate code
 - Foreign keys: Use schema.foreign_keys
 
 ### ADAPTIVE KNOWLEDGE & SUPPORT CONTEXT ###
-{json.dumps(node_data.get('support_intelligence', []), indent=2)}
+{json.dumps(node_data.get('support_intelligence', []), indent=2, default=_json_serialize)}
 
 ### FORENSIC GAPS & CONSTRAINTS ###
-{json.dumps(node_data.get('scout_assessment', {}).get('detected_gaps', []), indent=2)}
+{json.dumps(node_data.get('scout_assessment', {}).get('detected_gaps', []), indent=2, default=_json_serialize)}
 
 Current Task to Transpile:
-{json.dumps(node_data, indent=2)}
+{json.dumps(node_data, indent=2, default=_json_serialize)}
 
 ### MANDATORY TECHNICAL CONSTRAINTS & COMPLIANCE RULES (OVERRIDES ALL INPUTS) ###
 {rules}

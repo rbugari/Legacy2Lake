@@ -54,13 +54,13 @@ class CartridgeFactory:
             print(f"[CartridgeFactory] DEBUG: DbtCartridge imported successfully")
             return DbtCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
             
-        elif target in ["snowflake"]:
+        elif target in ["snowflake", "snowflake_sql", "snowflake_sql_direct"]:
             print(f"[CartridgeFactory] DEBUG: Matched 'snowflake', importing SnowflakeCartridge...")
             from .snowflake_cartridge import SnowflakeCartridge
             print(f"[CartridgeFactory] DEBUG: SnowflakeCartridge imported successfully")
             return SnowflakeCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 
-        elif target in ["fabric", "ms_fabric", "microsoft_fabric"]:
+        elif target in ["fabric", "ms_fabric", "microsoft_fabric", "ms_fabric_sql", "fabric_sql"]:
             from .ms_fabric_cartridge import MSFabricCartridge
             return MSFabricCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
 

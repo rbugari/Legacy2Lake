@@ -21,8 +21,8 @@ class AuditService:
         """Resolves LLM client from Agent Matrix (DB) or Env Vars."""
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         
-        # We reuse agent-f config for AuditService or can use a global one
-        resolved = await db.resolve_agent_model("agent-f")
+        # Agent D has its own entry in utm_agent_catalog — use agent-d config
+        resolved = await db.resolve_agent_model("agent-d")
         
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         key = os.getenv("AZURE_OPENAI_API_KEY")

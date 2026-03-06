@@ -8,6 +8,9 @@ class SnowflakeCartridge(Cartridge):
     """
 
     def get_file_extension(self) -> str:
+        target = str(self.registry.get("paths", {}).get("target_stack", "snowflake")).lower()
+        if "sql" in target:
+            return ".sql"
         return ".py"
 
     def generate_scaffolding(self) -> Dict[str, str]:
@@ -46,6 +49,10 @@ def add_ingestion_metadata(df):
         }
 
     def generate_bronze(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_bronze_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown_source.py"))
         original_code = table_metadata.get("original_code", "")
         
@@ -86,8 +93,12 @@ def main(session: Session):
 """
 
     def generate_silver(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_silver_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         
         # Validate and normalize PK columns
         pk_columns = self._validate_and_normalize_pk(table_metadata.get("pk_columns", []))
@@ -140,8 +151,12 @@ def main(session: Session):
 """
 
     def generate_gold(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_gold_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         table_type = table_metadata.get("table_type", "DIMENSION")
         
         logic_comment = "# Gold Logic: Business-ready projection."
@@ -198,7 +213,7 @@ FILE_FORMAT = (TYPE = '{file_format}'{csv_opts});
     def generate_silver_sql(self, table_metadata: Dict[str, Any]) -> str:
         """Generates pure SQL for Silver layer."""
         source_path = Path(table_metadata.get("source_path", "unknown"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         pk_columns = table_metadata.get("pk_columns", ["ID"])
         if isinstance(pk_columns, str): pk_columns = [pk_columns]
         
@@ -224,7 +239,7 @@ WHEN NOT MATCHED THEN INSERT
     def generate_gold_sql(self, table_metadata: Dict[str, Any]) -> str:
         """Generates pure SQL for Gold layer."""
         source_path = Path(table_metadata.get("source_path", "unknown"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         
         target_silver = f"{{Config.SCHEMA_SILVER}}.{source_path.stem.upper()}"
         target_gold = f"{{Config.SCHEMA_GOLD}}.{output_table_name.upper()}"

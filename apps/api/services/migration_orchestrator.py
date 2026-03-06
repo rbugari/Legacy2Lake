@@ -10,6 +10,7 @@ from apps.api.services.topology_service import TopologyService
 from apps.api.services.agent_c_service import AgentCService
 from apps.api.services.agent_f_service import AgentFService
 from apps.api.services.agent_g_service import AgentGService
+from apps.api.services.knowledge_service import KnowledgeService
 
 from apps.api.services.persistence_service import PersistenceService, SupabasePersistence
 try:
@@ -186,9 +187,12 @@ class MigrationOrchestrator:
         support_intel = settings.get("support_intelligence", [])
         scout_assessment = settings.get("scout_assessment", {})
         
-        # Resolve Technologies (Settings > Config > Default)
-        source_tech = settings.get("source_tech") or config.get("source_tech", "mssql")
-        target_tech = settings.get("target_tech") or config.get("target_tech", "pyspark")
+        # Sprint 14: Resolve Technologies prioritizing Design Registry
+        registry_list = await self.persistence.get_design_registry(self.project_uuid)
+        registry_flat = KnowledgeService.flatten_knowledge(registry_list) if registry_list else {}
+        
+        source_tech = registry_flat.get("paths", {}).get("source_stack") or settings.get("source_tech") or config.get("source_tech", "mssql")
+        target_tech = registry_flat.get("paths", {}).get("target_stack") or settings.get("target_tech") or config.get("target_tech", "pyspark")
         
         results = {
             "project_id": self.project_id,
@@ -304,7 +308,11 @@ class MigrationOrchestrator:
                 notebook_content = code_result.get("pyspark_code", "")
                 sql_content = code_result.get("sql_code", "")
                 
-                if not notebook_content and not sql_content:
+                # Determine which content Agent C produced and use that for Agent F
+                # Agent C returns pyspark_code for PySpark targets and sql_code for SQL targets
+                generated_code_for_review = notebook_content or sql_content
+                
+                if not generated_code_for_review:
                     reason = code_result.get("error") or code_result.get("reason", "Empty code response")
                     logger.error(f"Agent-C failed to generate code for {pkg_name}: {reason}", "Orchestrator")
                     await self._log_persistence(f"Agent-C: Failed to generate code for {pkg_name} - Reason: {reason}", step="Developer")
@@ -325,7 +333,8 @@ class MigrationOrchestrator:
                 provider_f = config_f.get("provider", "UNKNOWN").upper()
                 await self._log_persistence(f"Initiating Agent F (Compliance) via {provider_f} using model {model_f}", step="Compliance")
                 
-                audit_report = await self.agent_f.review_code(task_def, notebook_content, project_id=self.project_uuid)
+                # Pass the actual generated code to Agent F (SQL or Python depending on target)
+                audit_report = await self.agent_f.review_code(task_def, generated_code_for_review, project_id=self.project_uuid)
                 
                 status = audit_report.get("status", "UNKNOWN")
                 logger.info(f"Audit Status: {status} (Score: {audit_report.get('score', 0)})", "Compliance")
@@ -336,6 +345,16 @@ class MigrationOrchestrator:
                     self._save_artifact(f"{clean_name}.py", notebook_content)
                 if sql_content:
                     self._save_artifact(f"{clean_name}.sql", sql_content)
+                # If Agent F improved the code, update the relevant content
+                if status == "IMPROVED" and audit_report.get("optimized_code"):
+                    optimized = audit_report["optimized_code"]
+                    if notebook_content:
+                        notebook_content = optimized
+                        self._save_artifact(f"{clean_name}.py", notebook_content)
+                    else:
+                        sql_content = optimized
+                        self._save_artifact(f"{clean_name}.sql", sql_content)
+                    generated_code_for_review = optimized
                 
                 self._save_artifact(f"{clean_name}_audit.json", json.dumps(audit_report, indent=2))
                 
@@ -343,12 +362,6 @@ class MigrationOrchestrator:
                     results["succeeded"].append(pkg_name)
                     display_status = "APPROVED" if status == "APPROVED" else "IMPROVED (Optimized)"
                     await self._log_persistence(f"Compliance: {display_status} {pkg_name} (Score: {audit_report.get('score')})")
-                    
-                    # If improved, we might want to use the optimized code
-                    if status == "IMPROVED" and audit_report.get("optimized_code"):
-                         notebook_content = audit_report.get("optimized_code")
-                         # Re-save with optimized content
-                         self._save_artifact(f"{clean_name}.py", notebook_content)
                 else:
                     await self._log_persistence(f"Compliance: REJECTED {pkg_name} (Score: {audit_report.get('score')})")
                     results["failed"].append({

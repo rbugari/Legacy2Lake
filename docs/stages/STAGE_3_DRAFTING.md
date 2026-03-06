@@ -348,7 +348,7 @@ prompt = await ps.get_prompt("agent_c_developer")
 
 # Load cartridge prompt with tech-specific context
 cartridge_prompt = await ps.get_prompt(
-    "cartridge_pyspark_bronze",
+    "agent_c_bronze_pyspark",
     metadata_filters={"tech_id": "pyspark", "layer": "bronze"}
 )
 
@@ -365,7 +365,7 @@ await ps.update_prompt(
 **Storage**: Global prompts with trigger-based automatic versioning
 
 **Key Fields**:
-- `prompt_id` (TEXT primary key) - e.g., "agent_c_developer", "cartridge_pyspark_bronze"
+- `prompt_id` (TEXT primary key) - e.g., "agent_c_developer", "agent_c_bronze_pyspark"
 - `tenant_id` (UUID nullable) - NULL = global, otherwise tenant-specific override
 - `version_number` (INTEGER) - Auto-incrementing per prompt_id + tenant_id
 - `content` (TEXT) - Full prompt template (multi-line markdown)
@@ -433,7 +433,7 @@ ps = PromptService(tenant_id=tenant_id)
 # Load from database (cached)
 base_prompt = await ps.get_prompt("agent_c_developer")
 source_prompt = await ps.get_prompt(f"origin_{source_tech}")
-target_prompt = await ps.get_prompt(f"cartridge_{target_tech}_{layer}")
+target_prompt = await ps.get_prompt(f"agent_c_{layer}_{target_tech}")
 
 # Automatic assembly with metadata filtering
 full_prompt = await ps.assemble_prompt(
@@ -458,16 +458,16 @@ full_prompt = await ps.assemble_prompt(
 ```python
 # Get active cartridge prompt
 cartridge = await ps.get_prompt(
-    prompt_id=f"cartridge_{target_tech}_{layer}",
+    prompt_id=f"agent_c_{layer}_{target_tech}",
     metadata_filters={"tech_id": target_tech, "layer": layer, "is_active": True}
 )
 ```
 
 **Active Cartridges** (v4.0):
-- **Databricks**: `cartridge_pyspark_bronze`, `cartridge_pyspark_silver`, `cartridge_pyspark_gold`
-- **Snowflake**: `cartridge_snowflake_bronze`, `cartridge_snowflake_silver`, `cartridge_snowflake_gold`
-- **Fabric**: `cartridge_fabric_bronze`, `cartridge_fabric_silver_direct`, `cartridge_fabric_gold`
-- **BigQuery**: `cartridge_bigquery_bronze`, `cartridge_bigquery_silver`, `cartridge_bigquery_gold`
+- **Databricks**: `agent_c_bronze_pyspark`, `agent_c_silver_pyspark`, `agent_c_gold_pyspark`
+- **Snowflake**: `agent_c_bronze_snowflake`, `agent_c_silver_snowflake`, `agent_c_gold_snowflake`
+- **Fabric**: `agent_c_bronze_ms_fabric`, `agent_c_silver_ms_fabric`, `agent_c_gold_ms_fabric`
+- **BigQuery**: `agent_c_bronze_gcp`, `agent_c_silver_gcp`, `agent_c_gold_gcp`
 
 Cartridges execute in **Stage 4 (Refinement)** with real-time validation (ValidationService).
 

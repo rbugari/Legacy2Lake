@@ -1,386 +1,161 @@
-# Arquitectura de Agentes y System Prompts (v3.9 GA + v4.0)
+# Arquitectura de Agentes y System Prompts (v4.1)
 
-El "cerebro" de la plataforma UTM (Legacy2Lake) no es un modelo monolítico, sino una orquestación de múltiples agentes especializados que colaboran para escanear, interpretar, auditor y documentar la migración.
+El "cerebro" de la plataforma Legacy2Lake es una orquestación de **10 agentes especializados** en 2 categorías: 7 agentes LLM configurados por el tenant, y 3 motores determinísticos basados en reglas.
 
-> **v3.9 GA + v4.0 Update**: Sistema de **6 agentes especializados** con Agent Matrix multi-tenant. **v4.0 Zero-Hardcode**: Todos los prompts ahora se cargan desde la base de datos (`utm_prompts`) con versionamiento automático, eliminando templates hardcodeados del código.
+> **v4.1 Update (Mar 2026)**: Sistema auditado y completado — Agent B (Cartographer) eliminado por no tener implementación. Agent D corregido con su propio config en Agent Matrix. Agent QA incorporado al Intelligence Hub. Catálogo de agentes sincronizado con el código real.
 
-Este documento detalla el rol de cada agente y expone sus **System Prompts reales**, revelando las reglas de comportamiento que gobiernan la IA.
+---
 
-## 1. El Ecosistema de Agentes (The Mesh)
+## 1. Principio de Operación
 
-La arquitectura sigue el patrón "Chain of Thought" y "Actor-Critic", donde un agente propone y otro valida.
+**No existen LLMs "propios" de los agentes.** Todos los agentes LLM consumen el modelo configurado por el tenant en su Agent Matrix. El flujo de resolución es:
+
+```
+resolve_agent_model(agent_id)
+    → utm_agent_matrix  (qué model_id asignó el tenant a ese agente)
+    → utm_model_catalog (detalles técnicos del modelo)
+    → utm_provider_vault (API key y URL del tenant, aislada por tenant_id)
+    → { provider, deployment, endpoint, api_key, temperature }
+```
+
+Si un tenant no configura un agente, ese agente no opera — por seguridad no hay fallback hardcodeado.
+
+---
+
+## 2. Los 10 Agentes — Mapa Completo
+
+### 2.1 Agentes LLM (7) — Configurados por tenant en Agent Matrix
+
+| Agent ID | Nombre | Fase | Responsabilidad principal |
+|---|---|---|---|
+| **agent-qa** | Quick Assessor | Pre-Triage | Evaluación híbrida (determinística + LLM) de viabilidad del proyecto antes del Triage completo |
+| **agent-s** | Scout | Pre-Triage | Análisis forense del repositorio para detectar tecnología origen, herramienta ETL, y gaps |
+| **agent-a** | Detective | Triage + Refinement | Triage: construye Mesh Graph. Refinement: orquesta la segmentación Medallion vía ArchitectService |
+| **agent-c** | Developer | Drafting | Transpila cada asset legacy al nuevo tech usando el cartucho activo |
+| **agent-f** | Critic | Drafting | Audita el código de Agent C inmediatamente (mismo loop por asset), scoring 0-10 |
+| **agent-g** | Governor | Drafting (final) | Genera Runbook y Certification Audit al final del pipeline |
+| **agent-d** | Auditor | Refinement | Code audit post-refinamiento vía `AuditService` (usa prompt `agent_d_auditor`) |
+
+### 2.2 Agentes Determinísticos (3) — Sin LLM, motores de reglas activos en Refinement
+
+| Agent ID | Nombre | Fase | Qué hace |
+|---|---|---|---|
+| **agent-p** | Profiler | Refinement Phase 1 | `ProfilerService` — escanea archivos .py del Drafting, extrae metadata de tablas, PKs y conexiones |
+| **agent-r** | Refactoring | Refinement Phase 3 | `RefactoringService` — aplica optimizaciones determinísticas de Spark/SQL y controles de seguridad |
+| **agent-o** | OpsAuditor | Refinement Phase 4 | `OpsAuditorService` — valida readiness operacional y genera manifests DevOps |
+
+---
+
+## 3. El Pipeline Completo en Orden
 
 ```mermaid
 graph TD
-    User[Input Repository] -->|Upload to R2| D[Discovery Service]
-    D -->|Asset Inventory| S[Agent S: Scout/Tech Detection]
-    S -->|Source Tech Detected| A[Agent A: Architect]
-    A -->|Forensics + Metadata| Triage[Human Triage Validation]
-    Triage -->|Approved Scope| C[Agent C: Coder/Interpreter]
-    C -->|Draft Code| F[Agent F: Critic/Compliance]
-    F -->|Critique & Fix| F_Loop{Quality OK?}
-    F_Loop -->|Yes| Persist[Persistence R2 + Supabase]
-    F_Loop -->|No| C
-    Persist -->|Refinement| P[Agent P: Profiler]
-    P -->|Code Analysis| A2[Agent A: Architect - Medallion]
-    A2 -->|Bronze/Silver/Gold| Refined[Refined Code]
-    Refined -->|Certification| G[Agent G: Governance/Auditor]
-    G -->|Certification + Docs| Output[COP Bundle + Runbook]
+    Upload[Repositorio subido] --> QA[Agent QA: Evaluación de Viabilidad]
+    QA -->|Score verde| S[Agent S: Scout — Detección de tecnología]
+    S --> Librarian[Librarian — Parser DDL determinístico]
+    Librarian --> A1[Agent A: Detective — Triage Mesh Graph]
+    A1 --> HumanTriage[Validación Humana - Triage]
+    HumanTriage --> Topology[Topology — DAG determinístico]
+    Topology --> C[Agent C: Developer — Transpilación por asset]
+    C --> F[Agent F: Critic — Compliance audit por asset]
+    F -->|Loop hasta calidad OK| C
+    F -->|Aprobado| G[Agent G: Governor — Runbook + Certification]
+    G --> P[Agent P: Profiler — Análisis código Drafting]
+    P --> A2[ArchitectService Agent A — Segmentación Medallion]
+    A2 -->|Bronze/Silver/Gold vía Cartridges| R[Agent R: Refactoring — Optimizaciones]
+    R --> O[Agent O: OpsAuditor — DevOps]
+    O --> D[Agent D: Auditor — Code audit final]
+    D --> Output[COP Bundle entregable]
 ```
+
+### Componentes no-agente en el pipeline
+- **Librarian** (`LibrarianService`) — Parser determinístico de DDL usando SQLGlot. Sin LLM.
+- **Topology** (`TopologyService`) — Construye el DAG de ejecución. Sin LLM.
+- **Los cartuchos** (`.md` en `utm_prompts`) — Son las reglas Medallion que `ArchitectService` aplica. No son agentes sino el "conocimiento" que el ArchitectService ejecuta.
 
 ---
 
-## 1.5 v4.0 Zero-Hardcode Prompt System
+## 4. Cartuchos — Las Reglas de Arquitectura
 
-**Nuevo en v4.0**: Todos los prompts del sistema ahora se almacenan en la base de datos (`utm_prompts`) con versionamiento automático. Esto permite:
-- ✅ Actualizaciones instantáneas sin redeploy de código
-- ✅ Versionamiento automático vía trigger PostgreSQL (`utm_prompts_history`)
-- ✅ A/B testing entre versiones de prompts
-- ✅ Rollback instantáneo en caso de regresión
-- ✅ Prompts específicos por tenant o globales
+Los cartuchos son los archivos `.md` cargados en `utm_prompts` con `tech_stack` y `pattern_type` (bronze/silver/gold). **No son generados por LLM en runtime** — son las instrucciones pre-escritas que `ArchitectService` inyecta en el código al segmentar en capas Medallion.
 
-**Migración:** Sprint v4.0 ejecutó `sprint_v4.0_prompts.sql` que cargó 14 prompts base desde archivos `.md` a la tabla `utm_prompts`.
+`CartridgeFactory.get_cartridge(project_id, registry)` selecciona el cartucho correcto según el `target_tech` del proyecto.
 
-### Carga de Prompts desde Base de Datos
+**Cartuchos activos (10 tech stacks × 3 capas = 30 archivos):**
 
-Todos los agentes ahora cargan sus prompts dinámicamente:
+| Carpeta | Bronze | Silver | Gold | Tecnología |
+|---|---|---|---|---|
+| `pyspark/` | ✅ | ✅ | ✅ | PySpark / Delta Lake |
+| `snowflake/` | ✅ | ✅ | ✅ | Snowpark Python |
+| `snowflake_sql/` | ✅ | ✅ | ✅ | SQL nativo Snowflake |
+| `sf/` | ✅ | ✅ | ✅ | Salesforce Data Cloud SQL |
+| `aws/` | ✅ | ✅ | ✅ | AWS Glue PySpark |
+| `dbt/` | ✅ | ✅ | ✅ | dbt SQL (Jinja) |
+| `gcp/` | ✅ | ✅ | ✅ | BigQuery Standard SQL |
+| `ms_fabric/` | ✅ | ✅ | ✅ | MS Fabric PySpark (Lakehouse) |
+| `ms_fabric_sql/` | ✅ | ✅ | ✅ | MS Fabric Warehouse T-SQL (con limitaciones documentadas) |
+| `base/` | ✅ | ✅ | ✅ | Genérico / Pseudocode |
 
-```python
-async def _load_prompt(self, prompt_id: str = "agent_c_coder") -> str:
-    """Load prompt from database (global or tenant-specific)"""
-    db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-    return await db.get_prompt(prompt_id)
-```
+---
 
-### Agent Matrix Multi-Tenant
+## 5. Agent Matrix y Resolución de Modelos
 
-**Nuevo en v3.9**: Cada tenant configura qué modelo LLM usa cada agente mediante la tabla `utm_agent_matrix`.
+**Tablas involucradas:**
+- `utm_agent_catalog` — Catálogo maestro de los 10 agentes (definición)
+- `utm_agent_matrix` — Asignación tenant → agent → model_id
+- `utm_model_catalog` — Modelos disponibles con sus parámetros técnicos
+- `utm_provider_vault` — API keys por tenant/proveedor (aisladas)
 
-**Tablas del Sistema:**
-- `utm_agent_matrix`: Mapeo agent_id → model_id por tenant
-- `utm_model_catalog`: Modelos LLM habilitados por tenant (gpt-4o, claude-3.5, etc.)
-- `utm_provider_vault`: API keys por tenant y proveedor (OpenAI, Azure, Anthropic, Groq)
+**Los 7 agentes LLM necesitan una entrada activa en `utm_agent_matrix` para operar:**
 
-**Ejemplo de Configuración:**
 ```sql
--- Tenant asigna GPT-4o a Agent C (Coder)
-INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, phase, is_active)
-VALUES ('abc-123', 'agent-c', 'azure-gpt-4o', 'drafting', true);
+-- Ejemplo: Tenant asigna GPT-4o a Agent C (Developer)
+INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, is_active)
+VALUES ('abc-123', 'agent-c', 'azure-gpt-4o', true);
 
--- Tenant asigna Claude 3.5 a Agent G (Governance)
-INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, phase, is_active)
-VALUES ('abc-123', 'agent-g', 'claude-3-5-sonnet', 'certification', true);
-```
-
-**Resolución de Modelos:**
-```python
-async def _get_llm(self, project_id: Optional[str] = None):
-    """Resolves LLM client strictly from Agent Matrix (DB)"""
-    db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-    config = await db.resolve_agent_model("agent-c")
-    
-    if config["provider"] == "azure":
-        return AzureChatOpenAI(
-            deployment_name=config["deployment_name"],
-            api_key=config["api_key"],
-            azure_endpoint=config["endpoint"]
-        )
-    # ... otros proveedores
+-- Agent D (Auditor) tiene su propia entrada — no comparte config con Agent F
+INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, is_active)
+VALUES ('abc-123', 'agent-d', 'azure-gpt-4o', true);
 ```
 
 ---
 
-## 1.6 Los 6 Agentes Especializados
+## 6. Prompts en Base de Datos
 
-El sistema cuenta con **6 agentes especializados**, cada uno con responsabilidades específicas en el pipeline de migración:
+**Prompts de agentes en `utm_prompts`** (7 entradas activas):
 
-| Agent ID | Nombre | Fase | Responsabilidad |
-|----------|--------|------|-----------------|
-| **agent-s** | Scout | Discovery | Detección de tecnología origen |
-| **agent-a** | Architect | Triage & Refinement | Análisis forense + diseño Medallion |
-| **agent-c** | Coder | Drafting | Generación de código con cartridges |
-| **agent-f** | Critic | Drafting | Validación y scoring de calidad (0-10) |
-| **agent-p** | Profiler | Refinement | Análisis de código generado |
-| **agent-g** | Governance | Certification | Auditoría de compliance + Runbook |
+| prompt_id | Usado por |
+|---|---|
+| `agent_qa_assessment` | Agent QA |
+| `agent_s_scout` | Agent S |
+| `agent_a_discovery` | Agent A |
+| `agent_c_interpreter` | Agent C |
+| `agent_f_critic` | Agent F |
+| `agent_g_governance` | Agent G |
+| `agent_d_auditor` | Agent D |
 
-### Knowledge Injection Pattern
-Cuando se detecta una tecnología (ej: "SQLSERVER"), el sistema:
-1. Carga el prompt correspondiente desde `utm_prompts`
-2. Extrae `tech_stack` y `pattern_type` para el cartridge
-3. Inyecta esta instrucción en el contexto de todos los agentes
-4. Configura el cartridge correspondiente para generación
-
-### Versionamiento Automático
-- Cada cambio a un prompt crea una entrada en `utm_prompts_history`
-- Trigger PostgreSQL automático `trg_utm_prompts_version`
-- Rollback disponible mediante query a tabla de historial
-- UI de Prompt Lab permite ver versiones anteriores
-
-### Contract Enforcement
-Cada agente retorna JSON estructurado según su contrato:
-- **Agent S**: `{"detected_source": "...", "confidence": 95}`
-- **Agent A**: `{"nodes": [...], "edges": [...]}`
-- **Agent C**: `{"code": "...", "tests": "..."}`
-- **Agent F**: `{"score": 9, "status": "APPROVED", "feedback": "..."}`
-- **Agent G**: `{"score": 91, "checks": [...], "runbook_markdown": "..."}`
+Los agentes determinísticos (P, R, O) no tienen prompts — operan con reglas hardcodeadas en Python.
 
 ---
 
-## 2. Detalle de Agentes y Prompts
+## 7. Intelligence Hub
 
-### Agent S: El Scout (Technology Detection) → **NEW IN v3.5**
-**Misión:** Detectar automáticamente la tecnología origen durante el Triage analizando extensiones de archivo, sintaxis SQL, y patrones de código.
+El **Intelligence Hub** (PromptsExplorer) muestra los agentes LLM activos por fase. El `STAGE_MAP` en `PromptsExplorer.tsx` refleja los 7 agentes:
 
-**System Prompt Actual (`agent_s_scout.md`):**
-> "You are a Technology Scout specialized in identifying source platforms... Analyze file patterns, SQL dialects, and ETL tool signatures."
-
-**Capacidades:**
-1. **File Extension Analysis**: `.dtsx` → SSIS, `.dsx` → DataStage, `.sql` → SQL dialect detection
-2. **SQL Dialect Detection**: Distingue T-SQL vs PL/SQL vs MySQL basándose en sintaxis específica
-3. **ETL Tool Fingerprinting**: Identifica patrones de Informatica, Talend, Pentaho en archivos XML/JSON
-4. **Version Detection**: Extrae información de versión de metadatos de herramientas
-5. **Confidence Scoring**: Retorna un score de confianza (0-100) sobre la detección
-
-**Output JSON**:
-```json
-{
-  "detected_source": "SQLSERVER",
-  "confidence": 95,
-  "version_hint": "2019",
-  "dialect": "T-SQL",
-  "evidence": [
-    "Found .sql files with T-SQL specific syntax (TRY/CATCH, EXEC sp_)",
-    "Detected SSIS .dtsx packages"
-  ],
-  "suggested_target": "DATABRICKS"
-}
-```
-
-**Reglas Clave:**
-1. **Multi-Signal Analysis**: Combina múltiples señales (extensiones, sintaxis, metadata) para alta precisión
-2. **Fallback Strategy**: Si no puede detectar con certeza, solicita confirmación manual al usuario
-3. **Knowledge Injection**: Una vez detectado, activa la carga del prompt correspondiente de `origins/{tech}/`
+| Vista | Agentes visibles |
+|---|---|
+| Triage | QA, S, A |
+| Drafting | C, F, G |
+| Refinement | D, G |
+| All | QA, S, A, C, F, G, D |
 
 ---
 
-### Agent A: El Arquitecto (Architect Service) → **DUAL-PHASE EXECUTION**
-**Misión:** Análisis forense durante TRIAGE y diseño de arquitectura Medallion durante REFINEMENT.
+**Document Version:** 3.0 (v4.1)  
+**Last Updated:** Marzo 5, 2026  
+**Cambios:** Auditoría completa de agentes — Agent B eliminado, Agent D corregido, Agent QA incorporado, cartuchos ms_fabric_sql agregados.
 
-**Prompts en DB (v4.0):**
-- `agent_a_architect`: Prompt base para análisis de arquitectura
-- Carga dinámica desde `utm_prompts` table
-
-**Fases de Ejecución:**
-
-**Fase 1 - TRIAGE (Discovery):**
-1. **Inferencia de Volumen:** Estima `LOW | MED | HIGH` basándose en row count del esquema fuente
-2. **Detección de PII:** Analiza nombres de columnas (`email`, `ssn`, `phone`) y marca `is_pii = true`
-3. **Sugerencia de Particionamiento:** Si detecta columnas DATE con alta cardinalidad, sugiere `partition_key`
-4. **Clasificación Funcional:** Separa `CORE` (lógica migratable) de `SUPPORT` (configs) y `IGNORED` (basura)
-
-**Fase 2 - REFINEMENT (Medallion Design):**
-1. **Bronze Layer:** Genera código de ingestion directa desde source
-2. **Silver Layer:** Aplica limpieza, estandarización, deduplicación
-3. **Gold Layer:** Crea agregaciones y lógica de negocio
-4. **Infrastructure:** Genera `config.py`, `utils.py`, `orchestration_dag.py`
-
-**Reglas Clave:**
-1. **Inferencia de Negocio:** Deduce entidades del mundo real (ej. `DimCustomer.dtsx` → Entity: `CUSTOMER`)
-2. **Detección de Orquestación:** Busca llamadas explícitas (`Execute Package`) para crear dependencias
-3. **Medallion Architecture:** Organiza código en capas Bronze → Silver → Gold
-4. **Cartridge Integration:** Usa `CartridgeFactory` para obtener templates específicos por tech_stack
-
----
-
-### Agent C: El Programador (Coder Service) → **CONTEXT-AWARE GENERATION**
-**Misión:** Traducir la *intención de negocio* a código moderno usando cartridges. Fase principal: DRAFTING.
-
-**Prompts en DB (v4.0):**
-- `agent_c_coder`: Prompt base para generación de código
-- Cartridges cargados desde `utm_prompts` filtrados por `tech_stack` y `pattern_type`
-
-**Nuevas Capacidades (v4.0):**
-1. **Zero-Hardcode Templates:** Todos los cartridges ahora desde DB (no archivos .md)
-2. **Real-Time Validation:** Integración con `ValidationService` para corrección automática (hasta 3 intentos)
-3. **Inyección de Particionamiento:** Si `metadata.partition_key` existe, genera `.partitionBy(col)`
-4. **Masking Automático de PII:** Si `metadata.is_pii = true`, genera `sha2(col("email"), 256)`
-5. **Optimización por Volumen:** Si `metadata.volume = HIGH`, prioriza shuffles eficientes
-
-**Reglas Clave:**
-1. **Idempotencia Obligatoria:** Genera lógica `MERGE INTO` con claves de negocio (no `mode("overwrite")`)
-2. **Integridad Referencial:** Inyecta manejo de "Miembros Desconocidos" (`COALESCE(col, -1)`) en Lookups
-3. **Arquitectura Medallion:** Organiza código en celdas: `Config` → `Extract` → `Transform` → `Load`
-4. **Surgical Logic:** Extrae solo la "médula lógica" (queries y transformaciones), ignora ruido XML
-
-**Code Example (v4.0):**
-```python
-async def transpile_task(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
-    # Load prompt from database (v4.0)
-    prompt = await self._load_prompt("agent_c_coder")
-    
-    # Get cartridge rules from database
-    cartridge = CartridgeFactory.get_cartridge(
-        project_id=self.project_id,
-        registry=node_data,
-        tenant_id=self.tenant_id
-    )
-    
-    # Generate code with real-time validation
-    code = await self._generate_code(prompt, cartridge, node_data)
-    validated_code = await self.validator.validate_and_fix(code)
-    
-    return {"code": validated_code, "status": "generated"}
-```
-
----
-
-### Agent F: El Auditor (Critic Service) → **DYNAMIC COMPLIANCE**
-**Misión:** Garantizar calidad del código antes de persistir. Sistema de scoring 0-10 con estados APPROVED/IMPROVED/REJECTED.
-
-**Prompts en DB (v4.0):**
-- `agent_f_critic`: Prompt base para code review
-- Reglas de compliance desde cartridges (mismo source que Agent C)
-
-**Capacidades (v3.9 + v4.0):**
-1. **Scoring System (0-10):**
-   - 0-4: `REJECTED` (regenerar código completo)
-   - 5-7: `NEEDS_WORK` (requiere ajustes menores)
-   - 8-9: `IMPROVED` (aprobado con sugerencias)
-   - 10: `APPROVED` (perfecto, sin cambios)
-
-2. **Dynamic Rule Enforcement:** Obtiene reglas del mismo cartridge que usó Agent C
-3. **Technology-Specific Critiques:** Aplica reglas específicas para PySpark, Snowflake, DBT, etc.
-4. **Feedback Estructurado:** Retorna JSON con score, status, y feedback detallado
-
-**Reglas Clave (Checklist Estricto):**
-1. **Reject Hardcoding:** Si detecta credentials o rutas absolutas → `REJECTED`
-2. **Precision Casting:** Verifica que `cast()` coincidan exactamente con DDL de destino
-3. **Merge Validation:** Si es carga Delta y falta `MERGE`, marca como `REJECTED`
-4. **Cartridge Compliance:** Valida contra las mismas reglas que generaron el código
-
-**Output JSON:**
-```json
-{
-  "score": 9,
-  "status": "IMPROVED",
-  "feedback": "Excellent implementation. Consider adding error handling for null foreign keys.",
-  "issues": ["Minor: Missing error logging in exception handler"]
-}
-```
-
----
-
-### Agent P: El Perfilador (Profiler Service) → **CODE ANALYSIS**
-**Misión:** Analizar código generado durante REFINEMENT para extraer metadata y patrones. Primera fase de REFINEMENT.
-
-**Prompts en DB (v4.0):**
-- Análisis automático vía AST parsing (no usa LLM directamente)
-- Metadata extraction para Agent A
-
-**Capacidades:**
-1. **File Analysis:** Escanea archivos .py generados en DRAFTING
-2. **Table Metadata:** Extrae nombres de tablas, schema, conexiones
-3. **Connection Detection:** Identifica conexiones compartidas entre archivos
-4. **Primary Key Detection:** Analiza lógica de negocio para identificar claves
-
-**Output:**
-```python
-{
-  "analyzed_files": 7,
-  "shared_connections": ["sqlserver_conn", "databricks_conn"],
-  "table_metadata": {
-    "DimCustomer": {
-      "source_table": "dbo.Customers",
-      "target_table": "dim_customer",
-      "primary_key": "customer_key"
-    }
-  },
-  "total_files": 7
-}
-```
-
-**Uso en Pipeline:**
-1. Agent P analiza archivos en `/drafting`
-2. Genera `profile_metadata.json`
-3. Agent A consume este metadata para diseñar Medallion architecture
-
----
-
-### Agent G: Gobernanza (Governance Service) → **AI-DRIVEN CERTIFICATION**
-**Misión:** Auditoría de compliance y generación de documentación técnica (Runbook). Fase: CERTIFICATION.
-
-**Prompts en DB (v4.0):**
-- `agent_g_governance`: Prompt principal para auditoría
-- Carga dinámica desde `utm_prompts` (1568 chars en logs actuales)
-
-**Capacidades (v3.9 + v4.0):**
-1. **Compliance Audit (Score 0-100):**
-   - **PII Masking:** Verifica que campos sensibles estén enmascarados
-   - **Source-to-Target Lineage:** Valida trazabilidad completa
-   - **Partition Strategy:** Evalúa optimizaciones de performance
-   - **Error Handling:** Verifica manejo de errores robusto
-   - **Data Quality:** Checks de validación y constraints
-   - **SCD Handling:** Slowly Changing Dimensions implementados correctamente
-   - **Documentation:** Runbook y documentación técnica
-
-2. **Runbook Generation:** Genera `Modernization_Runbook.md` en formato markdown
-3. **Audit JSON:** Retorna estructura con checks individuales y recomendaciones
-4. **Export Bundle:** Crea ZIP con código + runbook + manifests
-
-**Output JSON (Ejemplo Real - Feb 16, 2026):**
-```json
-{
-  "score": 91,
-  "checks": [
-    {"check_name": "PII Masking", "status": "PASSED", "detail": "..."},
-    {"check_name": "Source-to-Target Lineage", "status": "PASSED", "detail": "..."},
-    {"check_name": "Partition/Optimization Strategy", "status": "WARNING", "detail": "..."},
-    {"check_name": "Error Handling", "status": "PASSED", "detail": "..."},
-    {"check_name": "Data Quality Constraints", "status": "WARNING", "detail": "..."},
-    {"check_name": "SCD Handling", "status": "PASSED", "detail": "..."},
-    {"check_name": "Runbook/Documentation", "status": "PASSED", "detail": "..."}
-  ],
-  "recommendations": [
-    "Implement partitioning on large fact tables",
-    "Add explicit data quality checks in ETL pipelines"
-  ]
-}
-```
-
-**Scoring Thresholds:**
-- **91-100:** Excellent (Production Ready)
-- **70-90:** Good (Minor improvements recommended)
-- **50-69:** Fair (Requires attention)
-- **0-49:** Poor (Major issues, not ready)
-
----
-
-## 3. Conclusión: El "Cerebro" Multi-Agente de Legacy2Lake
-
-Lo que diferencia a UTM de un simple "convertidor de sintaxis" es esta estructura de roles especializada:
-
-1. **Detección:** Agent S identifica tecnología origen automáticamente
-2. **Contexto:** Agent A entiende el "Todo" antes de tocar una línea de código (forensics + Medallion)
-3. **Generación:** Agent C traduce intención de negocio a código moderno con cartridges
-4. **Calidad:** Agent F garantiza que no se propague deuda técnica al nuevo sistema
-5. **Refinamiento:** Agent P + Agent A crean arquitectura Bronze/Silver/Gold optimizada
-6. **Governance:** Agent G certifica compliance y genera documentación completa
-
-**v4.0 Zero-Hardcode:** Todos los prompts desde base de datos con versionamiento automático, permitiendo mejora continua sin deployments.
-
-*Nota: Los prompts completos están disponibles en la tabla `utm_prompts` de la base de datos.*
-
----
-
-**Document Version:** 2.0 (v4.0)  
-**Last Updated:** Febrero 17, 2026  
-**Sprint:** Sprint 14 Phase 2  
-**Status:** Zero-Hardcode Prompts 100% Complete  
-
-**See Also**:
-- [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md) - utm_prompts table schema
-- [SYSTEM_ARCHITECTURE.md](../SYSTEM_ARCHITECTURE.md) - Zero-Hardcode architecture
-- [ai_infrastructure.md](ai_infrastructure.md) - Multi-LLM strategy
-- [V4.0_DEVELOPER_GUIDE.md](../../V4.0_DEVELOPER_GUIDE.md) - PromptService patterns
-
----
+**See Also:**
+- [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md)
+- [SYSTEM_ARCHITECTURE.md](../SYSTEM_ARCHITECTURE.md)
+- [ai_infrastructure.md](ai_infrastructure.md)

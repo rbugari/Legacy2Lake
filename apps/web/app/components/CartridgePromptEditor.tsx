@@ -80,23 +80,46 @@ export default function CartridgePromptEditor({ projectId, className = "" }: Car
         setError(null);
 
         try {
-            // Load project settings to get tech stack AND custom instructions
-            const settingsRes = await fetchWithAuth(`/projects/${projectId}/settings`);
+            // Load registry + settings in parallel — same priority logic as TechnologyMixer
+            const [settingsRes, registryRes] = await Promise.all([
+                fetchWithAuth(`/projects/${projectId}/settings`),
+                fetchWithAuth(`/projects/${projectId}/registry`),
+            ]);
+
+            let resolvedTech = "pyspark";
+
+            // 1. Read from settings (base config)
             if (settingsRes.ok) {
                 const settings = await settingsRes.json();
-                const tech = settings.tech_stack || settings.cartridge || "pyspark";
-                setTechStack(tech);
+                const fromSettings = settings.tech_stack || settings.cartridge || settings.target_tech;
+                if (fromSettings) resolvedTech = fromSettings.toLowerCase().trim();
 
                 // Load custom instructions from project settings
                 const customInstructions = settings.custom_instructions || "";
                 setProjectCustomInstructions(customInstructions);
                 setEditedInstructions(customInstructions);
-
-                // Load cartridge prompt for reference (read-only)
-                await loadCartridgePrompt(tech);
             } else {
                 throw new Error("Failed to load project settings");
             }
+
+            // 2. Registry overrides settings (same logic as TechnologyMixer)
+            if (registryRes.ok) {
+                const data = await registryRes.json();
+                const target = data.registry?.find((r: any) => r.key === 'target_stack');
+                if (target?.value) {
+                    const fromRegistry = target.value.toLowerCase().trim();
+                    // Use registry value if it's an explicit choice (not the auto-seeded "pyspark" default
+                    // when settings already has something else)
+                    if (fromRegistry && (fromRegistry !== 'pyspark' || resolvedTech === 'pyspark')) {
+                        resolvedTech = fromRegistry;
+                    }
+                }
+            }
+
+            setTechStack(resolvedTech);
+
+            // Load the cartridge prompt for the resolved tech
+            await loadCartridgePrompt(resolvedTech);
 
         } catch (err) {
             console.error("[CartridgePromptEditor] Load failed:", err);

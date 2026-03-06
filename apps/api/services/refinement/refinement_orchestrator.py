@@ -160,7 +160,23 @@ class RefinementOrchestrator:
             msg = await _log("[PHASE PROGRESS: 1/4] Starting analysis...", "Profiler")
             local_log.append(msg)
             
-            profile_meta = await self.profiler.analyze_codebase(project_id, local_log, project_name=self.project_name)
+            # Resolve target_tech prioritizing Design Registry
+            registry_list = await self.persistence.get_design_registry(project_id)
+            target_tech = None
+            if registry_list:
+                for r in registry_list:
+                    cat = r.get('category') if isinstance(r, dict) else getattr(r, 'category', '')
+                    key = r.get('key') if isinstance(r, dict) else getattr(r, 'key', '')
+                    val = r.get('value') if isinstance(r, dict) else getattr(r, 'value', None)
+                    if str(cat).upper() == 'PATHS' and str(key) == 'target_stack':
+                        target_tech = val
+                        break
+            
+            if not target_tech:
+                proj_settings = await self.persistence.get_project_settings(project_id) or {}
+                target_tech = proj_settings.get("target_tech", "pyspark")
+                
+            profile_meta = await self.profiler.analyze_codebase(project_id, local_log, project_name=self.project_name, target_tech=target_tech)
             print(f"[ORCHESTRATOR DEBUG] Profiler complete. profile_meta keys: {profile_meta.keys() if profile_meta else 'None'}")
             print(f"[ORCHESTRATOR DEBUG] analyzed_files: {profile_meta.get('analyzed_files', []) if profile_meta else []}")
             
@@ -180,7 +196,7 @@ class RefinementOrchestrator:
             print(f"[ORCHESTRATOR DEBUG] Calling architect.refine_project() with profile_meta")
             msg = await _log("[PHASE PROGRESS: 2/4] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)
-            architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name)
+            architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name, target_tech=target_tech)
             print(f"[ORCHESTRATOR DEBUG] Architect complete. architect_out keys: {architect_out.keys() if architect_out else 'None'}")
             print(f"[ORCHESTRATOR DEBUG] refined_files: {architect_out.get('refined_files', {}) if architect_out else {}}")
             

@@ -129,7 +129,7 @@ SELECT 'utm_design_registry', COUNT(*) FROM utm_design_registry;
 -- Expected: Similar counts to dev (or less if sanitized)
 
 -- Verify Sprint 1 cartridge prompts
-SELECT COUNT(*) FROM utm_prompts WHERE prompt_id LIKE 'cartridge_%';
+SELECT COUNT(*) FROM utm_prompts WHERE prompt_id LIKE 'agent_c_%';
 -- Expected: 24 cartridges
 
 -- Check RLS policies enabled
@@ -406,7 +406,7 @@ SELECT
     length(content) as size,
     is_active
 FROM utm_prompts
-WHERE prompt_id = 'cartridge_pyspark_bronze'
+WHERE prompt_id = 'agent_c_bronze_pyspark'
   AND tenant_id IS NULL;
 
 -- Expected: 1 row, is_active = true, size ~9600 chars

@@ -27,7 +27,7 @@ class ProfilerService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def analyze_codebase(self, project_id: str, log: List[str] = None, project_name: str = None) -> Dict[str, Any]:
+    async def analyze_codebase(self, project_id: str, log: List[str] = None, project_name: str = None, target_tech: str = None) -> Dict[str, Any]:
         """
         Executes the profiling logic.
         1. Scans .py files in {project}/drafting (R2)
@@ -56,27 +56,36 @@ class ProfilerService:
                     files.append(n)
             return files
         
+        # Determine file extensions to scan based on target technology
+        target = str(target_tech or "").lower()
+        extensions = [".py"]
+        if "sql" in target or target in ["snowflake", "fabric", "redshift", "bigquery"]:
+            if ".sql" not in extensions:
+                extensions.append(".sql")
+        
         all_files = get_all_files(items)
-        py_files = [f["name"] for f in all_files if f["name"].endswith(".py")]
+        candidate_files = [f["name"] for f in all_files if any(f["name"].endswith(ext) for ext in extensions)]
         
         # Debug logging
+        print(f"[PROFILER DEBUG] target_tech: {target_tech}")
+        print(f"[PROFILER DEBUG] extensions to scan: {extensions}")
         print(f"[PROFILER DEBUG] input_dir: {input_dir}")
         print(f"[PROFILER DEBUG] items returned from storage.list_files: {len(items)} items")
         print(f"[PROFILER DEBUG] all_files after get_all_files: {len(all_files)} files")
-        print(f"[PROFILER DEBUG] py_files: {py_files}")
+        print(f"[PROFILER DEBUG] candidate_files: {candidate_files}")
         
-        if not py_files:
-            self._log(log, f"No Python files found in {PersistenceService.STAGE_DRAFTING}.", level="Profiler", model="System")
+        if not candidate_files:
+            self._log(log, f"No source files ({'/'.join(extensions)}) found in {PersistenceService.STAGE_DRAFTING}.", level="Profiler", model="System")
             return {"total_files": 0, "analyzed_files": []}
 
-        self._log(log, f"Found {len(py_files)} Python files in {PersistenceService.STAGE_DRAFTING}.")
+        self._log(log, f"Found {len(candidate_files)} source files in {PersistenceService.STAGE_DRAFTING}.")
         
         shared_connections = {}
         bronze_candidates = {}
         
-        for py_file in py_files:
-            file_key = f"{input_dir.rstrip('/')}/{py_file}"
-            self._log(log, f"Analyzing file: {py_file}...")
+        for source_file in candidate_files:
+            file_key = f"{input_dir.rstrip('/')}/{source_file}"
+            self._log(log, f"Analyzing file: {source_file}...")
             
             content = storage.read_file(file_key)
             if not content: continue
@@ -89,26 +98,26 @@ class ProfilerService:
                 self._log(log, f"  > Found JDBC Connection: {jdbc}")
                 if jdbc not in shared_connections:
                     shared_connections[jdbc] = []
-                shared_connections[jdbc].append(py_file)
+                shared_connections[jdbc].append(source_file)
             
             # Detect Table Type (Fact vs Dim)
-            table_type = self._detect_table_type(py_file, content)
+            table_type = self._detect_table_type(source_file, content)
             
             # Detect PK candidates (Basic Heuristic)
             pks = self._detect_primary_keys(content, log)
             if pks:
-                self._log(log, f"  > Detected PK candidates for {py_file} ({table_type}): {pks}")
-                bronze_candidates[py_file] = {
+                self._log(log, f"  > Detected PK candidates for {source_file} ({table_type}): {pks}")
+                bronze_candidates[source_file] = {
                     "pk": pks,
                     "type": table_type
                 }
 
         profile_data = {
-            "analyzed_files": py_files,
+            "analyzed_files": candidate_files,
             "shared_connections": shared_connections,
             "table_metadata": bronze_candidates,
             "primary_keys": {k: v["pk"] for k, v in bronze_candidates.items()},
-            "total_files": len(py_files)
+            "total_files": len(candidate_files)
         }
 
         # Save metadata directly to R2

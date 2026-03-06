@@ -256,6 +256,10 @@ class ValidationService:
         layer_issues = self._validate_layer_requirements(code, layer, tech_type)
         issues.extend(layer_issues)
         
+        # Step 4: Integrity checks (placeholders)
+        integrity_issues = self._validate_placeholders(code)
+        issues.extend(integrity_issues)
+        
         # Build final result
         result = self._build_result(tech_id, layer, issues)
         
@@ -528,6 +532,52 @@ class ValidationService:
                     suggestion="Add GROUP BY, JOIN, or business calculations"
                 ))
         
+        return issues
+    
+    
+    def _validate_placeholders(self, code: str) -> List[ValidationIssue]:
+        """Detect unresolved placeholders like {variable} or {{variable}} in code"""
+        issues = []
+        
+        # In PySpark and Python, f"{variable}" is perfectly valid syntax.
+        # We only want to catch specific template placeholders that the LLM forgot to resolve.
+        # Typical unresolved placeholders hallucinated by LLM based on system prompt:
+        known_unresolved = [
+            'silver_path', 'gold_path', 'bronze_path',
+            'silver_schema', 'gold_schema', 'bronze_schema',
+            'layer_schema', 'layer_path', 'layer_prefix',
+            'target_table', 'schema', 'table_name'
+        ]
+        
+        # Regex to find all {something} blocks
+        patterns = [
+            r'\{([a-z_][a-z0-9_]+)\}',          # {variable}
+            r'\{\{([a-z_][a-z0-9_]+)\}\}'       # {{variable}}
+        ]
+        
+        found_placeholders = []
+        for pattern in patterns:
+            for match in re.finditer(pattern, code):
+                var_name = match.group(1)
+                full_match = match.group(0)
+                
+                # If it's literally one of our known migration template variables, it's a hallucinated placeholder.
+                # Otherwise, it might be a valid python f-string variable like f"{df.count()}" or f"{my_var}"
+                # We can also check if the placeholder looks like an unresolved path
+                if var_name in known_unresolved or "path" in var_name or "schema" in var_name:
+                    # Let's ensure it's not a valid f-string by checking if we really wanted to emit it.
+                    # Since these are exact names from our system prompt, it's highly likely to be a hallucinated placeholder.
+                    found_placeholders.append(full_match)
+        
+        if found_placeholders:
+            unique_placeholders = list(set(found_placeholders))
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                check_name="unresolved_placeholders",
+                message=f"Unresolved placeholders detected in code: {', '.join(unique_placeholders)}",
+                suggestion="The code contains literal placeholders that should have been resolved. Ensure you are replacing these with actual values from the project context, not outputting them literally."
+            ))
+            
         return issues
     
     

@@ -25,7 +25,7 @@ class ArchitectService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None) -> dict:
+    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None, target_tech: str = None) -> dict:
         """
         Segments Code into Medallion Architecture (Bronze/Silver/Gold).
         Generates config.py and utils.py.
@@ -74,7 +74,7 @@ class ArchitectService:
             
         registry = KnowledgeService.flatten_knowledge(registry_list)
         
-        cartridge = CartridgeFactory.get_cartridge(project_id, registry)
+        cartridge = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id, target_tech=target_tech)
         self._log(log, f"Using Cartridge: {cartridge.__class__.__name__}")
 
         # Logical Medallion Structure (Lowercase)

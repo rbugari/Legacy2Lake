@@ -730,6 +730,24 @@ export default function RefinementView({
                     {activeSection === 'logs' && (
                         <div className="max-w-7xl mx-auto flex flex-col h-full gap-4">
 
+                            {/* ── Running Banner with Cancel button ── */}
+                            {isRefinementRunning && (
+                                <div className="flex items-center justify-between gap-3 px-6 py-3 bg-blue-500/10 border border-blue-500/30 rounded-2xl shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                                        <p className="text-sm font-semibold text-blue-400">Refinement running...</p>
+                                        <p className="text-xs text-gray-500">AI agents are analyzing and optimizing your code</p>
+                                    </div>
+                                    <button
+                                        onClick={handleCancelRefinement}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors"
+                                    >
+                                        <X size={12} />
+                                        Stop
+                                    </button>
+                                </div>
+                            )}
+
                             {/* ── Completion Banner ── show when refinement is done */}
                             {isComplete && !isRefinementRunning && (
                                 <div className="flex items-center gap-3 px-6 py-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">

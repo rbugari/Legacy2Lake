@@ -24,13 +24,41 @@ class TopologyService:
     Builds the execution DAG by analyzing inter-package dependencies (Lookups/Sources).
     """
 
-    def __init__(self, project_id: str, tenant_id: str = None):
+    def __init__(self, project_id: str, tenant_id: str = None, source_folder: str = None):
         self.project_id = project_id
         self.tenant_id = tenant_id
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
+        self.storage = PersistenceService.get_storage()
+        
+        target_folder = source_folder or PersistenceService.STAGE_SOURCE
+        
+        # [Fix] Discover Triage/Source folder case-insensitively (identical to Librarian/Discovery)
+        self.inbound_path = None
+        try:
+            root_items = self.storage.list_files(self.base_path, recursive=False)
+            
+            # 1. Prioritize explicit target_folder
+            for item in root_items:
+                if item["type"] == "folder" and item["name"].lower() == target_folder.lower():
+                    self.inbound_path = item["path"]
+                    break
+            
+            # 2. Try fallbacks if target_folder not found
+            if not self.inbound_path:
+                triage_names = [PersistenceService.STAGE_SOURCE.lower(), PersistenceService.STAGE_TRIAGE.lower(), "source", "triage", "triaje", "inbound"]
+                for item in root_items:
+                    if item["type"] == "folder" and item["name"].lower() in triage_names:
+                        if not self.inbound_path or item["name"].lower() == PersistenceService.STAGE_SOURCE.lower():
+                            self.inbound_path = item["path"]
+        except Exception as e:
+            logger.warning(f"Topology discovery error: {e}", "Topology")
+
+        if not self.inbound_path:
+            self.inbound_path = f"{self.base_path.rstrip('/')}/{target_folder}"
+
         # Stage folders
         self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
-        self.storage = PersistenceService.get_storage()
+        logger.info(f"Topology resolved inbound path to: {self.inbound_path}", "Topology")
 
     def build_orchestration_plan(self) -> Dict[str, Any]:
         """Scans all .dtsx files and constructs the dependency graph."""
@@ -38,10 +66,9 @@ class TopologyService:
         
         # 1. Inventory Packages & Extract Metadata via Storage
         package_metadatas = []
-        dtsx_files = []
-        
+        # 1. Scan SSIS Packages via Storage (from inbound_path only)
         try:
-            items = self.storage.list_files(self.base_path, recursive=True)
+            items = self.storage.list_files(self.inbound_path, recursive=True)
             def get_all_files(nodes):
                 files = []
                 for n in nodes:
@@ -54,11 +81,21 @@ class TopologyService:
             # Find all .dtsx files (migrable packages)
             # SQL files are support/DDL files, NOT migration tasks
             all_files = get_all_files(items)
-            task_files = [f for f in all_files if f["name"].lower().endswith(".dtsx")]
+            
+            # De-duplicate task files by path AND name to prevent multiple entries for same file
+            seen_task_paths = set()
+            seen_task_names = set()
+            task_files = []
+            for f in all_files:
+                f_name_lower = f["name"].lower()
+                if f_name_lower.endswith(".dtsx") and f["path"] not in seen_task_paths and f_name_lower not in seen_task_names:
+                    task_files.append(f)
+                    seen_task_paths.add(f["path"])
+                    seen_task_names.add(f_name_lower)
         except Exception as e:
             logger.error(f"Error listing packages for topology: {e}", "Topology")
         
-        logger.info(f"Found {len(task_files)} task files (dtsx/sql) in storage.", "Topology")
+        logger.info(f"Found {len(task_files)} unique task files (dtsx) in storage.", "Topology")
 
         for f_node in task_files:
             p_path = f_node["path"]

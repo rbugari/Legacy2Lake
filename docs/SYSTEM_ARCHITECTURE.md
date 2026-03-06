@@ -426,7 +426,7 @@ def select_cartridge(node_data: dict):
     layer = node_data.get("layer", "bronze")
     
     # Load cartridge prompt from DB (Sprint 1)
-    prompt_id = f"cartridge_{tech_id}_{layer}"
+    prompt_id = f"agent_c_{layer}_{tech_id}"
     prompt = await db.get_prompt(prompt_id, tenant_id=tenant_id)
     
     return prompt or fallback_to_filesystem(tech_id, layer)
@@ -523,7 +523,7 @@ CREATE TABLE utm_design_registry (
 ```sql
 -- Main prompts table (v4.0)
 CREATE TABLE utm_prompts (
-  prompt_id TEXT PRIMARY KEY,                -- 'agent_c_interpreter', 'cartridge_databricks_bronze'
+  prompt_id TEXT PRIMARY KEY,                -- 'agent_c_interpreter', 'agent_c_bronze_databricks'
   content TEXT NOT NULL,                     -- Full markdown prompt
   tech_stack TEXT,                           -- 'databricks', 'pyspark', NULL for generic
   pattern_type TEXT,                         -- 'direct', 'bronze', 'silver', 'gold', NULL
@@ -563,7 +563,7 @@ CREATE TRIGGER prompt_version_trigger
 -- Example: Global prompt (14 prompts loaded)
 INSERT INTO utm_prompts (prompt_id, content, tech_stack, pattern_type)
 VALUES (
-  'cartridge_databricks_bronze',
+  'agent_c_bronze_databricks',
   '# Databricks PySpark Bronze Layer\n\n...',
   'databricks',
   'bronze'
@@ -572,7 +572,7 @@ VALUES (
 -- Example: Update triggers automatic versioning
 UPDATE utm_prompts 
 SET content = '# Updated instructions\n\n...' 
-WHERE prompt_id = 'cartridge_databricks_bronze';
+WHERE prompt_id = 'agent_c_bronze_databricks';
 -- OLD version automatically saved to utm_prompts_history
 ```
 

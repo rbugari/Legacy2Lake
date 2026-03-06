@@ -89,12 +89,13 @@ class PromptAssembler:
         """
         result = template
         
-        # Find all {{variable}} patterns
-        pattern = r'\{\{([^}]+)\}\}'
+        # Find both {{variable}} and {variable} patterns
+        # We use a pattern that matches 1 or 2 braces, but captures the content inside
+        pattern = r'\{{1,2}([^{}]+)\}{1,2}'
         matches = re.finditer(pattern, template)
         
         for match in matches:
-            placeholder = match.group(0)  # Full {{variable}}
+            placeholder = match.group(0)  # Full {{variable}} or {variable}
             variable_path = match.group(1).strip()  # variable
             
             # Check for filters (e.g., {{schema | json}})
@@ -359,7 +360,7 @@ class PromptAssembler:
         asset: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Enrich context with additional computed fields
+        Enrich context with additional computed fields and unified aliases
         
         Args:
             context: Base context
@@ -383,6 +384,41 @@ class PromptAssembler:
                 "columns_count": len(asset.get("columns", []))
             }
         
+        # Multi-Target Aliases (e.g., Fabric Spark vs SQL)
+        if "table_name" in enriched:
+            enriched["TABLE_NAME"] = str(enriched["table_name"]).upper()
+        
+        # Schema/Warehouse Aliases
+        if "gold_schema" in enriched:
+            enriched["warehouse"] = enriched["gold_schema"]
+            enriched["lakehouse_gold"] = enriched["gold_schema"]
+        
+        if "silver_schema" in enriched:
+            enriched["lakehouse_silver"] = enriched["silver_schema"]
+            
+        if "bronze_schema" in enriched:
+            enriched["lakehouse_bronze"] = enriched["bronze_schema"]
+            
+        # Path Aliases
+        if "bronze_path" in enriched:
+            enriched["adls_path"] = enriched["bronze_path"]
+            
+        # Primary Key Aliases
+        if "primary_key" in enriched:
+            pk = enriched["primary_key"]
+            if isinstance(pk, list):
+                enriched["pk_columns"] = ", ".join(pk)
+                for i, p in enumerate(pk[:5]): # Support up to 5 individual PKs
+                    enriched[f"pk{i+1}"] = p
+            else:
+                enriched["pk_columns"] = str(pk)
+                enriched["pk1"] = str(pk)
+
+        # Source System Aliases
+        if "source_system" not in enriched and "source_tech" in enriched:
+            enriched["source_system"] = enriched["source_tech"]
+            enriched["source_system_name"] = enriched["source_tech"]
+
         # Add formatted columns if present
         if "columns" in context:
             enriched["columns_formatted"] = self.build_column_context(context["columns"])

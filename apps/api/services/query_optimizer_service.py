@@ -271,10 +271,14 @@ class QueryOptimizer:
         tables = []
         for token in parsed.tokens:
             if isinstance(token, Identifier):
-                tables.append(token.get_real_name())
+                name = token.get_real_name()
+                if name:
+                    tables.append(name)
             elif isinstance(token, IdentifierList):
                 for identifier in token.get_identifiers():
-                    tables.append(identifier.get_real_name())
+                    name = identifier.get_real_name()
+                    if name:
+                        tables.append(name)
         
         # Extract columns from SELECT clause
         columns = []
@@ -284,10 +288,14 @@ class QueryOptimizer:
                 select_seen = True
             elif select_seen and isinstance(token, IdentifierList):
                 for identifier in token.get_identifiers():
-                    columns.append(identifier.get_real_name())
+                    name = identifier.get_real_name()
+                    if name:
+                        columns.append(name)
                 break
             elif select_seen and isinstance(token, Identifier):
-                columns.append(token.get_real_name())
+                name = token.get_real_name()
+                if name:
+                    columns.append(name)
                 break
         
         # Extract WHERE filters

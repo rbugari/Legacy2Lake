@@ -84,12 +84,21 @@ class RuleViolation:
     timestamp: datetime
     
     def to_dict(self) -> Dict[str, Any]:
+        def _serialize_val(v):
+            if isinstance(v, datetime):
+                return v.isoformat()
+            if isinstance(v, list):
+                return [_serialize_val(i) for i in v]
+            if isinstance(v, dict):
+                return {k: _serialize_val(val) for k, val in v.items()}
+            return v
+            
         return {
             "rule_id": self.rule_id,
             "table_name": self.table_name,
             "column_name": self.column_name,
             "violation_count": self.violation_count,
-            "sample_values": self.sample_values[:10],  # Limit samples
+            "sample_values": _serialize_val(self.sample_values[:10]),  # Limit samples
             "severity": self.severity.value,
             "message": self.message,
             "timestamp": self.timestamp.isoformat()
@@ -758,7 +767,7 @@ class QualityRuleEngine:
             "rules_failed": report.rules_failed,
             "quality_score": report.quality_score,
             "violations": [v.to_dict() for v in report.violations],
-            "timestamp": report.timestamp
+            "timestamp": report.timestamp.isoformat() if isinstance(report.timestamp, datetime) else report.timestamp
         }
         
         self.supabase.table("utm_quality_reports").insert(insert_data).execute()

@@ -86,7 +86,7 @@ class AgentFService:
         target_tech = str(target_tech_raw).lower().replace(" ", "_")
 
         cartridge_rules = ""
-        cartridge_prompt_id = f"cartridge_{target_tech}_{layer.lower()}"
+        cartridge_prompt_id = f"agent_c_{layer.lower()}_{target_tech}"
         
         try:
             from services.prompts.prompt_service import PromptService
@@ -112,6 +112,9 @@ class AgentFService:
         except Exception as e:
             logger.error(f"[AgentF] DB prompt load failed for {cartridge_prompt_id}: {e}. No mock will be used.", "AgentF")
         
+        # Detect code language for markdown block
+        code_lang = "sql" if any(x in target_tech for x in ["sql", "snowflake", "dbt", "bigquery", "redshift"]) else "python"
+
         human_content = f"""
         COMPLIANCE CONTEXT:
         LAYER MODE: {layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if layer == "direct" else f"Architectural Enhancement - {layer.upper()} Layer"})
@@ -134,7 +137,7 @@ class AgentFService:
         {json.dumps(task_info.get('scout_assessment', {}).get('detected_gaps', []), indent=2)}
 
         GENERATED CODE FOR REVIEW:
-        ```python
+        ```{code_lang}
         {generated_code}
         ```
         
@@ -166,16 +169,21 @@ class AgentFService:
             }
  
     @logger.llm_debug("Agent-F-Compliance-Optimize")
-    async def optimize_code(self, original_code: str, optimizations: List[str], project_id: Optional[str] = None) -> Dict[str, Any]:
+    async def optimize_code(self, original_code: str, optimizations: List[str], project_id: Optional[str] = None, task_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Applies specific optimizations to the code based on user selection."""
         system_prompt = await self._load_prompt("agent_f_critic")
+        
+        # Detect code language
+        task_info = task_info or {}
+        target_tech = task_info.get("tech_id", task_info.get("target_tech", "pyspark")).lower()
+        code_lang = "sql" if any(x in target_tech for x in ["sql", "snowflake", "dbt", "bigquery", "redshift"]) else "python"
         
         human_content = f"""
         Please apply the following SPECIFIC optimizations to the code below:
         {json.dumps(optimizations)}
  
         ORIGINAL CODE:
-        ```python
+        ```{code_lang}
         {original_code}
         ```
  

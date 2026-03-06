@@ -61,17 +61,26 @@ class Anomaly:
     details: Dict[str, Any] = None
     
     def to_dict(self) -> Dict[str, Any]:
+        def _serialize_val(v):
+            if isinstance(v, datetime):
+                return v.isoformat()
+            if isinstance(v, list):
+                return [_serialize_val(i) for i in v]
+            if isinstance(v, dict):
+                return {k: _serialize_val(val) for k, val in v.items()}
+            return v
+
         return {
             "anomaly_type": self.anomaly_type.value,
             "table_name": self.table_name,
             "column_name": self.column_name,
-            "detected_value": self.detected_value,
+            "detected_value": _serialize_val(self.detected_value),
             "expected_range": list(self.expected_range),
             "deviation_score": self.deviation_score,
             "severity": self.severity.value,
             "description": self.description,
             "timestamp": self.timestamp.isoformat(),
-            "details": self.details or {}
+            "details": _serialize_val(self.details or {})
         }
 
 
@@ -694,7 +703,7 @@ class AnomalyDetector:
             "medium_count": report.medium_count,
             "low_count": report.low_count,
             "anomalies": [a.to_dict() for a in report.anomalies],
-            "timestamp": report.timestamp
+            "timestamp": report.timestamp.isoformat() if isinstance(report.timestamp, datetime) else report.timestamp
         }
         
         self.supabase.table("utm_anomaly_reports").insert(insert_data).execute()

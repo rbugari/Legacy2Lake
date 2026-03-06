@@ -162,7 +162,7 @@ print(f"Row Count: {{df_bronze.count()}}")
             Uses schema.primary_key if available from SchemaMetadataService.
         """
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         
         # Sprint 9: Try to get PK from schema metadata
         pk_columns = table_metadata.get("pk_columns", [])
@@ -216,7 +216,7 @@ else:
 
     def generate_gold(self, table_metadata: Dict[str, Any]) -> str:
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         table_type = table_metadata.get("table_type", "DIMENSION")
         
         logic_comment = "# Gold Logic: Business-ready projection."
@@ -348,7 +348,7 @@ FROM {table_metadata.get("source_path", "source_table")};
 """
 
     def generate_silver_sql(self, table_metadata: Dict[str, Any]) -> str:
-        output_table_name = table_metadata.get("output_table_name", "silver_table")
+        output_table_name = table_metadata.get("output_table_name") or "silver_table"
         pk_columns = table_metadata.get("pk_columns", ["id"])
         merge_condition = " AND ".join([f"target.{pk} = source.{pk}" for pk in pk_columns])
         
@@ -369,7 +369,7 @@ WHEN NOT MATCHED THEN INSERT *;
 """
 
     def generate_gold_sql(self, table_metadata: Dict[str, Any]) -> str:
-        output_table_name = table_metadata.get("output_table_name", "gold_table")
+        output_table_name = table_metadata.get("output_table_name") or "gold_table"
         table_type = table_metadata.get("table_type", "DIMENSION")
         
         return f"""-- GOLD LAYER (ANSI SQL)

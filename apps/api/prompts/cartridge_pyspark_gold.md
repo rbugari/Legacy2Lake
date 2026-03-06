@@ -1,17 +1,17 @@
-# PySpark Generic Gold Layer Cartridge Rules
+# PySpark Generic — Gold Layer Cartridge Rules
 
 ## 🎯 CRITICAL COMPLIANCE REQUIREMENTS (Zero-Hardcode Policy)
 
 ### 1. MANDATORY L2L MODERNIZATION TRACE HEADER
 ```python
 # ================================================================
-# L2L MODERNIZATION TRACE: {{layer}} Layer - {{asset_name}}
+# L2L MODERNIZATION TRACE: Gold Layer - {{asset_name}}
 # ================================================================
 # Source Asset: {{source_asset_name}}
 # Source Technology: {{source_tech}}
-# Target Platform: PySpark Generic
+# Target Platform: PySpark Generic (Spark 3.x — no vendor lock-in)
 # Medallion Layer: gold
-# Component Type: Data Processing / Aggregation
+# Component Type: Analytical Model — {{model_type}}    [DIMENSION | FACT | AGGREGATE]
 # Business Entity: {{business_entity}}
 # Load Strategy: {{load_strategy}}
 # Generated At: {{timestamp}}
@@ -19,83 +19,327 @@
 # ================================================================
 ```
 
-### 2. ZERO-HARDCODE CONFIGURATION
-**❌ FORBIDDEN: Hardcoded values anywhere in code**
-- NO hardcoded paths: `s3://datalake/gold`, `/hdfs/...`
-- NO hardcoded table names: `silver_customers`, `gold_sales`
-- NO statics for dimensions/facts configuration.
+### 2. PYSPARK GENERIC PLATFORM NOTES
 
-**✅ REQUIRED: All paths and configs from orchestrator context**
+**PySpark Generic = Spark 3.x without vendor-specific extensions.**
+- No `DeltaTable` API (Databricks-only). Use `spark.sql("MERGE INTO ...")` if format supports it, or write/overwrite pattern.
+- No `dbutils`. Secrets and paths come from `config` injected by orchestrator.
+- Table format is config-driven: `delta` | `iceberg` | `parquet` — default `delta` when available.
+- Surrogate keys via `F.sha2(F.concat_ws("|", ...), 256)` — works on any Spark 3.x cluster.
+- Auto-detection of model pattern: `config['model_type']` → `DIMENSION` | `FACT` | `AGGREGATE`.
+
+**Gold layer has 3 structural patterns:**
+- **DIMENSION**: Hash SK + SCD Type 2 via `spark.sql("MERGE INTO")` or write-overwrite rebuild.
+- **FACT**: SK resolution (dim joins) + business measure computation + append/overwrite.
+- **AGGREGATE**: `groupBy().agg()` + window functions + full overwrite each run.
+
+### 3. ZERO-HARDCODE CONFIGURATION
+**❌ FORBIDDEN: Hardcoded values anywhere in code**
+- NO hardcoded paths: `s3://datalake/gold`, `/hdfs/...`, `/mnt/...`
+- NO hardcoded table names, catalog names, schema names
+- NO statics for dimension references, thresholds, or measure definitions
+
+**✅ REQUIRED: All from orchestrator config**
 ```python
 def execute_task(spark, config):
-    # Extract ALL values from config dictionary
-    catalog = config.get('catalog_name', 'main')
-    silver_schema = config.get('silver_schema', 'silver_curated')
-    gold_schema = config.get('gold_schema', 'gold_analytics')
-    
+    catalog         = config.get('catalog_name', 'main')
+    silver_schema   = config.get('silver_schema', 'silver_curated')
+    gold_schema     = config.get('gold_schema', 'gold_analytics')
+    source_table    = config['source_table_name']
+    target_table    = config['target_table_name']
+    model_type      = config.get('model_type', 'DIMENSION').upper()
+    business_keys   = config.get('business_keys', ['id'])
+    sk_column       = config.get('sk_column', f"{target_table}_sk")
+    table_format    = config.get('table_format', 'delta')   # delta | iceberg | parquet
+
+    # FACT-specific
+    dimension_tables = config.get('dimension_tables', [])   # [{table, source_bk, dim_bk, sk_col}]
+    fact_measures    = config.get('fact_measures', [])       # [{col, func, alias}]
+
+    # AGGREGATE-specific
+    group_by_cols    = config.get('group_by_cols', [])
+    agg_definitions  = config.get('agg_definitions', [])    # [{col, func, alias}]
 ```
 
-### 3. READ FROM SILVER LAYER
-**✅ REQUIRED: Always read from fully qualified silver table**
-```python
-# Construct silver table name from config
-silver_table = f"{catalog}.{silver_schema}.{{{{source_table_name}}}}"
-
-df_silver = spark.read.table(silver_table).filter("is_current = true")
-
-logger.info(f"Read active rows from Silver: {silver_table}")
-```
-
-### 4. BUSINESS LOGIC & AGGREGATION (Gold Layer Focus)
+### 4. SURROGATE KEY GENERATION (Dimension Pattern)
 ```python
 import pyspark.sql.functions as F
 
-# Complex aggregation using groupings
-df_gold = df_silver.groupBy("dimension_1", "dimension_2").agg(
-    F.sum("metric_1").alias("total_metric_1"),
-    F.avg("metric_2").alias("avg_metric_2")
-)
-
-# Fact/Dimension loading patterns using format based setups
+def build_surrogate_key(df, business_keys: list, sk_col: str):
+    """
+    Deterministic SHA2-based surrogate key.
+    Works on any PySpark 3.x — no vendor extensions needed.
+    """
+    concatenated = F.concat_ws("||", *[
+        F.coalesce(F.col(k).cast("string"), F.lit("NULL")) for k in business_keys
+    ])
+    return df.withColumn(sk_col, F.sha2(concatenated, 256))
 ```
 
-### 5. FUNCTION STRUCTURE (Mandatory)
-**✅ ONLY expose `execute_task(spark, config)` - NO main() function**
+### 5. DIMENSION PATTERN (Hash SK + SCD Type 2)
+```python
+### --- DIMENSION PATTERN START ---
+if model_type == 'DIMENSION':
+    silver_full = f"{catalog}.{silver_schema}.{source_table}"
+    gold_full   = f"{catalog}.{gold_schema}.{target_table}"
+
+    df_silver = spark.read.table(silver_full).filter("is_current = true")
+    source_count = df_silver.count()
+    logger.info(f"[EXTRACT] {source_count} active Silver rows")
+
+    # Build surrogate key
+    df_sk = build_surrogate_key(df_silver, business_keys, sk_column)
+
+    # Add SCD Type 2 Gold columns
+    df_incoming = df_sk \
+        .withColumn("valid_from",        F.current_timestamp()) \
+        .withColumn("valid_until",       F.lit(None).cast("timestamp")) \
+        .withColumn("is_current",        F.lit(True)) \
+        .withColumn("gold_created_at",   F.current_timestamp()) \
+        .withColumn("gold_updated_at",   F.current_timestamp())
+
+    # Detect if Gold table already exists
+    try:
+        spark.read.table(gold_full).count()
+        table_exists = True
+    except Exception:
+        table_exists = False
+
+    if not table_exists:
+        df_incoming.write.format(table_format).mode("overwrite").saveAsTable(gold_full)
+        logger.info(f"[INIT] Created Gold DIMENSION table: {gold_full}")
+    else:
+        df_incoming.createOrReplaceTempView("dim_incoming")
+
+        # Auto-detect change columns
+        change_cols = config.get('change_detection_cols', [])
+        if not change_cols:
+            reserved = {sk_column, "valid_from", "valid_until", "is_current",
+                        "gold_created_at", "gold_updated_at"}
+            change_cols = [
+                f.name for f in df_incoming.schema.fields
+                if f.name not in set(business_keys) | reserved
+            ]
+
+        merge_on    = " AND ".join([f"t.{k} = s.{k}" for k in business_keys])
+        change_expr = " OR ".join([f"t.{c} <> s.{c}" for c in change_cols])
+
+        # Step 1: Expire changed records
+        spark.sql(f"""
+            MERGE INTO {gold_full} t
+            USING dim_incoming s
+            ON {merge_on} AND t.is_current = true
+            WHEN MATCHED AND ({change_expr}) THEN UPDATE SET
+                t.valid_until      = current_timestamp(),
+                t.is_current       = false,
+                t.gold_updated_at  = current_timestamp()
+        """)
+
+        # Step 2: Insert new versions
+        spark.sql(f"INSERT INTO {gold_full} SELECT * FROM dim_incoming")
+
+        logger.info(f"[LOAD] DIMENSION SCD Type 2 MERGE completed: {gold_full}")
+
+    active_count = spark.read.table(gold_full).filter("is_current = true").count()
+    return {"status": "SUCCESS", "model_type": "DIMENSION", "active_rows": active_count}
+### --- DIMENSION PATTERN END ---
+```
+
+### 6. FACT PATTERN (SK Resolution + Append)
+```python
+### --- FACT PATTERN START ---
+elif model_type == 'FACT':
+    silver_full = f"{catalog}.{silver_schema}.{source_table}"
+    gold_full   = f"{catalog}.{gold_schema}.{target_table}"
+
+    df_fact = spark.read.table(silver_full).filter("is_current = true")
+    source_count = df_fact.count()
+    logger.info(f"[EXTRACT] {source_count} fact rows from Silver")
+
+    # Resolve surrogate keys from Gold dimensions
+    for dim_cfg in dimension_tables:
+        dim_full   = f"{catalog}.{gold_schema}.{dim_cfg['table']}"
+        source_bk  = dim_cfg['source_bk']
+        dim_bk     = dim_cfg['dim_bk']
+        dim_sk_col = dim_cfg['sk_col']
+
+        df_dim = spark.read.table(dim_full) \
+            .filter("is_current = true") \
+            .select(dim_bk, dim_sk_col)
+
+        df_fact = df_fact.join(
+            df_dim.withColumnRenamed(dim_sk_col, f"{dim_cfg['table']}_sk"),
+            df_fact[source_bk] == df_dim[dim_bk],
+            how="left"
+        ).drop(dim_bk)
+
+        logger.info(f"[TRANSFORM] SK resolved from: {dim_cfg['table']}")
+
+    # Compute business measures
+    for m in fact_measures:
+        col   = m.get('col')
+        func  = m.get('func', 'coalesce_zero').lower()
+        alias = m.get('alias', col)
+        if func == 'round':
+            df_fact = df_fact.withColumn(alias, F.round(F.col(col), m.get('scale', 2)))
+        elif func == 'coalesce_zero':
+            df_fact = df_fact.withColumn(alias, F.coalesce(F.col(col), F.lit(0)))
+
+    df_fact = df_fact.withColumn("gold_created_at", F.current_timestamp())
+
+    fact_mode = config.get('fact_write_mode', 'append')
+    df_fact.write.format(table_format).mode(fact_mode).saveAsTable(gold_full)
+    logger.info(f"[LOAD] Fact {fact_mode.upper()}: {gold_full}")
+
+    total = spark.read.table(gold_full).count()
+    return {"status": "SUCCESS", "model_type": "FACT", "total_fact_rows": total}
+### --- FACT PATTERN END ---
+```
+
+### 7. AGGREGATE PATTERN (GroupBy → Full Overwrite)
+```python
+### --- AGGREGATE PATTERN START ---
+elif model_type == 'AGGREGATE':
+    silver_full = f"{catalog}.{silver_schema}.{source_table}"
+    gold_full   = f"{catalog}.{gold_schema}.{target_table}"
+
+    df_src = spark.read.table(silver_full)
+    if "is_current" in [f.name for f in df_src.schema.fields]:
+        df_src = df_src.filter("is_current = true")
+
+    source_count = df_src.count()
+    logger.info(f"[EXTRACT] {source_count} rows for aggregation")
+
+    # Build aggregation from config
+    from pyspark.sql import functions as F
+    agg_map = {
+        "sum":            lambda c: F.sum(F.col(c)),
+        "count":          lambda c: F.count(F.col(c)),
+        "count_distinct": lambda c: F.countDistinct(F.col(c)),
+        "avg":            lambda c: F.avg(F.col(c)),
+        "max":            lambda c: F.max(F.col(c)),
+        "min":            lambda c: F.min(F.col(c)),
+    }
+
+    agg_exprs = [
+        agg_map.get(a.get('func', 'sum').lower(), F.sum)(a['col']).alias(a.get('alias', a['col']))
+        for a in agg_definitions
+    ]
+
+    df_agg = df_src.groupBy(*group_by_cols).agg(*agg_exprs)
+
+    # Window-based measures
+    from pyspark.sql.window import Window
+    for w_def in config.get('window_measures', []):
+        part_cols  = w_def.get('partition_by', group_by_cols)
+        order_cols = w_def.get('order_by', [])
+        func       = w_def.get('func', 'rank').lower()
+        alias      = w_def.get('alias', f"win_{func}")
+
+        win_spec = Window.partitionBy(*part_cols)
+        if order_cols:
+            win_spec = win_spec.orderBy(*[F.col(c) for c in order_cols])
+
+        if func == 'rank':
+            df_agg = df_agg.withColumn(alias, F.rank().over(win_spec))
+        elif func == 'row_number':
+            df_agg = df_agg.withColumn(alias, F.row_number().over(win_spec))
+        elif func == 'cumsum':
+            df_agg = df_agg.withColumn(alias, F.sum(F.col(w_def['measure_col'])).over(win_spec))
+
+    df_agg = df_agg \
+        .withColumn("gold_created_at", F.current_timestamp()) \
+        .withColumn("aggregate_date",  F.current_date())
+
+    # Aggregates always overwrite
+    df_agg.write.format(table_format).mode("overwrite").saveAsTable(gold_full)
+    logger.info(f"[LOAD] Aggregate OVERWRITE: {gold_full}")
+
+    agg_count = df_agg.count()
+    return {"status": "SUCCESS", "model_type": "AGGREGATE", "aggregate_rows": agg_count}
+else:
+    raise ValueError(f"Unknown model_type: {model_type}")
+### --- AGGREGATE PATTERN END ---
+```
+
+### 8. FUNCTION STRUCTURE (Mandatory)
 ```python
 def execute_task(spark, config):
+    """
+    Gold analytical model for {{asset_name}} on PySpark Generic (Spark 3.x).
+
+    Dispatches to DIMENSION / FACT / AGGREGATE based on config['model_type'].
+
+    Required config keys:
+      catalog_name         : Spark catalog (e.g. 'main', 'spark_catalog')
+      silver_schema        : Source schema (e.g. 'silver_curated')
+      gold_schema          : Target schema (e.g. 'gold_analytics')
+      source_table_name    : Silver source table
+      target_table_name    : Gold target table
+      business_keys        : list[str] — join/SK columns
+      model_type           : 'DIMENSION' | 'FACT' | 'AGGREGATE'
+      table_format         : 'delta' | 'iceberg' | 'parquet'
+
+      DIMENSION: change_detection_cols, sk_column
+      FACT:      dimension_tables, fact_measures, fact_write_mode
+      AGGREGATE: group_by_cols, agg_definitions, window_measures
+    """
+    import logging
+    import pyspark.sql.functions as F
+    from pyspark.sql.window import Window
+
+    logger = logging.getLogger(__name__)
+    model_type = config.get('model_type', 'DIMENSION').upper()
+    logger.info(f"[START] Gold {model_type}: {{{{asset_name}}}}")
+
     try:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"Starting Gold aggregation: {{{{asset_name}}}}")
-        
-        # [EXTRACT FROM SILVER]
-        df_silver = spark.read.table(...)
-        
-        # [TRANSFORM - AGGREGATE & JOIN]
-        df_gold = (df_silver
-            .transform(apply_business_rules)
-            .transform(aggregate_metrics))
-        
-        # [LOAD TO GOLD]
-        # Write format generally configured through config or default to parquet/delta
-        # ... logic...
-        
-        return {
-            "status": "SUCCESS",
-            "silver_rows": df_silver.count(),
-            "gold_rows": df_gold.count()
-        }
-        
+        # Dispatch to Section 5 / 6 / 7
+        pass
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Gold processing failed: {str(e)}")
+        logger.error(f"[ERROR] Gold failed: {str(e)}")
         raise
+
+def build_surrogate_key(df, business_keys, sk_col):
+    """See Section 4."""
+    ...
+
+# NO if __name__ == "__main__": block
 ```
 
 ## 🎯 OUTPUT REQUIREMENTS
-1. Return ONLY valid PySpark code (no markdown, no explanations embedded)
+1. Return ONLY valid PySpark code
 2. Must pass Agent-F compliance check (score ≥ 8)
-3. Zero hardcoded values
-4. Proper L2L header with medallion layer = "gold"
-5. No `main()` function - only `execute_task(spark, config)`
+3. Zero hardcoded values — all from `config`
+4. Model dispatch: `config['model_type']` = DIMENSION / FACT / AGGREGATE
+5. SHA2 surrogate keys via `F.sha2(F.concat_ws("|", ...))` (no vendor API)
+6. `spark.sql("MERGE INTO ...")` for SCD Type 2 (format must support it)
+7. `groupBy().agg()` + `Window` for aggregates
+8. L2L header: `Target Platform: PySpark Generic`, `Medallion Layer: gold`
+9. Return metrics dict
+
+## 📋 EXAMPLE TEMPLATE STRUCTURE
+```python
+# [L2L HEADER — gold, PySpark Generic]
+
+import pyspark.sql.functions as F
+from pyspark.sql.window import Window
+import logging
+
+def execute_task(spark, config):
+    """Gold analytical model docstring — PySpark Generic"""
+    logger = logging.getLogger(__name__)
+    model_type = config.get('model_type', 'DIMENSION').upper()
+
+    if model_type == 'DIMENSION':
+        # SK hash + SCD Type 2 MERGE
+
+    elif model_type == 'FACT':
+        # dim joins + measure computation + append
+
+    elif model_type == 'AGGREGATE':
+        # groupBy + agg + window + overwrite
+
+    return {"status": "SUCCESS", "model_type": model_type, ...}
+
+def build_surrogate_key(df, business_keys, sk_col): ...
+```

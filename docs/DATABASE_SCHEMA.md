@@ -345,7 +345,7 @@ CREATE INDEX idx_matrix_tech ON utm_agent_matrix(tech_stack);
 
 ```sql
 CREATE TABLE utm_prompts (
-    prompt_id           TEXT PRIMARY KEY,  -- e.g., 'agent_c_interpreter', 'cartridge_databricks_bronze'
+    prompt_id           TEXT PRIMARY KEY,  -- e.g., 'agent_c_interpreter', 'agent_c_bronze_databricks'
     content             TEXT NOT NULL,
     tech_stack          TEXT,              -- 'databricks', 'snowflake', 'pyspark', NULL for generic
     pattern_type        TEXT,              -- 'direct', 'bronze', 'silver', 'gold', NULL for generic
@@ -373,15 +373,14 @@ CREATE INDEX idx_utm_prompts_active ON utm_prompts(is_active);
 
 **Prompt Types:**
 1. **Agent Prompts**: `agent_a_discovery`, `agent_c_interpreter`, `agent_f_critic`, etc.
-2. **Cartridge Prompts**: `cartridge_{tech}_{pattern}` or `agent_c_{layer}_{tech}`
-   - Examples: `cartridge_databricks_bronze`, `agent_c_bronze_pyspark`
+2. **Cartridge Prompts**: `agent_c_{layer}_{tech}`
+   - Examples: `agent_c_bronze_databricks`, `agent_c_direct_dbt`
 3. **Shared Prompts**: `coding_standards`
 
 **Naming Convention:**
 ```
 Agent:     agent_{letter}_{name}           (e.g., agent_c_interpreter)
-Cartridge: cartridge_{tech}_{pattern}      (e.g., cartridge_databricks_direct)
-Layer:     agent_c_{layer}_{tech}          (e.g., agent_c_bronze_pyspark)
+Cartridge: agent_c_{layer}_{tech}          (e.g., agent_c_bronze_databricks)
 Shared:    {descriptive_name}              (e.g., coding_standards)
 
 Tech Stack: databricks, snowflake, pyspark, fabric, dbt, gcp, aws, salesforce

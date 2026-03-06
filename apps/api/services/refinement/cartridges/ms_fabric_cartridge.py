@@ -10,7 +10,9 @@ class MSFabricCartridge(Cartridge):
     """
 
     def get_file_extension(self) -> str:
-        # Default for Fabric Notebooks is typically .py, but we provide SQL too.
+        target = str(self.registry.get("paths", {}).get("target_stack", "fabric")).lower()
+        if "sql" in target:
+            return ".sql"
         return ".py"
 
     def generate_scaffolding(self) -> Dict[str, str]:
@@ -56,6 +58,10 @@ def optimize_table(table_name):
         }
 
     def generate_bronze(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_bronze_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown_source.py"))
         original_code = table_metadata.get("original_code", "")
         
@@ -93,8 +99,12 @@ print(f"Ingested to Bronze: {{target_table}}")
 """
 
     def generate_silver(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_silver_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         
         # Validate and normalize PK columns
         pk_columns = self._validate_and_normalize_pk(table_metadata.get("pk_columns", []))
@@ -131,8 +141,12 @@ print(f"Silver Layer updated: {{target_table}}")
 """
 
     def generate_gold(self, table_metadata: Dict[str, Any]) -> str:
+        ext = self.get_file_extension()
+        if ext == ".sql":
+            return self.generate_gold_sql(table_metadata)
+            
         source_path = Path(table_metadata.get("source_path", "unknown.py"))
-        output_table_name = table_metadata.get("output_table_name", source_path.stem)
+        output_table_name = table_metadata.get("output_table_name") or source_path.stem
         table_type = table_metadata.get("table_type", "DIMENSION")
         
         return f"""# MS FABRIC - GOLD LAYER (Semantic View)

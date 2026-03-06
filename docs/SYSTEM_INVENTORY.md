@@ -125,7 +125,7 @@ Total: 18 agent configurations
 
 ### Agent C Sprint 1 Enhancements
 - ✅ Database-first prompt loading
-- ✅ Naming convention: `cartridge_{tech_id}_{layer}`
+- ✅ Naming convention: `agent_c_{layer}_{tech_id}`
 - ✅ 3-tier fallback: node_data → DB → legacy
 - ✅ 100% backward compatibility with Sprint 0
 - ✅ Tenant override infrastructure ready

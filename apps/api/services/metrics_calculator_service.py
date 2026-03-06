@@ -300,7 +300,14 @@ class MetricsCalculator:
         Formula: (total_rows - total_violations) / total_rows * 100
         """
         # Get quality report for this table
-        from quality_rule_engine_service import QualityRuleEngine
+        try:
+            from apps.api.services.quality_rule_engine_service import QualityRuleEngine
+        except ImportError:
+            try:
+                from services.quality_rule_engine_service import QualityRuleEngine
+            except ImportError:
+                from .quality_rule_engine_service import QualityRuleEngine
+
         
         engine = QualityRuleEngine(self.tenant_id, self.project_id)
         quality_report = await engine.evaluate_table(table_name)
@@ -648,7 +655,7 @@ class MetricsCalculator:
             "validity_score": report.validity_score,
             "uniqueness_score": report.uniqueness_score,
             "metrics": [m.to_dict() for m in report.metrics],
-            "timestamp": report.timestamp
+            "timestamp": report.timestamp.isoformat() if isinstance(report.timestamp, datetime) else report.timestamp
         }
         
         self.supabase.table("utm_quality_metrics").insert(insert_data).execute()
