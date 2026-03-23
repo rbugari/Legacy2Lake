@@ -41,6 +41,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Info
         },
         {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
+        },
+        {
             id: 'analysis',
             label: 'Analysis Reports',
             icon: Search,
@@ -78,6 +84,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             id: 'quick-info',
             label: 'Quick Info',
             icon: Info
+        },
+        {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
         },
         {
             id: 'views',
@@ -136,6 +148,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Info
         },
         {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
+        },
+        {
             id: 'execution',
             label: 'Execution',
             icon: PlayCircle,
@@ -184,6 +202,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             id: 'quick-info',
             label: 'Quick Info',
             icon: Info
+        },
+        {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
         },
         {
             id: 'status',
@@ -240,6 +264,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: Info
         },
         {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
+        },
+        {
             id: 'report',
             label: 'Certification Report',
             icon: ShieldCheck,
@@ -279,6 +309,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             id: 'quick-info',
             label: 'Quick Info',
             icon: Info
+        },
+        {
+            id: 'overview',
+            label: 'Overview',
+            icon: Home,
+            variant: 'view'
         },
         {
             id: 'handover-pkg',

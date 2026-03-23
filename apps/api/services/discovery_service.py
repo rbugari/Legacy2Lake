@@ -74,8 +74,8 @@ class DiscoveryService:
             file_name = file_node["name"]
             full_path = file_node["path"] # This is the storage Key
             
-            # [Fix] Exclude system generated files
-            if file_name in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+            # [Fix] Exclude system-generated and build-artifact files
+            if DiscoveryService._should_skip_file(full_path, file_name):
                 continue
 
             rel_path = full_path # Key is mostly the relative path in R2 context, or we can strip project prefix if needed for UI?
@@ -143,6 +143,24 @@ class DiscoveryService:
         return 'OTHER'
 
     @staticmethod
+    def _should_skip_file(full_path: str, file_name: str) -> bool:
+        normalized_path = full_path.replace("\\", "/").lower()
+        normalized_name = file_name.lower()
+
+        if normalized_name in ['triage.log', 'layout.json', 'migration.log', 'refinement.log', 'manifest.json']:
+            return True
+
+        ignored_segments = ['/bin/', '/obj/', '/.vs/', '/__pycache__/']
+        if any(segment in normalized_path for segment in ignored_segments):
+            return True
+
+        ignored_exts = {'.png', '.jpg', '.jpeg', '.gif', '.vsidx', '.suo', '.lock'}
+        if any(normalized_name.endswith(ext) for ext in ignored_exts):
+            return True
+
+        return False
+
+    @staticmethod
     def _sanitize_snippet(snippet: str) -> str:
         """Remove null bytes and non-printable characters that cause PostgreSQL errors."""
         if not snippet:
@@ -163,17 +181,30 @@ class DiscoveryService:
         invocations = []
         snippet_lines = []
         metadata = {}
+        line_count = 0
         
         # Skip binary or huge files
         if ext in ['exe', 'dll', 'png', 'jpg', 'zip']:
-            return {"signatures": [], "invocations": [], "snippet": "[BINARY FILE]", "metadata": {}}
+            return {
+                "signatures": [],
+                "invocations": [],
+                "line_count": 0,
+                "snippet": "[BINARY FILE]",
+                "metadata": {}
+            }
 
         temp_path = None
         try:
             # READ CONTENT FROM STORAGE
             content_bytes = storage.read_file(file_path_key, is_binary=True)
             if content_bytes is None:
-                 return {"signatures": ["Read Error"], "invocations": [], "snippet": "", "metadata": {}}
+                 return {
+                     "signatures": ["Read Error"],
+                     "invocations": [],
+                     "line_count": 0,
+                     "snippet": "",
+                     "metadata": {}
+                 }
 
             try:
                 content_str = content_bytes.decode('utf-8', errors='ignore')

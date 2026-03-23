@@ -1,794 +1,130 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Legacy2Lake - Guía de Usuario</title>
+    <title>Legacy2Lake - Ayuda</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --secondary: #8b5cf6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --dark: #0f172a;
-            --dark-light: #1e293b;
-            --gray: #64748b;
-            --gray-light: #cbd5e1;
-            --white: #ffffff;
-            --surface: rgba(30, 41, 59, 0.8);
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: var(--white);
-            line-height: 1.6;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        /* Language Switcher */
-        .lang-switcher {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 1000;
-            display: flex;
-            gap: 0.5rem;
-            background: var(--surface);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 0.5rem;
-            padding: 0.5rem;
-        }
-
-        .lang-btn {
-            padding: 0.5rem 1rem;
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 0.375rem;
-            color: var(--gray-light);
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .lang-btn.active {
-            background: var(--primary);
-            border-color: var(--primary);
-            color: white;
-        }
-
-        .lang-btn:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        /* Header */
-        .header {
-            background: var(--surface);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
-
-        .header p {
-            color: var(--gray-light);
-            font-size: 1.1rem;
-        }
-
-        /* Navigation */
-        .nav {
-            background: var(--surface);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            position: sticky;
-            top: 1rem;
-            z-index: 100;
-        }
-
-        .nav-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            justify-content: center;
-        }
-
-        .nav-link {
-            padding: 0.75rem 1.5rem;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 0.5rem;
-            color: var(--white);
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .nav-link:hover {
-            background: var(--primary);
-            border-color: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-        }
-
-        /* Content Sections */
-        .section {
-            background: var(--surface);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .section h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .section h3 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin: 2rem 0 1rem 0;
-            color: var(--secondary);
-        }
-
-        .section h4 {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin: 1.5rem 0 0.75rem 0;
-            color: var(--gray-light);
-        }
-
-        .section p {
-            color: var(--gray-light);
-            margin-bottom: 1rem;
-            font-size: 1.05rem;
-        }
-
-        .section ul,
-        .section ol {
-            margin-left: 1.5rem;
-            margin-bottom: 1rem;
-            color: var(--gray-light);
-        }
-
-        .section li {
-            margin-bottom: 0.5rem;
-        }
-
-        /* Stage Cards */
-        .stages-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-
-        .stage-card {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 1rem;
-            padding: 2rem;
-            transition: all 0.3s ease;
-        }
-
-        .stage-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
-            border-color: var(--primary);
-        }
-
-        .stage-number {
-            display: inline-block;
-            width: 3rem;
-            height: 3rem;
-            background: var(--primary);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .stage-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-            color: var(--white);
-        }
-
-        .stage-description {
-            color: var(--gray-light);
-            margin-bottom: 1rem;
-        }
-
-        .stage-actions {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-
-        .stage-actions h5 {
-            font-size: 0.9rem;
-            font-weight: 700;
-            color: var(--success);
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stage-actions ul {
-            margin-left: 1.25rem;
-            font-size: 0.95rem;
-        }
-
-        /* Feature Boxes */
-        .feature-box {
-            background: rgba(16, 185, 129, 0.1);
-            border-left: 4px solid var(--success);
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin: 1.5rem 0;
-        }
-
-        .warning-box {
-            background: rgba(245, 158, 11, 0.1);
-            border-left: 4px solid var(--warning);
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin: 1.5rem 0;
-        }
-
-        .info-box {
-            background: rgba(99, 102, 241, 0.1);
-            border-left: 4px solid var(--primary);
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin: 1.5rem 0;
-        }
-
-        /* Code Blocks */
-        code {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
-            font-family: 'Fira Code', monospace;
-            font-size: 0.9rem;
-            color: var(--success);
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-
-            .header h1 {
-                font-size: 2rem;
-            }
-
-            .section {
-                padding: 1.5rem;
-            }
-
-            .stages-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .nav-links {
-                flex-direction: column;
-            }
-        }
-
-        /* Scroll behavior */
-        html {
-            scroll-behavior: smooth;
-        }
-
-        /* Back to top button */
-        .back-to-top {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            width: 3rem;
-            height: 3rem;
-            background: var(--primary);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            text-decoration: none;
-            font-weight: 700;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-            transition: all 0.3s ease;
-        }
-
-        .back-to-top:hover {
-            background: var(--primary-dark);
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.6);
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.65; }
+        .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 18px 64px; }
+        .lang { display: flex; gap: 10px; margin-bottom: 18px; }
+        .lang a { color: #cbd5e1; text-decoration: none; padding: 8px 12px; border: 1px solid #334155; border-radius: 10px; }
+        .lang a.active { background: #0ea5e9; color: white; border-color: #0ea5e9; }
+        .hero, .box, .stage { background: #111827; border: 1px solid #334155; border-radius: 18px; }
+        .hero, .box { padding: 24px; margin-bottom: 18px; }
+        h1 { font-size: 36px; margin-bottom: 10px; }
+        h2 { font-size: 26px; margin-bottom: 12px; }
+        h3 { font-size: 20px; margin-bottom: 8px; color: #38bdf8; }
+        p, li { color: #cbd5e1; font-size: 16px; }
+        ul { margin-left: 22px; margin-top: 10px; }
+        .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+        .nav a { text-decoration: none; color: #e2e8f0; background: #0b2239; border: 1px solid #1d4ed8; padding: 9px 12px; border-radius: 999px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin-top: 16px; }
+        .stage { padding: 20px; }
+        .num { width: 36px; height: 36px; border-radius: 999px; background: #082f49; color: #38bdf8; display: flex; align-items: center; justify-content: center; font-weight: 800; margin-bottom: 10px; }
+        .callout { margin-top: 14px; padding: 14px; border-left: 4px solid #38bdf8; background: #0b2239; border-radius: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; vertical-align: top; }
+        th { color: #f8fafc; background: #0b2239; }
+        td { color: #cbd5e1; }
+        code { background: #020617; color: #93c5fd; padding: 2px 6px; border-radius: 8px; }
     </style>
 </head>
-
 <body>
-    <!-- Language Switcher -->
-    <div class="lang-switcher">
-        <a href="/help-en.html" class="lang-btn">EN</a>
-        <a href="/help.html" class="lang-btn active">ES</a>
-    </div>
-
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>🚀 Legacy2Lake</h1>
-            <p>Guía Completa de Usuario - Sistema de Migración Automatizada con IA</p>
+    <div class="wrap" id="top">
+        <div class="lang">
+            <a href="/help-en.html">EN</a>
+            <a href="/help.html" class="active">ES</a>
         </div>
 
-        <!-- Navigation -->
+        <section class="hero">
+            <h1>Ayuda del producto</h1>
+            <p>Legacy2Lake es una plataforma para entender, ordenar, generar, revisar y entregar migraciones complejas. No esta pensada como un boton de "migrar todo", sino como una forma de reducir incertidumbre y acelerar trabajo util.</p>
+            <div class="callout"><strong>Idea central:</strong> el valor del producto esta en combinar analisis, generacion, revision y trazabilidad. La plataforma ayuda a tomar mejores decisiones; no reemplaza el criterio del equipo.</div>
+        </section>
+
         <nav class="nav">
-            <div class="nav-links">
-                <a href="#que-es" class="nav-link">¿Qué es?</a>
-                <a href="#como-funciona" class="nav-link">¿Cómo funciona?</a>
-                <a href="#etapas" class="nav-link">Las 6 Etapas</a>
-                <a href="#personalizacion" class="nav-link">Personalización</a>
-                <a href="#reportes" class="nav-link">Reportes</a>
-                <a href="#faq" class="nav-link">FAQ</a>
-            </div>
+            <a href="#que-es">Que Es</a>
+            <a href="#flujo">Flujo</a>
+            <a href="#fases">Fases</a>
+            <a href="#vistas">Vistas</a>
+            <a href="#buen-uso">Buen Uso</a>
+            <a href="#limites">Limites</a>
         </nav>
 
-        <!-- ¿Qué es Legacy2Lake? -->
-        <section id="que-es" class="section">
-            <h2>🎯 ¿Qué es Legacy2Lake?</h2>
-            <p>
-                <strong>Legacy2Lake</strong> es una plataforma de migración automatizada que utiliza Inteligencia
-                Artificial para transformar
-                sistemas legacy (SSIS, SQL Server, Oracle, etc.) en arquitecturas modernas de Data Lake (PySpark,
-                Snowflake, Databricks, BigQuery).
-            </p>
-
-            <div class="feature-box">
-                <h4>✨ Características Principales</h4>
-                <ul>
-                    <li><strong>Migración Automatizada:</strong> Agentes de IA especializados generan código de
-                        producción.</li>
-                    <li><strong>Multi-Tenancy:</strong> Soporte para múltiples organizaciones con aislamiento completo.
-                    </li>
-                    <li><strong>Cloud-Native:</strong> Almacenamiento en Cloudflare R2, metadatos en Supabase.</li>
-                    <li><strong>Trazabilidad Completa:</strong> Cada decisión queda documentada y auditada.</li>
-                    <li><strong>Reportes Profesionales:</strong> PDFs ejecutivos para Triage y Handover.</li>
-                </ul>
-            </div>
-
-            <h3>🤖 Los 7 Agentes de IA</h3>
+        <section class="box" id="que-es">
+            <h2>Que Es Y Por Que Existe</h2>
+            <p>El producto existe para ayudar en migraciones donde hay codigo legacy, poca documentacion, dependencias dificiles de leer y decisiones que normalmente consumen mucho tiempo humano.</p>
             <ul>
-                <li><strong>Agent A (The Analyst):</strong> Analiza el código legacy y genera manifiestos técnicos.</li>
-                <li><strong>Agent S (The Scout):</strong> Detective forense que identifica gaps y riesgos de migración.
-                </li>
-                <li><strong>Agent B (The Architect):</strong> Diseña la topología de ejecución y dependencias.</li>
-                <li><strong>Agent C (The Developer):</strong> Genera código PySpark/SQL optimizado.</li>
-                <li><strong>Agent F (The Critic):</strong> Audita y valida el código generado contra estándares.</li>
-                <li><strong>Agent G (The Governor):</strong> Genera documentación de gobernanza y runbooks.</li>
-                <li><strong>The Librarian:</strong> Extrae metadatos de esquemas y tablas para contexto.</li>
+                <li>ayuda a entender que hay en un repo o paquete legacy</li>
+                <li>ayuda a clasificar que importa y que no</li>
+                <li>genera una base util para revision</li>
+                <li>deja evidencia y artefactos de entrega</li>
             </ul>
         </section>
 
-        <!-- ¿Cómo funciona? -->
-        <section id="como-funciona" class="section">
-            <h2>⚙️ ¿Cómo funciona el proceso?</h2>
-
-            <p>
-                Legacy2Lake sigue un flujo de trabajo de <strong>6 etapas secuenciales</strong>, cada una con un
-                propósito específico
-                y validaciones automáticas. El sistema garantiza que no puedes avanzar a la siguiente etapa sin
-                completar la actual.
-            </p>
-
-            <div class="info-box">
-                <h4>📊 Flujo de Trabajo</h4>
-                <ol>
-                    <li><strong>Discovery:</strong> Subes tus archivos legacy al sistema.</li>
-                    <li><strong>Triage:</strong> La IA analiza y clasifica los activos.</li>
-                    <li><strong>Drafting:</strong> Se genera el código de migración.</li>
-                    <li><strong>Refinement:</strong> El código se optimiza y autocorrige.</li>
-                    <li><strong>Certification:</strong> Se valida el cumplimiento y se genera documentación.</li>
-                    <li><strong>Handover:</strong> Descarga del código final y despliegue.</li>
-                </ol>
-            </div>
-
-            <h3>🔒 Gobernanza y Control</h3>
-            <p>
-                El sistema implementa <strong>bloqueos de estado</strong> para garantizar la integridad:
-            </p>
-            <ul>
-                <li>No puedes modificar activos mientras el proyecto está en <code>DRAFTING</code>.</li>
-                <li>Debes "Aprobar Triage" antes de generar código.</li>
-                <li>Los reportes PDF se generan solo cuando hay datos completos.</li>
-            </ul>
+        <section class="box" id="flujo">
+            <h2>Flujo De Trabajo</h2>
+            <p>El workspace trabaja por fases. Cada fase tiene un <code>overview</code> como punto de entrada. Ese overview es el home operativo de la fase: te orienta, te da la accion principal y te deja ir a vistas mas especificas sin perder el hilo.</p>
+            <table>
+                <thead><tr><th>Fase</th><th>Para que sirve</th><th>Pregunta principal</th></tr></thead>
+                <tbody>
+                    <tr><td>Discovery</td><td>entender el material de entrada</td><td>Que trajimos y que tan interpretable es?</td></tr>
+                    <tr><td>Triage</td><td>clasificar y priorizar</td><td>Que vale la pena migrar y como?</td></tr>
+                    <tr><td>Drafting</td><td>generar una base funcional</td><td>Podemos producir un primer target util?</td></tr>
+                    <tr><td>Refinement</td><td>mejorar y validar</td><td>Podemos dejarlo mas solido?</td></tr>
+                    <tr><td>Governance</td><td>auditar y documentar</td><td>Que riesgos y evidencia deja la solucion?</td></tr>
+                    <tr><td>Handover</td><td>empaquetar y entregar</td><td>Que se entrega finalmente?</td></tr>
+                </tbody>
+            </table>
+            <div class="callout"><strong>Navegacion actual:</strong> el sistema ya no arrastra subsecciones arbitrarias entre fases. Recuerda tu ultimo punto util dentro de la misma fase, pero una fase nueva arranca en un punto coherente.</div>
         </section>
 
-        <!-- Las 6 Etapas -->
-        <section id="etapas" class="section">
-            <h2>📋 Las 6 Etapas del Proceso</h2>
-
-            <div class="stages-grid">
-                <!-- Stage 1: Discovery -->
-                <div class="stage-card">
-                    <div class="stage-number">1</div>
-                    <div class="stage-title">🔍 Discovery</div>
-                    <div class="stage-description">
-                        Fase de carga inicial donde subes tus archivos legacy (SSIS packages, SQL scripts, etc.) al
-                        sistema.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Crear un nuevo proyecto</li>
-                            <li>Configurar tecnología origen y destino</li>
-                            <li>Subir archivos legacy (drag & drop)</li>
-                            <li>Ver inventario de archivos cargados</li>
-                            <li>Avanzar a Triage cuando estés listo</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Stage 2: Triage -->
-                <div class="stage-card">
-                    <div class="stage-number">2</div>
-                    <div class="stage-title">🎯 Triage</div>
-                    <div class="stage-description">
-                        La IA analiza tus archivos, detecta tecnologías, identifica gaps forenses y clasifica activos en
-                        CORE, SUPPORT o IGNORED.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Ejecutar "Run Triage" (Agent A + Agent S)</li>
-                            <li>Revisar el grafo de dependencias</li>
-                            <li>Verificar clasificación de activos</li>
-                            <li>Subir archivos de soporte adicionales (README, schemas)</li>
-                            <li>Descargar Reporte PDF de Triage</li>
-                            <li><strong>Aprobar Triage</strong> para desbloquear Drafting</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Stage 3: Drafting -->
-                <div class="stage-card">
-                    <div class="stage-number">3</div>
-                    <div class="stage-title">✍️ Drafting</div>
-                    <div class="stage-description">
-                        Agent C (Developer) genera código PySpark/SQL para cada activo CORE. El código se guarda
-                        automáticamente en el storage.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Configurar límite de migración (batch size)</li>
-                            <li>Ejecutar "Run Migration"</li>
-                            <li>Monitorear logs en tiempo real</li>
-                            <li>Ver archivos generados (.py, .sql)</li>
-                            <li>Revisar metadatos operacionales (frecuencia, PII, etc.)</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Stage 4: Refinement -->
-                <div class="stage-card">
-                    <div class="stage-number">4</div>
-                    <div class="stage-title">🔧 Refinement</div>
-                    <div class="stage-description">
-                        Agent F (Critic) audita el código generado, detecta violaciones de estándares y aplica
-                        optimizaciones automáticas.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Revisar reportes de auditoría (_audit.json)</li>
-                            <li>Ver scores de cumplimiento (0-100)</li>
-                            <li>Aplicar correcciones sugeridas</li>
-                            <li>Re-ejecutar refinamiento si es necesario</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Stage 5: Certification -->
-                <div class="stage-card">
-                    <div class="stage-number">5</div>
-                    <div class="stage-title">📜 Certification</div>
-                    <div class="stage-description">
-                        Agent G (Governor) genera documentación de gobernanza, runbooks técnicos y certificados de
-                        cumplimiento.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Revisar runbook de operación</li>
-                            <li>Verificar certificado de cumplimiento</li>
-                            <li>Validar documentación técnica</li>
-                            <li>Aprobar para Handover</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Stage 6: Handover -->
-                <div class="stage-card">
-                    <div class="stage-number">6</div>
-                    <div class="stage-title">🎁 Handover</div>
-                    <div class="stage-description">
-                        Fase final donde descargas todo el código generado, documentación y manifiestos para despliegue
-                        en producción.
-                    </div>
-                    <div class="stage-actions">
-                        <h5>🎬 Acciones del Usuario</h5>
-                        <ul>
-                            <li>Descargar Reporte PDF Final</li>
-                            <li>Descargar ZIP con todo el código</li>
-                            <li>Revisar MANIFEST.json</li>
-                            <li>Desplegar en tu entorno (Databricks, Snowflake, etc.)</li>
-                        </ul>
-                    </div>
-                </div>
+        <section class="box" id="fases">
+            <h2>Que Y Por Que De Cada Fase</h2>
+            <div class="grid">
+                <article class="stage"><div class="num">0</div><h3>Discovery</h3><p>Existe para reducir incertidumbre. Antes de generar, hay que entender activos, tecnologias, ruido y huecos de contexto.</p></article>
+                <article class="stage"><div class="num">1</div><h3>Triage</h3><p>Existe para convertir inventario en decision. Clasifica activos y prepara una base mas segura para generar.</p></article>
+                <article class="stage"><div class="num">2</div><h3>Drafting</h3><p>Existe para producir un primer target util. El objetivo es una base revisable, no una optimizacion final.</p></article>
+                <article class="stage"><div class="num">3</div><h3>Refinement</h3><p>Existe para mejorar lo generado y reducir deuda evidente antes de auditar o entregar.</p></article>
+                <article class="stage"><div class="num">4</div><h3>Governance</h3><p>Existe para transformar resultados tecnicos en evidencia auditable, findings y runbook.</p></article>
+                <article class="stage"><div class="num">5</div><h3>Handover</h3><p>Existe para convertir el resultado del proyecto en una entrega real para otro equipo o entorno.</p></article>
             </div>
         </section>
 
-        <!-- Personalización -->
-        <section id="personalizacion" class="section">
-            <h2>🎨 Personalización y Configuración</h2>
-
-            <h3>🔧 Configuración de Proyecto</h3>
-            <p>Cada proyecto puede personalizarse en múltiples niveles:</p>
-
-            <h4>1. Tecnologías Soportadas</h4>
-            <div class="info-box">
-                <strong>Orígenes:</strong>
-                <ul>
-                    <li>SSIS (SQL Server Integration Services)</li>
-                    <li>SQL Server (T-SQL)</li>
-                    <li>Oracle (PL/SQL)</li>
-                    <li>MySQL</li>
-                    <li>Informatica PowerCenter</li>
-                    <li>IBM DataStage</li>
-                </ul>
-                <strong>Destinos:</strong>
-                <ul>
-                    <li>PySpark (Databricks, EMR, Synapse)</li>
-                    <li>Snowflake (Snowpark Python)</li>
-                    <li>BigQuery (SQL + Python UDFs)</li>
-                    <li>Azure Synapse Analytics</li>
-                </ul>
-            </div>
-
-            <h4>2. Metadatos Operacionales</h4>
-            <p>Para cada activo puedes configurar:</p>
-            <ul>
-                <li><strong>Frecuencia:</strong> DAILY, WEEKLY, MONTHLY, HOURLY</li>
-                <li><strong>Estrategia de Carga:</strong> FULL_OVERWRITE, INCREMENTAL, SCD_TYPE2</li>
-                <li><strong>Criticidad:</strong> P0 (Crítico), P1 (Alto), P2 (Medio), P3 (Bajo)</li>
-                <li><strong>PII:</strong> Marcar si contiene datos personales</li>
-                <li><strong>Regla de Enmascaramiento:</strong> HASH, ENCRYPT, REDACT, TOKENIZE</li>
-                <li><strong>Entidad de Negocio:</strong> Nombre lógico del dominio</li>
-                <li><strong>Nombre de Destino:</strong> Sobrescribir nombre de tabla/archivo</li>
-            </ul>
-
-            <h4>3. Configuración de Agentes (Tenant Console)</h4>
-            <p>Desde el <strong>Tenant Console</strong> (Settings) puedes:</p>
-            <ul>
-                <li><strong>Agent Matrix:</strong> Asignar modelos LLM específicos a cada agente (GPT-4, Claude, Gemini,
-                    etc.)</li>
-                <li><strong>Provider Vault:</strong> Configurar credenciales de Azure OpenAI, OpenAI, Anthropic, Google
-                    AI</li>
-                <li><strong>System Catalog:</strong> Personalizar instrucciones de dialecto para cada tecnología</li>
-                <li><strong>Prompts:</strong> Editar los prompts de sistema de cada agente</li>
-            </ul>
-
-            <div class="warning-box">
-                <h4>⚠️ Importante</h4>
-                <p>
-                    Los cambios en la configuración de agentes afectan a <strong>todos los proyectos del
-                        tenant</strong>.
-                    Asegúrate de probar en un proyecto de prueba antes de aplicar cambios en producción.
-                </p>
-            </div>
+        <section class="box" id="vistas">
+            <h2>Como Usar Las Vistas</h2>
+            <h3>Overview</h3>
+            <p>Es el mejor punto de entrada de cada fase. Si no sabes por donde empezar, empieza ahi.</p>
+            <h3>Logs</h3>
+            <p>Usalos cuando una fase esta corriendo, tarda demasiado o produce algo que no entiendes.</p>
+            <h3>Grid, Graph, Files, Comparison</h3>
+            <p>Son vistas de trabajo, no decoracion. Sirven para revisar decisiones, explorar dependencias y validar salidas antes de avanzar.</p>
+            <div class="callout"><strong>Importante:</strong> acciones como <code>Run Pipeline</code> o <code>Run Refinement</code> son transitorias. Por eso ya no quedan como landing persistente.</div>
         </section>
 
-        <!-- Reportes -->
-        <section id="reportes" class="section">
-            <h2>📊 Sistema de Reportes</h2>
-
-            <h3>📄 Reporte de Triage (PDF)</h3>
-            <p>Generado al finalizar la etapa de Triage, incluye:</p>
+        <section class="box" id="buen-uso">
+            <h2>Como Sacarle Mejor Valor</h2>
             <ul>
-                <li><strong>Executive Summary:</strong> Resumen de activos, tecnologías detectadas y riesgos</li>
-                <li><strong>Forensic Assessment:</strong> Gaps críticos detectados por Agent S</li>
-                <li><strong>Support Intelligence:</strong> Esquemas y volúmenes extraídos de archivos de soporte</li>
-                <li><strong>Asset Inventory:</strong> Listado completo de archivos con clasificación</li>
-                <li><strong>Dependency Graph:</strong> Visualización de relaciones entre activos</li>
+                <li>no corras Drafting sobre un Triage mal revisado</li>
+                <li>usa Discovery y Triage para bajar ruido antes de generar</li>
+                <li>si el proyecto tiene reglas de negocio importantes, anadelas como contexto</li>
+                <li>usa Governance para entender riesgos, no solo para "aprobar"</li>
+                <li>si algo sale raro, vuelve a la fase correcta en vez de parchear todo al final</li>
             </ul>
-
-            <h3>📄 Reporte Final (PDF)</h3>
-            <p>Generado en la etapa de Handover, incluye:</p>
-            <ul>
-                <li><strong>Project Overview:</strong> Resumen ejecutivo del proyecto</li>
-                <li><strong>Analytical Integrity:</strong> Tabla de resolución de gaps forenses</li>
-                <li><strong>Support Intelligence Context:</strong> Contexto tribal aplicado</li>
-                <li><strong>Generated Artifacts:</strong> Listado de archivos generados</li>
-                <li><strong>Deployment Guide:</strong> Instrucciones de despliegue</li>
-                <li><strong>Compliance Certification:</strong> Certificado de cumplimiento</li>
-            </ul>
-
-            <div class="feature-box">
-                <h4>✨ Características de los Reportes</h4>
-                <ul>
-                    <li>Generación automática en formato PDF profesional</li>
-                    <li>Marca de agua con logo del tenant</li>
-                    <li>Tablas interactivas con métricas clave</li>
-                    <li>Gráficos de progreso y distribución</li>
-                    <li>Descarga directa desde la UI</li>
-                </ul>
-            </div>
         </section>
 
-        <!-- FAQ -->
-        <section id="faq" class="section">
-            <h2>❓ Preguntas Frecuentes</h2>
-
-            <h3>¿Puedo modificar activos después de aprobar Triage?</h3>
-            <p>
-                No. Una vez que apruebas Triage, el proyecto entra en modo <code>DRAFTING</code> y el inventario de
-                activos
-                queda bloqueado. Esto garantiza la integridad del proceso de generación de código. Si necesitas hacer
-                cambios,
-                debes "Desbloquear Triage" primero.
-            </p>
-
-            <h3>¿Qué pasa si el Triage detecta tecnologías diferentes a las configuradas?</h3>
-            <p>
-                El sistema te mostrará una alerta sugiriendo actualizar la configuración del proyecto. Puedes aceptar la
-                sugerencia
-                o mantener tu configuración original. Agent S siempre documenta estas discrepancias en el reporte.
-            </p>
-
-            <h3>¿Puedo pausar una migración en curso?</h3>
-            <p>
-                Sí. Las migraciones se ejecutan de forma asíncrona y puedes cerrar el navegador. Los logs se persisten
-                en la base de datos
-                y puedes retomarlos en cualquier momento. Sin embargo, no puedes iniciar una nueva migración mientras
-                una esté en curso.
-            </p>
-
-            <h3>¿Cómo funciona el límite de migración?</h3>
-            <p>
-                El "Migration Limit" te permite controlar cuántos activos se procesan en cada ejecución. Esto es útil
-                para:
-            </p>
+        <section class="box" id="limites">
+            <h2>Limites Del Sistema</h2>
             <ul>
-                <li>Pruebas iniciales (ej: procesar solo 5 paquetes)</li>
-                <li>Control de costos de LLM</li>
-                <li>Migraciones incrementales</li>
+                <li>no toda logica de negocio puede inferirse automaticamente</li>
+                <li>no todo output generado esta listo para produccion sin revision</li>
+                <li>el modo <code>direct</code> busca fidelidad base, no rediseno completo</li>
+                <li>hallazgos de PII, SCD2 o gobierno pueden ser deudas reales del caso</li>
             </ul>
-            <p>
-                Si estableces el límite en <code>0</code>, se procesarán <strong>todos</strong> los activos CORE.
-            </p>
-
-            <h3>¿Qué es la "Support Intelligence"?</h3>
-            <p>
-                Es el conocimiento tribal extraído automáticamente de archivos de soporte que subes durante Triage.
-                El sistema detecta patrones como:
-            </p>
-            <ul>
-                <li>Definiciones de esquemas (CREATE TABLE, ALTER TABLE)</li>
-                <li>Datos volumétricos (registros, tamaños de tablas)</li>
-                <li>Reglas de negocio documentadas en README</li>
-            </ul>
-            <p>
-                Esta inteligencia se inyecta en los prompts de Agent C y Agent F para que el código generado respete
-                tus especificaciones de negocio.
-            </p>
-
-            <h3>¿Puedo usar mis propios modelos LLM?</h3>
-            <p>
-                Sí. Desde el <strong>Tenant Console</strong> puedes configurar:
-            </p>
-            <ul>
-                <li>Azure OpenAI (GPT-4, GPT-4 Turbo, GPT-3.5)</li>
-                <li>OpenAI (GPT-4, GPT-4o, o1-preview)</li>
-                <li>Anthropic (Claude 3.5 Sonnet, Claude 3 Opus)</li>
-                <li>Google AI (Gemini Pro, Gemini Ultra)</li>
-            </ul>
-            <p>
-                Cada agente puede usar un modelo diferente según tus necesidades y presupuesto.
-            </p>
-
-            <h3>¿Cómo se calcula el "Score" de cumplimiento?</h3>
-            <p>
-                Agent F (The Critic) evalúa el código generado contra múltiples dimensiones:
-            </p>
-            <ul>
-                <li>Adherencia a estándares de código (PEP8, SQL best practices)</li>
-                <li>Optimizaciones aplicadas (partitioning, clustering, caching)</li>
-                <li>Manejo de errores y logging</li>
-                <li>Seguridad (PII masking, SQL injection prevention)</li>
-                <li>Documentación inline</li>
-            </ul>
-            <p>
-                El score va de 0 a 100. Códigos con score inferior a 70 se marcan como <code>REJECTED</code> y requieren
-                corrección.
-            </p>
-
-            <h3>¿Qué formato tienen los archivos generados?</h3>
-            <p>
-                Dependiendo de la tecnología de destino:
-            </p>
-            <ul>
-                <li><strong>PySpark:</strong> <code>.py</code> (notebooks ejecutables)</li>
-                <li><strong>Snowflake:</strong> <code>.py</code> (Snowpark) + <code>.sql</code> (DDL)</li>
-                <li><strong>BigQuery:</strong> <code>.sql</code> (queries) + <code>.py</code> (UDFs)</li>
-            </ul>
-            <p>
-                Además, cada activo genera un <code>_audit.json</code> con el reporte de cumplimiento.
-            </p>
+            <div class="callout"><strong>Regla practica:</strong> usa la plataforma para tomar mejores decisiones y acelerar entregables, no para apagar el pensamiento critico del equipo.</div>
         </section>
-
-        <!-- Footer -->
-        <div class="section"
-            style="text-align: center; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));">
-            <h3>🚀 ¿Listo para comenzar?</h3>
-            <p style="margin-bottom: 1.5rem;">
-                Crea tu primer proyecto y deja que la IA transforme tu legacy en una arquitectura moderna de Data Lake.
-            </p>
-            <a href="/"
-                style="display: inline-block; padding: 1rem 2rem; background: var(--primary); color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 700; transition: all 0.3s ease;">
-                Volver a la Home
-            </a>
-        </div>
     </div>
-
-    <!-- Back to top button -->
-    <a href="#" class="back-to-top">↑</a>
 </body>
-
 </html>

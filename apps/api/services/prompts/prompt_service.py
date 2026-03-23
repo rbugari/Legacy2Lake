@@ -29,6 +29,13 @@ except ImportError:
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import hashlib
+import re
+from apps.api.prompts.catalog import (
+    build_cartridge_prompt_id,
+    get_prompt_lookup_ids,
+    normalize_tech_stack,
+    resolve_prompt_id,
+)
 
 
 class Prompt:
@@ -44,6 +51,7 @@ class Prompt:
         self.metadata: Dict[str, Any] = data.get("metadata", {})
         self.created_at: str = data.get("created_at", "")
         self.updated_at: str = data.get("updated_at", "")
+        self.tenant_id: Optional[str] = data.get("tenant_id")
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -88,6 +96,28 @@ class PromptService:
         self._cache: Dict[str, Prompt] = {}
         self._cache_ttl: int = 300  # 5 minutes
         self._cache_timestamps: Dict[str, datetime] = {}
+
+    @staticmethod
+    def _looks_like_uuid(value: Optional[str]) -> bool:
+        if not value:
+            return False
+        return bool(
+            re.match(
+                r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                str(value),
+                re.IGNORECASE,
+            )
+        )
+
+    async def _resolve_project_uuid(self, project_id: Optional[str]) -> Optional[str]:
+        if not project_id:
+            return None
+        if self._looks_like_uuid(project_id):
+            return project_id
+        try:
+            return await self.db._resolve_uuid(project_id)
+        except Exception:
+            return None
     
     async def get_prompt(
         self,
@@ -105,45 +135,43 @@ class PromptService:
             Prompt object or None if not found
         """
         try:
+            canonical_prompt_id = resolve_prompt_id(prompt_id)
+            cache_key = canonical_prompt_id
+
             # Check cache first
-            if use_cache and self._is_cached(prompt_id):
+            if use_cache and self._is_cached(cache_key):
                 logger.info(
-                    f"[PromptService] Cache hit for prompt: {prompt_id}",
+                    f"[PromptService] Cache hit for prompt: {cache_key}",
                     "PromptService"
                 )
-                return self._cache[prompt_id]
+                return self._cache[cache_key]
             
-            # Query database
-            logger.info(
-                f"[PromptService] Loading prompt from DB: {prompt_id}",
+            for lookup_id in get_prompt_lookup_ids(prompt_id):
+                logger.info(
+                    f"[PromptService] Loading prompt from DB: {lookup_id}",
+                    "PromptService"
+                )
+                
+                response = (
+                    self.db.client
+                    .table("utm_prompts")
+                    .select("*")
+                    .eq("prompt_id", lookup_id)
+                    .eq("is_active", True)
+                    .limit(1)
+                    .execute()
+                )
+                
+                if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
+                    prompt = Prompt(response.data[0])
+                    self._cache_prompt(cache_key, prompt)
+                    return prompt
+
+            logger.warning(
+                f"[PromptService] Prompt not found: {prompt_id}",
                 "PromptService"
             )
-            
-            response = (
-                self.db.client
-                .table("utm_prompts")
-                .select("*")
-                .eq("prompt_id", prompt_id)
-                .eq("is_active", True)
-                .limit(1)
-                .execute()
-            )
-            
-            if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
-                data = response.data[0]
-                
-                # Create prompt object with safe dict defaults
-                prompt = Prompt(data)
-                
-                # Update cache
-                self._cache_prompt(prompt_id, prompt)
-                return prompt
-            else:
-                logger.warning(
-                    f"[PromptService] Prompt not found: {prompt_id}",
-                    "PromptService"
-                )
-                return None
+            return None
                 
         except Exception as e:
             logger.error(
@@ -173,8 +201,17 @@ class PromptService:
             First matching Prompt object or None if not found
         """
         try:
+            if agent_id == "agent-c" and tech_stack and pattern_type:
+                canonical_prompt_id = build_cartridge_prompt_id(pattern_type, tech_stack)
+                if canonical_prompt_id:
+                    exact_prompt = await self.get_prompt(canonical_prompt_id, use_cache=use_cache)
+                    if exact_prompt:
+                        return exact_prompt
+
+            normalized_tech_stack = normalize_tech_stack(tech_stack)
+
             # Build cache key
-            cache_key = self._build_cache_key(agent_id, tech_stack, pattern_type)
+            cache_key = self._build_cache_key(agent_id, normalized_tech_stack, pattern_type)
             
             # Check cache first
             if use_cache and self._is_cached(cache_key):
@@ -194,8 +231,8 @@ class PromptService:
             
             if agent_id:
                 query = query.eq("agent_id", agent_id)
-            if tech_stack:
-                query = query.eq("tech_stack", tech_stack)
+            if normalized_tech_stack:
+                query = query.eq("tech_stack", normalized_tech_stack)
             if pattern_type:
                 query = query.eq("pattern_type", pattern_type)
             
@@ -465,12 +502,16 @@ class PromptService:
             Override content or None if not found
         """
         try:
+            project_uuid = await self._resolve_project_uuid(project_id)
+            if not project_uuid:
+                return None
+
             response = (
                 self.db.client
                 .table("utm_prompt_overrides")
                 .select("content")
-                .eq("project_id", project_id)
-                .eq("prompt_id", prompt_id)
+                .eq("project_id", project_uuid)
+                .eq("prompt_id", resolve_prompt_id(prompt_id))
                 .limit(1)
                 .execute()
             )
@@ -504,32 +545,34 @@ class PromptService:
             True if saved successfully
         """
         try:
+            canonical_prompt_id = resolve_prompt_id(prompt_id)
+
             # Check if override exists
             response = (
                 self.db.client
                 .table("utm_prompt_overrides")
                 .select("override_id")
                 .eq("project_id", project_id)
-                .eq("prompt_id", prompt_id)
+                .eq("prompt_id", canonical_prompt_id)
                 .execute()
             )
             
             data = {
                 "project_id": project_id,
-                "prompt_id": prompt_id,
+                "prompt_id": canonical_prompt_id,
                 "content": content,
                 "updated_at": datetime.now().isoformat()
             }
             
             if response and hasattr(response, 'data') and response.data and len(response.data) > 0:
                 # Update
-                self.db.client.table("utm_prompt_overrides").update(data).eq("project_id", project_id).eq("prompt_id", prompt_id).execute()
+                self.db.client.table("utm_prompt_overrides").update(data).eq("project_id", project_id).eq("prompt_id", canonical_prompt_id).execute()
             else:
                 # Insert
                 self.db.client.table("utm_prompt_overrides").insert(data).execute()
                 
             logger.info(
-                f"[PromptService] Saved override for {prompt_id} in project {project_id}",
+                f"[PromptService] Saved override for {canonical_prompt_id} in project {project_id}",
                 "PromptService"
             )
             return True

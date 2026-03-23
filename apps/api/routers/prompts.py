@@ -218,49 +218,19 @@ async def update_prompt(
     """
     Update an existing prompt.
     
-    **Cartridge prompts**: MANAGER or COLLABORATOR of the project can edit.
-    **System prompts**: ADMIN only.
+    **Canonical prompts**: ADMIN only.
+    **Project-specific rules**: use the override endpoints below.
     
     Note: Update will trigger automatic versioning (saved to utm_prompts_history).
     """
     try:
-        # Check permissions based on prompt type
         user_role = identity.get("role")
-        user_id = identity.get("user_id")
-        tenant_id = identity.get("tenant_id")
-        
-        # For cartridge prompts, allow project members to edit
-        if prompt_id.startswith("cartridge_"):
-            # Extract project_id from payload metadata
-            project_id = payload.metadata.get("project_id") if payload.metadata else None
-            
-            if not project_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="project_id required in metadata for cartridge prompt updates"
-                )
-            
-            # Check if user has permission on this project
-            has_permission = await check_project_permission(
-                user_id=user_id,
-                project_id=project_id,
-                tenant_id=tenant_id,
-                db_client=db.client,
-                required_roles=["MANAGER", "COLLABORATOR"]
+
+        if user_role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Admin role required to update canonical prompts. Use prompt overrides for project-specific rules."
             )
-            
-            if not has_permission:
-                raise HTTPException(
-                    status_code=403,
-                    detail="You must be a project manager or collaborator to edit cartridge prompts"
-                )
-        else:
-            # For system prompts, require admin role
-            if user_role != "admin":
-                raise HTTPException(
-                    status_code=403,
-                    detail="Admin role required to update system prompts"
-                )
         
         prompt_service = PromptService(tenant_id=db.tenant_id, client_id=db.client_id)
         

@@ -465,20 +465,20 @@ async def get_object_schema(project_id: str, object_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Type equivalence groups for mismatch comparison
 _TYPE_EQUIVALENCES = [
-    {"int", "integer", "int4", "int32"},
+    {"int", "integer", "int4", "int32", "mediumint"},
     {"bigint", "long", "int8", "int64"},
     {"smallint", "short", "int2", "int16"},
     {"tinyint", "byte", "int1"},
-    {"float", "double", "float8", "real", "float4"},
-    {"varchar", "nvarchar", "string", "text", "ntext", "char", "nchar"},
+    {"float", "double", "float8", "real", "float4", "decimal", "numeric", "number", "dec"},
+    {"varchar", "nvarchar", "string", "text", "ntext", "char", "nchar", "mediumtext", "longtext", "tinytext"},
     {"datetime", "timestamp", "datetime2", "smalldatetime"},
     {"date"},
-    {"bit", "boolean", "bool"},
+    {"time"},
+    {"bit", "boolean", "bool", "tinyint"},  # MySQL often uses tinyint(1) for boolean
     {"money", "smallmoney"},
     {"uniqueidentifier", "uuid"},
-    {"varbinary", "binary", "image", "bytes"},
+    {"varbinary", "binary", "image", "bytes", "blob", "mediumblob", "longblob"},
 ]
 
 def _normalize_type(t: str) -> str:

@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -17,6 +18,111 @@ except ImportError:
 
 
 class AgentGService:
+    def _extract_balanced_object(self, text: str, start_index: int) -> Optional[str]:
+        depth = 0
+        in_string = False
+        escape = False
+
+        for index in range(start_index, len(text)):
+            char = text[index]
+
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start_index:index + 1]
+
+        return None
+
+    def _parse_response(self, content: str) -> Dict[str, Any]:
+        normalized = content.strip()
+
+        if normalized.startswith("```json"):
+            normalized = normalized[len("```json"):].strip()
+            if normalized.endswith("```"):
+                normalized = normalized[:-3].strip()
+        elif normalized.startswith("```"):
+            first_newline = normalized.find("\n")
+            if first_newline != -1:
+                normalized = normalized[first_newline + 1:].strip()
+            else:
+                normalized = normalized[3:].strip()
+            if normalized.endswith("```"):
+                normalized = normalized[:-3].strip()
+
+        first_brace = normalized.find("{")
+        last_brace = normalized.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            normalized = normalized[first_brace:last_brace + 1]
+
+        for candidate in (normalized, normalized.strip()):
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                try:
+                    return json.loads(candidate, strict=False)
+                except json.JSONDecodeError:
+                    continue
+
+        # Best-effort salvage for partially malformed JSON responses.
+        audit_match = re.search(r'"audit_json"\s*:\s*(\{.*\})\s*,\s*"runbook_markdown"', normalized, re.DOTALL)
+        runbook_match = re.search(r'"runbook_markdown"\s*:\s*"(.*)"\s*\}\s*$', normalized, re.DOTALL)
+        if audit_match and runbook_match:
+            try:
+                audit_json = json.loads(audit_match.group(1), strict=False)
+                runbook_markdown = json.loads(f'"{runbook_match.group(1)}"', strict=False)
+                return {
+                    "audit_json": audit_json,
+                    "runbook_markdown": runbook_markdown,
+                }
+            except Exception:
+                pass
+
+        audit_key = normalized.find('"audit_json"')
+        runbook_key = normalized.find('"runbook_markdown"')
+        if audit_key != -1 and runbook_key != -1:
+            audit_object_start = normalized.find("{", audit_key)
+            if audit_object_start != -1:
+                audit_object = self._extract_balanced_object(normalized, audit_object_start)
+                if audit_object:
+                    try:
+                        audit_json = json.loads(audit_object, strict=False)
+                        runbook_marker = normalized.find(":", runbook_key)
+                        if runbook_marker != -1:
+                            runbook_raw = normalized[runbook_marker + 1:].strip()
+                            if runbook_raw.endswith("}"):
+                                runbook_raw = runbook_raw[:-1].rstrip()
+                            if runbook_raw.startswith('"') and runbook_raw.endswith('"'):
+                                try:
+                                    runbook_markdown = json.loads(runbook_raw, strict=False)
+                                except json.JSONDecodeError:
+                                    runbook_markdown = runbook_raw[1:-1]
+                            else:
+                                runbook_markdown = runbook_raw
+                            return {
+                                "audit_json": audit_json,
+                                "runbook_markdown": runbook_markdown,
+                            }
+                    except Exception:
+                        pass
+
+        return {
+            "error": "Failed to parse Agent G response",
+            "raw_response": content
+        }
+
     async def _get_llm(self):
         """Resolves LLM client strictly from Agent Matrix (DB)."""
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
@@ -75,7 +181,7 @@ class AgentGService:
         EXECUTION MESH (Logic Relationships):
         {json.dumps(mesh, indent=2)}
         
-        TRANSFORMED CODE (PySpark Logic):
+        TRANSFORMED ASSETS AND CODE:
         {json.dumps(transformations, indent=2)}
         
         Please generate the Governance Audit and Runbook. Return ONLY the JSON object.
@@ -88,18 +194,4 @@ class AgentGService:
 
         llm = await self._get_llm()
         response = await llm.ainvoke(messages)
-        content = response.content.strip()
-
-        # Clean JSON if LLM added markdown blocks
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            return {
-                "error": "Failed to parse Agent G response",
-                "raw_response": content
-            }
+        return self._parse_response(response.content)

@@ -45,12 +45,15 @@ export default function StageSidebar({
             }
         });
 
-        // If activeSection is invalid for this stage, select first available
+        // If activeSection is invalid for this stage, select the first
+        // meaningful landing section instead of falling back to quick-info.
         if (sections.length > 0 && !allSectionIds.includes(activeSection)) {
-            const firstSection = sections[0];
-            const firstId = firstSection.children && firstSection.children.length > 0
-                ? firstSection.children[0].id
-                : firstSection.id;
+            const firstMeaningfulSection = sections.find(section => section.id !== 'quick-info');
+            if (!firstMeaningfulSection) return;
+
+            const firstId = firstMeaningfulSection.children && firstMeaningfulSection.children.length > 0
+                ? firstMeaningfulSection.children[0].id
+                : firstMeaningfulSection.id;
             onSectionChange(firstId);
         }
     }, [stage, sections, activeSection, onSectionChange]);

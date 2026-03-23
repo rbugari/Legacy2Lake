@@ -198,9 +198,9 @@ export default function GovernanceView({
             {ConfirmDialog}
             <StageHeader
                 title="Stage 4: Governance & Certification"
-                subtitle="Compliance audit, lineage mapping and project certification"
+                subtitle="Review the generated solution, capture findings, and produce auditable delivery evidence"
                 icon={<ShieldCheck className="text-amber-500" />}
-                helpText="Runs Agent F (Critic) and Agent G (Governor) to audit compliance, generate the runbook and issue the COP certification score."
+                helpText="Use Governance to understand certification results, remaining findings, and the operational evidence that will accompany delivery."
                 onApprove={handleApprove}
                 approveLabel="Next Phase: Handover"
                 isApproveDisabled={isGovernanceRunning || !isGovernanceComplete}
@@ -243,7 +243,7 @@ export default function GovernanceView({
                 )}
 
                 {/* â”€â”€ CERTIFICATION REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-                {(activeSection === 'report' || activeSection === 'completion') && (
+                {(activeSection === 'overview' || activeSection === 'report' || activeSection === 'completion') && (
                     <div className="h-full overflow-auto custom-scrollbar">
                         {!isGovernanceComplete && !isGovernanceRunning && !report && (
                             <div className="flex flex-col items-center justify-center py-24 max-w-2xl mx-auto text-center">

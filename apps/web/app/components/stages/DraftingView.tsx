@@ -106,16 +106,22 @@ export default function DraftingView({
         { processType: '', lockedBy: '', message: '' }
     );
 
+    const getMigrationLogLines = useCallback(async (): Promise<string[]> => {
+        const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=migration`, {
+            headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
+        });
+        const data = await res.json();
+        return (data.logs || "")
+            .split("\n")
+            .map((line: string) => line.trimEnd())
+            .filter((line: string) => line.trim() !== "");
+    }, [projectId, activeTenantId]);
+
     // Helper: Fetch Logs with status detection
     const fetchOrchestrationLogs = useCallback(async () => {
         try {
-            // Fetch execution logs
-            const res = await fetchWithAuth(`projects/${projectId}/execution-logs?type=migration`, {
-                headers: activeTenantId ? { "X-Tenant-ID": activeTenantId } : {}
-            });
-            const data = await res.json();
-            if (data.logs) {
-                const logLines = data.logs.split("\n").filter((l: string) => l.trim() !== "");
+            const logLines = await getMigrationLogLines();
+            if (logLines.length > 0) {
                 setLogs(logLines);
             }
 
@@ -139,7 +145,7 @@ export default function DraftingView({
         } catch (e) {
             console.error("Failed to load logs", e);
         }
-    }, [projectId, activeTenantId]); // Stable ref: no isOrchestrationRunning dependency
+    }, [projectId, activeTenantId, getMigrationLogLines]); // Stable ref: no isOrchestrationRunning dependency
 
     // Load base data on mount
     useEffect(() => {
@@ -155,9 +161,15 @@ export default function DraftingView({
 
                 const DRAFTED_OR_BEYOND = ['DRAFTED', 'REFINING', 'REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
                 if (status === 'DRAFTING') {
-                    // Run is in progress — load logs and start polling
-                    await fetchOrchestrationLogs();
-                    setIsOrchestrationRunning(true);
+                    // Treat DRAFTING as "running" only if migration logs already exist.
+                    // This avoids false polling loops when the user has entered Stage 2
+                    // but orchestration has not actually been started yet.
+                    const existingLogs = await getMigrationLogLines();
+                    if (existingLogs.length > 0) {
+                        setLogs(existingLogs);
+                        await fetchOrchestrationLogs();
+                        setIsOrchestrationRunning(true);
+                    }
                 } else if (DRAFTED_OR_BEYOND.includes(status)) {
                     // Completed run — load final logs and show completion state
                     await fetchOrchestrationLogs();
@@ -201,7 +213,7 @@ export default function DraftingView({
         loadAssets();
 
         setIsInitialLoading(false);
-    }, [projectId]);
+    }, [projectId, activeTenantId, fetchOrchestrationLogs, getMigrationLogLines]);
 
     // Poll logs when orchestration is running (every 3 seconds)
     // Safety: auto-stop after 45 minutes to prevent infinite polling if backend dies
@@ -396,9 +408,9 @@ export default function DraftingView({
         <div className="flex flex-col h-full bg-[var(--background)]">
             <StageHeader
                 title="Stage 2: Cloud Drafting"
-                subtitle="Code Generator: Cloud-native Medallion code generator"
+                subtitle="Generate the first working target implementation from the approved triage baseline"
                 icon={<Code className="text-emerald-500" />}
-                helpText="Generation of optimized PySpark, dbt or Snowflake code based on the approved design."
+                helpText="Use Drafting to produce a reviewable target baseline, inspect generated artifacts, and adjust cartridge settings before refinement."
                 onApprove={handleApprove}
                 approveLabel="Next Phase: Refinement"
                 isApproveDisabled={isOrchestrationRunning || !isDraftingComplete}
@@ -411,6 +423,61 @@ export default function DraftingView({
 
             {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
             <div className="flex-1 overflow-hidden p-6">
+                {activeSection === "overview" && (
+                    <div className="h-full max-w-6xl mx-auto overflow-y-auto space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">Drafting Status</p>
+                                <p className="mt-3 text-2xl font-black text-white">{isOrchestrationRunning ? 'Running' : isDraftingComplete ? 'Complete' : 'Ready'}</p>
+                                <p className="mt-2 text-sm text-gray-400">Direct translation and generation of target artifacts.</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">Generated Files</p>
+                                <p className="mt-3 text-2xl font-black text-white">{assets.length}</p>
+                                <p className="mt-2 text-sm text-gray-400">Artifacts currently detected in the Drafting output.</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">Execution Limit</p>
+                                <p className="mt-3 text-2xl font-black text-white">{migrationLimit || 'All'}</p>
+                                <p className="mt-2 text-sm text-gray-400">Current batch limit for orchestration.</p>
+                            </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
+                            <h2 className="text-xl font-black text-white">Stage Home</h2>
+                            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
+                                Use Drafting to generate the first working target implementation, review the output, and adjust cartridge settings before moving into refinement.
+                            </p>
+                            <div className="mt-6 flex flex-wrap gap-3">
+                                <button
+                                    onClick={() => onSectionChange('run-translation')}
+                                    className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-500"
+                                >
+                                    {isOrchestrationRunning ? 'View Running Pipeline' : 'Run Pipeline'}
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange('code')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Generation Summary
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange('files')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Output Files
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange('cartridge')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Configure Target
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* EXECUTION GROUP */}
                 {/* Logs Section (handles both 'logs' and 'progress' from sidebar) */}
                 {(activeSection === "logs" || activeSection === "progress") && (
@@ -442,6 +509,25 @@ export default function DraftingView({
                                     <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
                                     <p className="text-xs text-gray-500 mt-0.5">All assets processed successfully — review the output or use the <strong className="text-gray-400">Next Phase</strong> button above to proceed to Refinement.</p>
                                 </div>
+                            </div>
+                        )}
+
+                        {!isDraftingComplete && !isOrchestrationRunning && (
+                            <div className="flex items-center justify-between gap-3 px-6 py-4 bg-sky-500/10 border border-sky-500/30 rounded-2xl shrink-0">
+                                <div>
+                                    <p className="text-sm font-black text-sky-400 uppercase tracking-wide">Drafting Ready</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        Stage 2 is open, but the migration pipeline has not started yet. Use
+                                        <strong className="text-gray-400"> Run Pipeline</strong> to begin generation.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => onSectionChange('run-translation')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                                >
+                                    <Play size={13} />
+                                    Run Pipeline
+                                </button>
                             </div>
                         )}
 

@@ -52,6 +52,8 @@ function WorkspaceContent() {
     // New Global UI State
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeSection, setActiveSection] = useState<string>(''); // Sprint 14: Unified section management
+    const [lastSectionByStage, setLastSectionByStage] = useState<Record<number, string>>({});
+    const [projectStatus, setProjectStatus] = useState<string>('DISCOVERY');
 
     const handleStatsUpdate = useCallback((stats: any) => {
         setSidebarStats(stats);
@@ -65,41 +67,68 @@ function WorkspaceContent() {
         }
     }, [id]);
 
-    // Initialize activeSection when activeView changes - Sprint 14
-    // Uses activeView (what user is viewing) not projectStage (real stage)
-    useEffect(() => {
-        const sections = getSectionsForStage(activeView);
-        if (sections.length === 0) return;
-
-        // Collect LEAF section IDs — skip pure placeholder groups (e.g. 'quick-info')
+    const collectLeafSectionIds = useCallback((stage: number): string[] => {
+        const sections = getSectionsForStage(stage);
         const leafSectionIds: string[] = [];
         sections.forEach(section => {
             if (section.children && section.children.length > 0) {
                 section.children.forEach(child => leafSectionIds.push(child.id));
             } else if (section.id !== 'quick-info') {
-                // Only include top-level sections that aren't the placeholder
                 leafSectionIds.push(section.id);
             }
         });
+        return leafSectionIds;
+    }, []);
 
-        // If current activeSection is already valid for this stage — keep it
-        if (leafSectionIds.includes(activeSection)) return;
-
-        // Per-stage smart defaults: first match wins
-        const STAGE_DEFAULTS: Record<number, string[]> = {
-            0: ['logs', 'upload', 'files', 'assessment'],
-            1: ['grid', 'graph', 'logs', 'context'],
-            2: ['progress', 'logs', 'code', 'files'],
-            3: ['status', 'logs', 'summary', 'validation'],
-            4: ['report', 'audit', 'quality', 'documentation'],
-            5: ['files', 'output', 'logs'],
+    const resolveStageLanding = useCallback((stage: number, status: string, leafSectionIds: string[]): string => {
+        const normalized = (status || '').toUpperCase();
+        const preferredByStage: Record<number, string[]> = {
+            0: ['overview', 'assessment', 'upload', 'logs', 'files'],
+            1: normalized === 'TRIAGING'
+                ? ['overview', 'logs', 'grid', 'graph', 'context']
+                : ['overview', 'grid', 'graph', 'logs', 'context'],
+            2: normalized === 'DRAFTING'
+                ? ['overview', 'progress', 'logs', 'code', 'files']
+                : ['overview', 'code', 'files', 'cartridge', 'progress', 'logs'],
+            3: normalized === 'REFINING'
+                ? ['overview', 'logs', 'status', 'summary', 'comparison']
+                : ['overview', 'summary', 'comparison', 'status', 'logs'],
+            4: normalized === 'CERTIFYING'
+                ? ['overview', 'logs', 'report']
+                : ['overview', 'report', 'logs'],
+            5: ['overview', 'handover-pkg', 'logs'],
         };
 
-        const preferred = (STAGE_DEFAULTS[activeView] ?? [])
-            .find(id => leafSectionIds.includes(id));
+        return (preferredByStage[stage] ?? []).find(id => leafSectionIds.includes(id)) ?? leafSectionIds[0] ?? '';
+    }, []);
 
-        setActiveSection(preferred ?? leafSectionIds[0] ?? '');
-    }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
+    const handleSectionChange = useCallback((sectionId: string) => {
+        setActiveSection(sectionId);
+        if (!['run-scan', 'run-triage', 'run-translation', 'run-refinement'].includes(sectionId)) {
+            setLastSectionByStage(prev => ({ ...prev, [activeView]: sectionId }));
+        }
+    }, [activeView]);
+
+    // Initialize activeSection when activeView changes.
+    // We remember the last subsection inside a phase, but we do not carry
+    // arbitrary sections across phase transitions anymore.
+    useEffect(() => {
+        const leafSectionIds = collectLeafSectionIds(activeView);
+        if (leafSectionIds.length === 0) return;
+
+        const remembered = lastSectionByStage[activeView];
+        const preferred = remembered && leafSectionIds.includes(remembered)
+            ? remembered
+            : resolveStageLanding(activeView, projectStatus, leafSectionIds);
+
+        if (activeSection !== preferred) {
+            setActiveSection(preferred);
+        }
+
+        if (lastSectionByStage[activeView] !== preferred) {
+            setLastSectionByStage(prev => ({ ...prev, [activeView]: preferred }));
+        }
+    }, [activeView, activeSection, projectStatus, lastSectionByStage, collectLeafSectionIds, resolveStageLanding]);
 
     // Mock data for Stage 3
     const [originalCode, setOriginalCode] = useState("-- SQL Legacy Code\nSELECT * FROM Sales WHERE Date > '2023-01-01'");
@@ -129,6 +158,7 @@ function WorkspaceContent() {
 
                 if (data.name) setProjectName(data.name);
                 if (data.repo_url) setRepoUrl(data.repo_url);
+                if (data.status) setProjectStatus(data.status);
                 if (data.stage) {
                     const s = parseInt(data.stage);
                     setProjectStage(s);
@@ -265,6 +295,7 @@ function WorkspaceContent() {
                 console.log("[Workspace] Transition successful. Updating local state.");
                 setProjectStage(targetStage);
                 setActiveView(targetStage);
+                if (data.status) setProjectStatus(data.status);
             } else {
                 console.error("[Workspace] Stage update reported failure:", data);
                 alert(`Failed to transition: ${data.detail || "Unknown error"}`);
@@ -303,6 +334,11 @@ function WorkspaceContent() {
         window.location.reload();
     };
 
+    const handleLocalStageChange = useCallback((targetStage: number) => {
+        setProjectStage(targetStage);
+        setActiveView(targetStage);
+    }, []);
+
     if (!id) return <WorkspaceShield status="Identifying project context..." />;
     if (isInitializing) return <WorkspaceShield status={`Syncing ${projectName || 'Agent Matrix'}...`} />;
 
@@ -315,7 +351,7 @@ function WorkspaceContent() {
                         stage={activeView}
                         projectId={id}
                         activeSection={activeSection}
-                        onSectionChange={setActiveSection}
+                        onSectionChange={handleSectionChange}
                     />
                 )}
 
@@ -442,7 +478,7 @@ function WorkspaceContent() {
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
                         {activeView === 1 && (
@@ -450,7 +486,7 @@ function WorkspaceContent() {
                                 projectId={id}
                                 activeTenantId={ghostTenantId || undefined}
                                 projectStage={projectStage}
-                                onStageChange={(s: number) => handleApproveStage(s)}
+                                onStageChange={handleLocalStageChange}
                                 isReadOnly={activeView < projectStage}
                                 onStatsUpdate={handleStatsUpdate}
                                 isFullscreen={!isSidebarOpen}
@@ -458,7 +494,7 @@ function WorkspaceContent() {
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
                         {activeView === 2 && (
@@ -466,7 +502,7 @@ function WorkspaceContent() {
                                 projectId={id}
                                 activeTenantId={ghostTenantId || undefined}
                                 projectStage={projectStage}
-                                onStageChange={(s: number) => handleApproveStage(s)}
+                                onStageChange={handleLocalStageChange}
                                 isReadOnly={activeView < projectStage}
                                 onCompletion={(completed) => setIsStageComplete(completed)}
                                 isFullscreen={!isSidebarOpen}
@@ -474,33 +510,33 @@ function WorkspaceContent() {
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
                         {activeView === 3 && (
                             <RefinementView
                                 projectId={id}
                                 projectStage={projectStage}
-                                onStageChange={(s: number) => handleApproveStage(s)}
+                                onStageChange={handleLocalStageChange}
                                 isReadOnly={activeView < projectStage}
                                 isFullscreen={!isSidebarOpen}
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
                         {activeView === 4 && (
                             <GovernanceView
                                 projectId={id}
-                                onStageChange={(s: number) => handleApproveStage(s)}
+                                onStageChange={handleLocalStageChange}
                                 isFullscreen={!isSidebarOpen}
                                 onToggleFullscreen={() => setIsSidebarOpen(!isSidebarOpen)}
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
                         {activeView === 5 && (
@@ -513,7 +549,7 @@ function WorkspaceContent() {
                                 onReset={handleReloadStage}
                                 onBackToCurrent={activeView < projectStage ? () => setActiveView(projectStage) : undefined}
                                 activeSection={activeSection}
-                                onSectionChange={setActiveSection}
+                                onSectionChange={handleSectionChange}
                             />
                         )}
 
@@ -576,3 +612,4 @@ export default function WorkspacePage() {
         </Suspense>
     );
 }
+

@@ -870,16 +870,16 @@ async def get_project_settings(project_id: str, db: SupabasePersistence = Depend
 
 @router.post("/{project_id}/approve")
 async def approve_triage(project_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Locks the project scope and transitions to DRAFTING state."""
+    """Locks triage scope and opens Drafting without starting orchestration yet."""
     project_uuid = project_id
     if "-" not in project_id:
         u = await db.get_project_id_by_name(project_id)
         if u: 
             project_uuid = u
 
-    success_status = await db.update_project_status(project_uuid, "DRAFTING")
+    success_status = await db.update_project_status(project_uuid, "TRIAGE_APPROVED")
     success_stage = await db.update_project_stage(project_uuid, "2")
-    return {"success": success_status and success_stage, "status": "DRAFTING"}
+    return {"success": success_status and success_stage, "status": "TRIAGE_APPROVED", "stage": "2"}
 
 
 @router.post("/{project_id}/unlock")
@@ -1262,7 +1262,7 @@ async def get_sidebar_metrics(
         # Stage 2: Drafting
         elif current_stage == 2:
             # Generation Progress
-            exec_logs = await db.get_execution_logs(project_id, phase="ORCHESTRATION")
+            exec_logs = await db.get_execution_logs(project_id, phase="MIGRATION")
             metrics["generationProgress"] = _calculate_progress_from_logs(exec_logs)
             metrics["currentAgent"] = _extract_current_agent(exec_logs)
             
@@ -1334,6 +1334,7 @@ def _detect_stage_from_status(status: str) -> int:
     status_to_stage = {
         "DISCOVERY": 0, "UPLOADING": 0,
         "TRIAGE": 1, "PROCESSING": 1, "TRIAGED": 1,
+        "TRIAGE_APPROVED": 2,
         "DRAFTING": 2, "ORCHESTRATING": 2, "DRAFTED": 2,
         "REFINEMENT": 3, "REFINING": 3, "REFINED": 3,
         "GOVERNANCE": 4, "DOCUMENTING": 4, "COMPLETED": 4

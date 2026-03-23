@@ -21,6 +21,7 @@ try:
     # v4.0: Zero-Hardcode Core (Database-driven prompts)
     from apps.api.services.prompts.prompt_service import PromptService
     from apps.api.services.prompts.prompt_assembler import PromptAssembler
+    from apps.api.prompts.catalog import build_cartridge_prompt_id
     # Sprint 10: Schema Evolution
     from apps.api.services.schema_version_service import SchemaVersionService
     from apps.api.services.migration_generator_service import MigrationGeneratorService, Platform
@@ -47,6 +48,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from services.prompts.prompt_service import PromptService
         from services.prompts.prompt_assembler import PromptAssembler
+        from apps.api.prompts.catalog import build_cartridge_prompt_id
         # Sprint 10: Schema Evolution
         from services.schema_version_service import SchemaVersionService
         from services.migration_generator_service import MigrationGeneratorService, Platform
@@ -72,6 +74,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from .prompts.prompt_service import PromptService
         from .prompts.prompt_assembler import PromptAssembler
+        from apps.api.prompts.catalog import build_cartridge_prompt_id
         # Sprint 10: Schema Evolution
         from .schema_version_service import SchemaVersionService
         from .migration_generator_service import MigrationGeneratorService, Platform
@@ -434,7 +437,13 @@ class AgentCService:
         registry = KnowledgeService.flatten_knowledge(registry_raw)
 
         # 1. Resolve Target Engine & Cartridge Instance
-        from services.refinement.cartridges.factory import CartridgeFactory
+        try:
+            from apps.api.services.refinement.cartridges.factory import CartridgeFactory
+        except ImportError:
+            try:
+                from services.refinement.cartridges.factory import CartridgeFactory
+            except ImportError:
+                from .refinement.cartridges.factory import CartridgeFactory
         
         # Priority: Task Definition > Registry > Default
         # Accept both tech_id (Sprint 0 tests) and target_tech (legacy)
@@ -562,7 +571,7 @@ class AgentCService:
                         'silver_prefix': params.silver_prefix,
                         'gold_prefix': params.gold_prefix,
                         'catalog_name': params.catalog_name,
-                        'tech_stack': params.target_tech
+                        'tech_stack': target_engine
                     }
                     
                     logger.info(
@@ -853,7 +862,6 @@ class AgentCService:
                 await self._initialize_prompts()
                 
                 # Load prompt from database
-                prompt_id = f"agent_c_{layer}_{target_engine}"
                 prompt = await self.prompt_service.get_active_prompt(
                     agent_id="agent-c",
                     tech_stack=target_engine,
@@ -910,7 +918,7 @@ class AgentCService:
             logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(core_rules)} chars)", "AgentC")
         else:
             # v4.0 Database-driven approach
-            cartridge_prompt_id = f"agent_c_{layer}_{target_engine}"
+            cartridge_prompt_id = build_cartridge_prompt_id(layer, target_engine) or f"agent_c_{layer}_{target_engine}"
             
             try:
                 await self._initialize_prompts()
@@ -955,10 +963,28 @@ class AgentCService:
                     'layer': layer,
                     'target_engine': target_engine
                 }
+                res_context.update(node_data)
                 if parameters_context:
                     res_context.update(parameters_context)
                 if schema_context:
                     res_context.update(schema_context)
+
+                # Common aliases used by direct cartridges
+                schema_table_name = schema_context.get("table_name") if schema_context else None
+                target_table = (
+                    node_data.get("target_table")
+                    or node_data.get("target_name")
+                    or schema_table_name
+                )
+                source_table = (
+                    node_data.get("source_table")
+                    or node_data.get("source_name")
+                    or node_data.get("business_entity")
+                )
+                if target_table:
+                    res_context["target_table"] = target_table
+                if source_table:
+                    res_context["source_table"] = source_table
                 
                 # Enrich and build
                 res_context = self.prompt_assembler.enrich_context(res_context)

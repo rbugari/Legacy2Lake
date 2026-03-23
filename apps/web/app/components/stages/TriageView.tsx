@@ -502,18 +502,12 @@ export default function TriageView({
             // 1. Save final layout
             await saveLayout(nodes, edges);
 
-            // 2. Call Approve Endpoint (updates status to DRAFTING)
+            // 2. Lock triage and move the project into Drafting stage
             const res = await fetchWithAuth(`projects/${projectId}/approve`, {
                 method: 'POST'
             });
 
             if (res.ok) {
-                // 3. Also update stage for UI stepper consistency (optional if backend does it, but safer here for now)
-                await fetchWithAuth(`projects/${projectId}/stage`, {
-                    method: 'POST',
-                    body: JSON.stringify({ stage: '2' })
-                });
-
                 if (onStageChange) onStageChange(2);
             } else {
                 console.error("Approve failed", await res.text());
@@ -741,9 +735,9 @@ export default function TriageView({
                 <div className={`flex flex-col h-full bg-[var(--background)] transition-all duration-500 ease-in-out ${isFullscreen ? 'fixed inset-0 z-[100] !h-screen !w-screen' : 'relative'}`}>
                     <StageHeader
                         title="Stage 1: Technical Triage"
-                        subtitle="Agent R: Reasoning engine for object classification and mapping"
+                        subtitle="Classify assets, review relationships, and prepare a safer baseline for generation"
                         icon={<Cpu className="text-blue-500" />}
-                        helpText="Classification of source objects into Medallion layers and complexity assessment."
+                        helpText="Use Triage to decide what matters, what can be ignored, and what needs special handling before Drafting."
                         onApprove={handleApprove}
                         approveLabel="Next Phase: Drafting"
                         isApproveDisabled={isTriageRunning || assets.length === 0}
@@ -792,6 +786,64 @@ export default function TriageView({
 
                     {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
                     <div className="flex-1 overflow-hidden relative">
+
+                        {activeSection === 'overview' && (
+                            <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
+                                <div className="max-w-6xl mx-auto space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Triage Status</p>
+                                            <p className="mt-3 text-2xl font-black text-white">{isTriageRunning ? 'Analyzing' : isTriageComplete ? 'Complete' : 'Ready'}</p>
+                                            <p className="mt-2 text-sm text-gray-400">Classification, topology and technical inventory.</p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Assets</p>
+                                            <p className="mt-3 text-2xl font-black text-white">{assets.length}</p>
+                                            <p className="mt-2 text-sm text-gray-400">Objects detected and available for analysis.</p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Context</p>
+                                            <p className="mt-3 text-2xl font-black text-white">{Object.keys(assetContexts).length}</p>
+                                            <p className="mt-2 text-sm text-gray-400">Manual notes and project-specific guidance captured.</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
+                                        <h2 className="text-xl font-black text-white">Stage Home</h2>
+                                        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
+                                            Use Triage to classify assets, inspect lineage and schema, and lock the final migration scope before Drafting.
+                                        </p>
+                                        <div className="mt-6 flex flex-wrap gap-3">
+                                            <button
+                                                onClick={() => onSectionChange('run-triage')}
+                                                disabled={isTriageRunning}
+                                                className="px-5 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-cyan-500 disabled:opacity-50"
+                                            >
+                                                {isTriageRunning ? 'Running Analysis...' : 'Run Analysis'}
+                                            </button>
+                                            <button
+                                                onClick={() => onSectionChange('grid')}
+                                                className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                            >
+                                                Open Grid
+                                            </button>
+                                            <button
+                                                onClick={() => onSectionChange('graph')}
+                                                className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                            >
+                                                Open Graph
+                                            </button>
+                                            <button
+                                                onClick={() => onSectionChange('context')}
+                                                className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                            >
+                                                Project Context
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* ORIGIN ANALYSIS TAB */}
                         {activeSection === 'origin' && (
@@ -1376,7 +1428,7 @@ export default function TriageView({
                                                     View Grid
                                                 </button>
                                                 <button
-                                                    onClick={() => onStageChange?.(2)}
+                                                    onClick={handleApprove}
                                                     className="flex items-center gap-2 px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
                                                 >
                                                     Next: Drafting <ArrowRight size={13} />

@@ -305,19 +305,80 @@ class LibrarianService:
         return "STRING" # Default fallback
 
     def _preprocess_sql(self, sql_content: str) -> str:
-        """Cleans SQL content to be parser-friendly."""
-        # Remove [cite: ...] markers (from document export tools)
+        """Cleans SQL content to be parser-friendly by removing huge DML blocks and useless commands."""
+        # 1. Remove [cite: ...] markers (from document export tools)
         sql_content = re.sub(r'\[cite:[^\]]*\]', '', sql_content)
         
+        # 2. Sequential Filter (Fast line-by-line)
         lines = sql_content.splitlines()
         cleaned_lines = []
+        
+        # Keywords that indicate we should skip the line or start skipping a block
+        # We target DML and PL/SQL blocks which the Librarian doesn't need for schema mapping.
+        skip_line_keywords = {
+            "INSERT INTO", "UPDATE ", "DELETE FROM", "VALUES", "SET ", 
+            "COMMIT", "LOCK TABLES", "UNLOCK TABLES", "/*!", 
+            "DELIMITER", "DROP PROCEDURE", "DROP FUNCTION", "DROP TRIGGER",
+            "SET @", "SET NAMES", "SET CHARACTER"
+        }
+        
+        block_start_keywords = {
+            "CREATE PROCEDURE", "CREATE FUNCTION", "CREATE TRIGGER", "CREATE DEFINER",
+            "CREATE OR REPLACE PROCEDURE", "CREATE OR REPLACE FUNCTION"
+        }
+        
+        in_large_block = False
+        in_plsql_block = False
+        
         for line in lines:
-            stripped = line.strip().upper()
-            if stripped == "GO":
+            stripped = line.strip()
+            upper_stripped = stripped.upper()
+            
+            # 1. Skip empty lines
+            if not stripped:
                 continue
-            if stripped.startswith("USE "):
+                
+            # 2. Block Termination (Check first to ensure we close blocks)
+            if in_plsql_block:
+                if upper_stripped == "END" or upper_stripped.startswith("END;") or "$$" in upper_stripped or (upper_stripped.startswith("END") and upper_stripped.endswith(";")):
+                    in_plsql_block = False
                 continue
+
+            if in_large_block:
+                if upper_stripped.endswith(";"):
+                    in_large_block = False
+                continue
+
+            # 3. Skip T-SQL specific flow/context commands
+            if upper_stripped == "GO" or upper_stripped.startswith("USE "):
+                continue
+            
+            # 4. Skip MySQL comments and variable assignments that might break parser
+            if stripped.startswith("@") or upper_stripped.startswith("SET @"):
+                continue
+
+            # 5. Normalize comments (ensure space after --)
+            if stripped.startswith("--") and not stripped.startswith("-- "):
+                line = "-- " + line[2:]
+                stripped = line.strip()
+                upper_stripped = stripped.upper()
+
+            # 6. Detect start of blocks
+            if any(upper_stripped.startswith(k) for k in block_start_keywords):
+                in_plsql_block = True
+                continue
+
+            if any(upper_stripped.startswith(k) for k in skip_line_keywords):
+                if not upper_stripped.endswith(";"):
+                    in_large_block = True
+                continue
+
+            # 7. Additional check for lines that are just data tuples in a multi-line INSERT
+            if stripped.startswith("(") and (stripped.endswith(",") or stripped.endswith(");")):
+                 continue
+
             cleaned_lines.append(line)
+            
         return "\n".join(cleaned_lines)
 
     def _parse_ddl(self, ddl_content: str, dialect: str = None) -> Dict[str, Any]:

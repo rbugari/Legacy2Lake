@@ -176,37 +176,60 @@ print(f"Gold Layer updated: {{target_table}}")
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{source_path.stem}')
 BEGIN
     CREATE TABLE bronze.{source_path.stem} AS 
-    SELECT *, GETDATE() as [_FabricIngestTime]
+    SELECT *, CAST(SYSUTCDATETIME() AS DATETIME2) as [_FabricIngestTime]
     FROM raw_staging.{source_path.stem};
 END
 ELSE
 BEGIN
     INSERT INTO bronze.{source_path.stem}
-    SELECT *, GETDATE() as [_FabricIngestTime]
+    SELECT *, CAST(SYSUTCDATETIME() AS DATETIME2) as [_FabricIngestTime]
     FROM raw_staging.{source_path.stem};
 END;
 """
 
     def generate_silver_sql(self, table_metadata: Dict[str, Any]) -> str:
-        """T-SQL for Fabric SQL Warehouse merge."""
+        """T-SQL for Fabric SQL Warehouse delete+insert upsert."""
         output_table_name = table_metadata.get("output_table_name", "silver_table")
         pk_columns = table_metadata.get("pk_columns", ["id"])
         if isinstance(pk_columns, str): pk_columns = [pk_columns]
         
-        merge_cond = " AND ".join([f"T.[{pk}] = S.[{pk}]" for pk in pk_columns])
-        
-        return f"""-- MS FABRIC SILVER (T-SQL MERGE)
--- Fabric Warehouse supports standard T-SQL MERGE
+        delete_cond = " AND ".join([f"T.[{pk}] = S.[{pk}]" for pk in pk_columns])
+        columns = table_metadata.get("columns") or ["*"]
 
-MERGE INTO silver.[{output_table_name}] AS T
-USING (
-    SELECT DISTINCT * FROM bronze.[{output_table_name}]
-) AS S
-ON {merge_cond}
-WHEN MATCHED THEN
-    UPDATE SET T.[_UpdateDate] = GETDATE() -- Simplified
-WHEN NOT MATCHED THEN
-    INSERT (*) VALUES (S.*);
+        normalized_columns = []
+        if isinstance(columns, list):
+            for column in columns:
+                if isinstance(column, dict):
+                    column_name = column.get("name") or column.get("column_name")
+                else:
+                    column_name = str(column)
+                if column_name:
+                    normalized_columns.append(column_name)
+        else:
+            normalized_columns = [str(columns)]
+
+        if not normalized_columns or normalized_columns == ["*"]:
+            insert_clause = f"INSERT INTO silver.[{output_table_name}]"
+            select_columns = "*"
+        else:
+            quoted_columns = [f"[{column}]" for column in normalized_columns]
+            insert_clause = f"INSERT INTO silver.[{output_table_name}] ({', '.join(quoted_columns)})"
+            select_columns = ", ".join(f"S.{column}" for column in quoted_columns)
+        
+        return f"""-- MS FABRIC SILVER (T-SQL DELETE + INSERT)
+-- Fabric Warehouse uses delete+insert instead of MERGE
+
+DELETE T
+FROM silver.[{output_table_name}] AS T
+WHERE EXISTS (
+    SELECT 1
+    FROM bronze.[{output_table_name}] AS S
+    WHERE {delete_cond}
+);
+
+{insert_clause}
+SELECT DISTINCT {select_columns}
+FROM bronze.[{output_table_name}] AS S;
 """
 
     def generate_gold_sql(self, table_metadata: Dict[str, Any]) -> str:

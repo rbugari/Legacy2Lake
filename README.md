@@ -1,104 +1,78 @@
-# Legacy2Lake Documentation Index (v4.0 GA)
+# Legacy2Lake Documentation Index (v4.0)
 
-> **Version:** v4.0.1 GA (February 25, 2026) ✅ **RELEASED**  
-> **Status:** Production Ready - Zero-Hardcode Architecture, Two-Layer Prompts & Discovery Enhancements
+> Version: v4.0.2 Stabilized
+> Last Updated: March 21, 2026
+> Status: Production, post-GA stabilization completed for canonical prompts and SSIS E2E validation
 
-Welcome to the **Legacy2Lake** Documentation Center. Legacy2Lake is a **Cloud-Native, Multi-Tenant Data Modernization Factory** that automates the migration of legacy ETL logic to modern Snowflake, Databricks, and Fabric architectures using advanced AI synthesis.
+Legacy2Lake is a multi-tenant data modernization factory that ingests legacy assets such as `SQL`, `SSIS .dtsx`, DDL, manifests, and support files, then orchestrates specialized agents to produce modern outputs such as `Snowflake SQL`, `PySpark`, `dbt`, `MS Fabric`, and related governance artifacts.
 
-## 🎉 What's New in v4.0.1 GA (Feb 2026)
- 
-**Two-Layer Prompt Architecture** (Feb 25):
-- ✔️ **Core System Safety**: Global system prompts locked for safety.
-- ✔️ **Project-Specific Overrides**: Authorized users can now supply project-level rule amendments.
-- ✔️ **Dynamic Assembly**: Cartridges dynamically join core rules and overrides right before execution.
+## Current State
 
-**Identity & Governance Governance** (Feb 25):
-- ✔️ **Role-Based Visibility limits**: Collaborators and Viewers only see assigned projects.
-- ✔️ **Admin Impersonation**: Admins bypass tenant boundaries for full platform visibility and troubleshooting.
+- Canonical prompt source is now disk for app-governed prompts.
+- Runtime prompt source is Supabase, synchronized from disk.
+- Project custom rules remain optional and start empty by default.
+- The active canonical prompt set is `48` prompts:
+  - `7` agent prompts
+  - `1` shared standards prompt
+  - `40` cartridge prompts (`10` tech stacks x `4` layers: `bronze`, `silver`, `gold`, `direct`)
+- Legacy `cartridge_*` prompts were deprecated from the active runtime path.
+- End-to-end validation was executed on `March 21, 2026` against the real fixture [`tests/fixtures/ssis_test_repo`](C:\proyectos_dev\UTM\tests\fixtures\ssis_test_repo) using Azure `gpt-4.1`.
 
-**Zero-Hardcode Architecture** (Feb 15):
-- ✔️ **Database-Driven Parser Registry**: Add new tech (Talend, Oracle) via DB inserts, ZERO code changes.
-- ✔️ **Dynamic Prompt Management**: All prompts (Agent A, B, C, F, G) loaded from database.
-- ✔️ **Automatic Versioning**: `utm_prompts_history` tracks all prompt changes.
- 
-**Robust Discovery & UI Componentization** (Feb 24-25):
-- ✔️ **Pre-Classification Grid**: Categorize assets individually as CORE, SUPPORT, or IGNORE prior to triage. 
-- ✔️ **Robust Folder Heuristics**: Dynamic scanning gracefully identifies historical ("triage") or new ("source") directory definitions natively.
-- ✔️ **Unified File & Log Explorers**: Replaced disparate implementations with unified components.
-- ✔️ **Sidebar Execution Ecosystem**: Moved actions to Sidebar for a cleaner focus.
- 
-**Value Delivered**: Scale multi-tenant migrations with highly confident discovery classification and uncompromised core code safety.
+## Prompt Model
 
-### ⏳ Pending to Close v4.0 GA
-1. **Client GitHub Integration**: Export mapped outputs directly to a target client GitHub repository for final deployment.
-2. **Review PDF Reports**: Visual review of formatting, tables, and variable integrations in exported final status PDF reports.
-3. **Comprehensive Testing Plan**: Full validation of all updated flows via end-to-end multi-tenant simulation testing.
+Legacy2Lake uses a 3-level prompt architecture:
 
-## 🚀 Getting Started
-- **[Installation Guide](docs/INSTALL.md)**: Setup instructions for Backend (API) and Frontend (Web Console).
-- **[Release Notes](docs/RELEASE_NOTES.md)**: Latest updates and features.
-- **[Introduction to Legacy2Lake](docs/INTRODUCTION.md)**: Vision, Architecture, and Lifecycle overview.
-- **⚠️ [Environment Variables vs Database](docs/ENV_VS_DATABASE.md)**: **IMPORTANTE v3.9** - Configuración de .env vs credenciales en DB.
+1. Level 1: Agent system prompt
+   - Owned by the application
+   - Not tenant-editable
+2. Level 2: Cartridge prompt
+   - Owned by the application
+   - Specializes behavior by target technology and layer
+   - Not tenant-editable
+3. Level 3: Project custom instructions
+   - Optional
+   - Empty by default
+   - Used only for project-specific rules or context that the user knows and the platform cannot infer safely
 
-## ⚙️ Configuration (v3.9 Multi-User)
+This means the core system must work correctly with Level 1 plus Level 2 alone. Level 3 is a contextual modifier, not a patch layer for weak prompts.
 
-### 🔑 Roles & Responsibilities
-- **[Roles and Onboarding](docs/ROLES_AND_ONBOARDING.md)**: Complete role hierarchy, onboarding flow, and impersonation guide.
-  - **ADMIN**: Platform-level (manages global catalogs, creates tenants, can impersonate users)
-  - **MANAGER**: Tenant-level (configures LLM providers, manages spending, invites users)
-  - **COLLABORATOR**: Project-level (creates and edits projects)
-  - **VIEWER**: Project-level (read-only access)
+## What Is New In The Stabilized v4.0 Line
 
-### 📦 Catalogs Architecture
+- Canonical prompt catalog introduced and synchronized to DB
+- `agent-qa` incorporated into the canonical prompt model
+- Agent and cartridge taxonomy normalized
+- `Agent C`, `Agent F`, and `Agent G` aligned for multi-target outputs instead of PySpark-first assumptions
+- Direct-layer cartridges hardened for parameterization, `L2L DIRECT TRANSLATION` traceability, and no invented enhancements
+- Fabric SQL cartridge/generator alignment improved
+- End-to-end `Agent A -> Agent C -> Agent F -> Agent G` flow validated on SSIS fixture
 
-**Global Catalogs (ADMIN manages)**:
-- **utm_agent_catalog**: AI Agents (Agent S, Agent A, Agent B, etc.)
-- **utm_system_catalog**: Technology Cartridges (SQL Server, Oracle, Snowflake, Databricks)
+## Getting Started
 
-**Tenant-Level Catalogs (MANAGER configures)**:
-- **utm_provider_vault**: LLM Provider API Keys (OpenAI, Groq, Azure) - Each tenant pays for their own
-- **utm_model_catalog**: Enabled LLM Models (gpt-4o, claude-3-5, etc.) - Private per tenant
+- [Installation Guide](C:\proyectos_dev\UTM\docs\INSTALL.md)
+- [Documentation Index](C:\proyectos_dev\UTM\docs\INDEX.md)
+- [Introduction](C:\proyectos_dev\UTM\docs\INTRODUCTION.md)
+- [Release Notes](C:\proyectos_dev\UTM\docs\RELEASE_NOTES.md)
+- [System Architecture](C:\proyectos_dev\UTM\docs\SYSTEM_ARCHITECTURE.md)
+- [System Prompts And Agents](C:\proyectos_dev\UTM\docs\technical\system_prompts_and_agents.md)
+- [Cartridge Manual](C:\proyectos_dev\UTM\docs\technical\cartridge_manual.md)
+- [AI Infrastructure](C:\proyectos_dev\UTM\docs\technical\ai_infrastructure.md)
 
-⚠️ **IMPORTANTE**: LLM credentials (API keys) are NO LONGER in `.env` - they're in the database per tenant.
+## Project Lifecycle
 
-See: **[ENV_VS_DATABASE.md](docs/ENV_VS_DATABASE.md)** for migration guide.
+1. [Stage 1: Discovery](C:\proyectos_dev\UTM\docs\stages\STAGE_1_DISCOVERY.md)
+2. [Stage 2: Triage](C:\proyectos_dev\UTM\docs\stages\STAGE_2_TRIAGE.md)
+3. [Stage 3: Drafting](C:\proyectos_dev\UTM\docs\stages\STAGE_3_DRAFTING.md)
+4. [Stage 4: Refinement](C:\proyectos_dev\UTM\docs\stages\STAGE_4_REFINEMENT.md)
+5. [Stage 5: Certification](C:\proyectos_dev\UTM\docs\stages\STAGE_5_CERTIFICATION.md)
+6. [Stage 6: Handover](C:\proyectos_dev\UTM\docs\stages\STAGE_6_HANDOVER.md)
 
-## 🔄 Project Lifecycle (The 6 Stages)
+## Notes On Historical Docs
 
-Legacy2Lake utilizes a 6-stage "Compiler Flow" to ensure logic is extracted correctly, refined by AI, and packaged for production.
+The repository still contains planning and sprint documents under [`docs/planning`](C:\proyectos_dev\UTM\docs\planning). Those are valuable historical artifacts, but they may describe intermediate states that have already been superseded. For the current operating model, prefer:
 
-1.  **[Stage 1: Discovery (Ingest)](docs/stages/STAGE_1_DISCOVERY.md)**
-    - Technical ingestion to Cloudflare R2 and initial inventory.
-2.  **[Stage 2: Triage (Strategy)](docs/stages/STAGE_2_TRIAGE.md)**
-    - Forensic analysis (PII, Volume detection).
-    - **New**: Native **Process Cancellation** for long-running analyses.
-3.  **[Stage 3: Drafting (Plan)](docs/stages/STAGE_3_DRAFTING.md)**
-    - Normalization into Intermediate Representation (IR) in Supabase.
-4.  **[Stage 4: Refinement (Build)](docs/stages/STAGE_4_REFINEMENT.md)**
-    - AI-driven code generation with dynamic **Knowledge Injection**.
-    - **New**: **Strategic Intelligence Hub** with "Vision Mode" for architectural inspection.
-5.  **[Stage 5: Certification (Audit)](docs/stages/STAGE_5_CERTIFICATION.md)**
-    - Cloud-native compliance scoring and quality gating.
-6.  **[Stage 6: Handover (Deliver)](docs/stages/STAGE_6_HANDOVER.md)**
-    - Certified Output Package (COP) generation via Signed URLs.
-
-## 🧠 AI Infrastructure & Prompt Lab
-- **[System Prompts & Agents](docs/technical/system_prompts_and_agents.md)**: Agent roles and core prompts.
-- **[Knowledge Injection Guide](knowledge_injection_guide.md)**: How agents are enriched with platform best practices.
-- **[Cartridge Manual](docs/technical/cartridge_manual.md)**: Rules for the 15+ supported technology cartridges.
-- **[Governance Rules](docs/technical/GOVERNANCE_RULES.md)**: 🆕 Ownership model, permission boundaries, and cost control framework.
-
-## 📊 Cloud-Native Advantage (v3.8)
-- **Zero-Trust Multi-Tenancy**: Asset isolation via Supabase RLS (Tenant Headers enforced).
-- **Formalized Governance Model**: Clear ownership boundaries between Admin, Tenant, and User responsibilities.
-- **3-Layer Prompt Architecture**: System prompts (Admin) + Cartridge prompts (Admin) + Custom modifiers (User).
-- **Cost Control Framework**: Tenant-level model assignment with cost optimization recommendations.
-- **Refactored API Architecture**: Modular System Router (`/system/*`) for centralized configuration management.
-- **Dynamic Agent Management**: Agent catalog and prompts loaded from database, eliminating hardcoded logic.
-- **Enhanced Provider Vault**: Strict filtering to display only active, configured providers per tenant.
-- **Hyperscale Storage**: All artifacts stored in high-availability Cloudflare R2.
-
----
-*Legacy2Lake Documentation Framework v4.0.1 GA - Zero-Hardcode, Deep RBAC, Pre-Classification*
-*Released: February 25, 2026*
-"# L2Loutput" 
+- [`README.md`](C:\proyectos_dev\UTM\README.md)
+- [`docs/INDEX.md`](C:\proyectos_dev\UTM\docs\INDEX.md)
+- [`docs/SYSTEM_ARCHITECTURE.md`](C:\proyectos_dev\UTM\docs\SYSTEM_ARCHITECTURE.md)
+- [`docs/technical/system_prompts_and_agents.md`](C:\proyectos_dev\UTM\docs\technical\system_prompts_and_agents.md)
+- [`docs/technical/cartridge_manual.md`](C:\proyectos_dev\UTM\docs\technical\cartridge_manual.md)
+- [`docs/technical/ai_infrastructure.md`](C:\proyectos_dev\UTM\docs\technical\ai_infrastructure.md)

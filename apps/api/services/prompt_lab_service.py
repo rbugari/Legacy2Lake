@@ -7,13 +7,16 @@ import shutil
 try:
     from apps.api.utils.logger import logger
     from apps.api.services.persistence_service import SupabasePersistence
+    from apps.api.prompts.catalog import get_prompt_spec
 except ImportError:
     try:
         from utils.logger import logger
         from services.persistence_service import SupabasePersistence
+        from apps.api.prompts.catalog import get_prompt_spec
     except ImportError:
         from ...utils.logger import logger
         from .persistence_service import SupabasePersistence
+        from apps.api.prompts.catalog import get_prompt_spec
 
 
 class PromptLabService:
@@ -21,6 +24,7 @@ class PromptLabService:
     
     AGENT_MAP = {
         "agent-s": "agent_s_scout",
+        "agent-qa": "agent_qa_assessment",
         "agent-a": "agent_a_discovery",
         "agent-c": "agent_c_interpreter",
         "agent-f": "agent_f_critic",
@@ -31,6 +35,7 @@ class PromptLabService:
         "agent-r": "agent_r_refactor",
         "agent-o": "agent_o_devops",
         "agent_s": "agent_s_scout",
+        "agent_qa": "agent_qa_assessment",
         "agent_a": "agent_a_discovery"
     }
     
@@ -108,14 +113,19 @@ class PromptLabService:
     
     def _load_agent_prompt(self, agent_name: str) -> str:
         """Load base agent prompt from prompt_lab_export directory with DB fallback."""
-        # 1. Try prompt_lab_export filesystem
+        # 1. Try canonical prompt source in repo
+        spec = get_prompt_spec(agent_name)
+        if spec and spec.category == "agent":
+            return spec.read_text()
+
+        # 2. Try prompt_lab_export filesystem
         agent_path = os.path.join(self.lab_export_path, "core_agents", agent_name, "prompt_v1.md")
         
         if os.path.exists(agent_path):
             with open(agent_path, "r", encoding="utf-8") as f:
                 return f.read()
         
-        # 2. Fallback: try to load from database
+        # 3. Fallback: try to load from database
         # Try both the name provided and its reverse mapping if possible
         lookup_names = [agent_name]
         # If we have a reverse mapping (e.g. agent_s_scout -> agent-s), add it
@@ -124,7 +134,7 @@ class PromptLabService:
             lookup_names.append(reverse_map[agent_name])
             
         try:
-            # 2.1 Try by prompt_id first (original logic)
+            # 3.1 Try by prompt_id first (original logic)
             res = self.db.client.table("utm_prompts")\
                 .select("content")\
                 .eq("is_active", True)\
@@ -135,7 +145,7 @@ class PromptLabService:
             if res.data:
                 return res.data[0]["content"]
                 
-            # 2.2 Fallback: Try by agent_id (v4.0 logic)
+            # 3.2 Fallback: Try by agent_id (v4.0 logic)
             # Find the original agent name (e.g. agent-s)
             agent_id = next((k for k, v in self.AGENT_MAP.items() if v == agent_name), agent_name)
             

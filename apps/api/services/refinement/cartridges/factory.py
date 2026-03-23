@@ -54,7 +54,7 @@ class CartridgeFactory:
             print(f"[CartridgeFactory] DEBUG: DbtCartridge imported successfully")
             return DbtCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
             
-        elif target in ["snowflake", "snowflake_sql", "snowflake_sql_direct"]:
+        elif target in ["snowflake", "snowflake_sql", "snowflake_sql_direct", "snowflake_native_sql"]:
             print(f"[CartridgeFactory] DEBUG: Matched 'snowflake', importing SnowflakeCartridge...")
             from .snowflake_cartridge import SnowflakeCartridge
             print(f"[CartridgeFactory] DEBUG: SnowflakeCartridge imported successfully")

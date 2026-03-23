@@ -560,6 +560,13 @@ class ValidationService:
             for match in re.finditer(pattern, code):
                 var_name = match.group(1)
                 full_match = match.group(0)
+                line = code[:match.start()].splitlines()[-1] if code[:match.start()].splitlines() else ""
+                line += code[match.start():].splitlines()[0] if code[match.start():].splitlines() else ""
+
+                # Allow Python f-strings such as f"{silver_schema}.{silver_prefix}table"
+                # because those are runtime interpolations, not unresolved template placeholders.
+                if re.search(r'\bf["\']', line):
+                    continue
                 
                 # If it's literally one of our known migration template variables, it's a hallucinated placeholder.
                 # Otherwise, it might be a valid python f-string variable like f"{df.count()}" or f"{my_var}"

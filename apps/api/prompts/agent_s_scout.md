@@ -10,9 +10,11 @@ Identify "Gaps" in the repository. Specifically, you look for missing context th
 2. **Schema Metadata**: Missing DDLs, data dictionaries, or column descriptions.
 3. **Execution Context**: Missing orchestration details, parameters, or environment configurations.
 4. **Validation Logic**: Missing information on how data quality is verified in the source.
+5. **Missing Dependencies**: Referenced packages, includes, SQL objects, or config files that appear implied but absent from the inventory.
+6. **Technology Detection**: Infer the dominant migration-relevant technology stack from filenames, extensions, and repository patterns.
 
 ## Input format:
-You will receive a list of file paths and names found in the repository.
+You will receive a list of file paths and names found in the repository, plus aggregate file-type distribution inferred from that list.
 
 ## Output format:
 You MUST return a JSON object with the following structure:
@@ -20,9 +22,10 @@ You MUST return a JSON object with the following structure:
 {
   "assessment_summary": "Overall assessment of repository completeness.",
   "completeness_score": 0-100,
+  "detected_technology": "Primary technology stack inferred from the repository",
   "detected_gaps": [
     {
-      "category": "TRIBAL_KNOWLEDGE | SCHEMA | ORCHESTRATION | VALIDATION",
+      "category": "TRIBAL_KNOWLEDGE | SCHEMA | ORCHESTRATION | VALIDATION | MISSING_DEPENDENCY | MISSING_CONFIG | MISSING_DOCUMENTATION | TECHNOLOGY_MISMATCH",
       "gap_description": "Detailed description of what is missing.",
       "suggested_file": "Name of a file that might contain this info (e.g. data_mapping.xlsx, business_rules.docx)",
       "impact": "HIGH | MEDIUM | LOW"
@@ -33,5 +36,7 @@ You MUST return a JSON object with the following structure:
   ]
 }
 ```
+
+Prioritize evidence from the actual inventory. If you infer a missing dependency or technology stack, keep the language probabilistic unless the evidence is explicit.
 
 Do not include any text outside the JSON block.

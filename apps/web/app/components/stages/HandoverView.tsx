@@ -92,6 +92,7 @@ export default function HandoverView({
     const [isPushing, setIsPushing] = useState(false);
     const [pushResult, setPushResult] = useState<{ success: boolean; branch?: string; branch_url?: string; pr_url?: string; files_pushed?: number; error?: string } | null>(null);
     const [showGitHub, setShowGitHub] = useState(false);
+    const showOverview = !activeSection || activeSection === 'overview' || activeSection === 'handover-pkg';
 
     const updateGitHub = (key: keyof GitHubConfig, val: string | boolean) =>
         setGithubConfig(prev => ({ ...prev, [key]: val }));
@@ -252,9 +253,9 @@ export default function HandoverView({
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
                 title="Stage 5: Intelligent Handover"
-                subtitle="Artifact generation and deployment package Export"
+                subtitle="Package the final outputs and prepare the handoff to the receiving team or environment"
                 icon={<Package className="text-emerald-500" />}
-                helpText="Final modernization package ready for deployment. Includes code, config, and runbooks."
+                helpText="Use Handover to review package readiness, export delivery bundles, and complete the final transfer of project artifacts."
                 onApprove={() => handleExport('governance')}
                 approveLabel={isExporting ? "Exporting..." : "Complete Migration"}
                 isApproveDisabled={isExporting}
@@ -292,7 +293,7 @@ export default function HandoverView({
                             </div>
                         </div>
                     </div>
-                ) : (<>
+                ) : (showOverview && <>
                     <div className="grid grid-cols-12 gap-8">
 
                         {/* Left: Variable Grid */}

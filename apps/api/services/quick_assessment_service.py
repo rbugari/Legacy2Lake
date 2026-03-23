@@ -204,6 +204,14 @@ class QuickAssessmentService:
         """
         filename = item["name"].lower()
         ext = filename.split('.')[-1] if '.' in filename else ''
+
+        # SSIS project scaffolding is valuable migration context even if it is not
+        # directly executable ETL logic.
+        if (
+            filename.endswith(".dtproj.user")
+            or ext in ["dtproj", "params", "conmgr", "sln", "database"]
+        ):
+            return ("soporte", "SSIS")
         
         # MIGRABLE - ETL packages
         if ext in ['dtsx', 'dsx', 'kjb', 'ktr', 'pmx']:
@@ -227,6 +235,8 @@ class QuickAssessmentService:
             tech = None
             if ext == 'sql':
                 tech = 'SQL'
+            elif ext in ['xlsx', 'xls']:
+                tech = 'Excel'
             return ("soporte", tech)
         
         # DOCUMENTACION - Documentation
@@ -243,6 +253,10 @@ class QuickAssessmentService:
         Returns:
             "LOW" | "MEDIUM" | "HIGH"
         """
+        filename = item.get("name", "").lower()
+        if filename.endswith((".xls", ".xlsx")):
+            return "LOW"
+
         lines = item.get("lines", 0)
         if lines == 0:
             return "LOW"

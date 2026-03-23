@@ -51,7 +51,7 @@ Every generated asset MUST begin with a modernization trace block:
 |---|---|---|---|---|
 | Integer | `LongType()` | `NUMBER(18,0)` | `INT64` | `bigint` |
 | Decimal(18,4) | `DecimalType(18,4)` | `NUMBER(18,4)` | `NUMERIC(18,4)` | `decimal(18,4)` |
-| String | `StringType()` | `VARCHAR` | `STRING` | `nvarchar(max)` |
+| String | `StringType()` | `VARCHAR` | `STRING` | `varchar(4000)` |
 | Timestamp | `TimestampType()` | `TIMESTAMP_NTZ` | `TIMESTAMP` | `datetime2` |
 | Boolean | `BooleanType()` | `BOOLEAN` | `BOOL` | `bit` |
 | Date | `DateType()` | `DATE` | `DATE` | `date` |
@@ -111,8 +111,10 @@ If the asset config flags PII columns, apply platform-native masking in Silver l
 - Load modes: OVERWRITE | APPEND | MERGE (inferred from source logic).
 
 ## 5. Code Quality Minimum Bar
-- All generated procedures/functions: minimum 200 lines — stubs are forbidden.
+- All generated procedures/functions must be complete and production-ready. Use enough structure and detail for the target artifact; stubs are forbidden.
 - Comment every major section: `-- [EXTRACT]`, `-- [TRANSFORM]`, `-- [LOAD]` (or `# EXTRACT`, `# TRANSFORM`, `# LOAD` in Python).
 - No magic numbers — business rules in parameters or named constants.
 - Column names: `UPPER_SNAKE_CASE` for SQL targets; `snake_case` for Python DataFrames.
 - Table aliases: short and meaningful (`f` = fact source, `d1` = dim1, `t` = target, `s` = source).
+
+For `direct` translations and concise SQL targets, prioritize faithful and maintainable output over arbitrary line count expansion.

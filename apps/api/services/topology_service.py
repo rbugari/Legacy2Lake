@@ -78,24 +78,31 @@ class TopologyService:
                         files.append(n)
                 return files
             
-            # Find all .dtsx files (migrable packages)
-            # SQL files are support/DDL files, NOT migration tasks
+            # Find migrable task files (.dtsx for SSIS, .sql for DB logic)
             all_files = get_all_files(items)
             
             # De-duplicate task files by path AND name to prevent multiple entries for same file
             seen_task_paths = set()
             seen_task_names = set()
             task_files = []
+            valid_extensions = {".dtsx", ".sql"}
+            
             for f in all_files:
                 f_name_lower = f["name"].lower()
-                if f_name_lower.endswith(".dtsx") and f["path"] not in seen_task_paths and f_name_lower not in seen_task_names:
+                ext = os.path.splitext(f_name_lower)[1]
+                
+                if ext in valid_extensions and f["path"] not in seen_task_paths and f_name_lower not in seen_task_names:
+                    # [Exception] Ignore DDL files if they are just schema definitions
+                    if "ddl" in f_name_lower:
+                        continue
+                        
                     task_files.append(f)
                     seen_task_paths.add(f["path"])
                     seen_task_names.add(f_name_lower)
         except Exception as e:
             logger.error(f"Error listing packages for topology: {e}", "Topology")
         
-        logger.info(f"Found {len(task_files)} unique task files (dtsx) in storage.", "Topology")
+        logger.info(f"Found {len(task_files)} unique task files (migration assets) in storage.", "Topology")
 
         for f_node in task_files:
             p_path = f_node["path"]

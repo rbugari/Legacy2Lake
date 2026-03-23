@@ -141,7 +141,7 @@ class AgentAService:
         # Using a larger context model might be needed if inventory is huge. 
         # Assuming gpt-4 or 4-turbo window is sufficient
         llm_config = await db.resolve_agent_model("agent-a")
-        deployment_name = llm_config.get("deployment", "unknown")
+        deployment_name = llm_config.get("deployment", "unknown") if llm_config else "unconfigured"
         
         try: # This try block was missing in the original code, causing the indentation issue.
             llm = await self._get_llm()

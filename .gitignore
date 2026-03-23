@@ -76,3 +76,25 @@ phase4_r2_verify.zip
 prompt_lab_export.zip
 
 prod_*_export.json
+
+# Local DB migration / export artifacts
+tmp/
+batches/
+test_results/
+all_sqls.txt
+all_sqls.json
+all_sql_statements.json
+apply_prod.js
+temp_batch.sql
+temp_batch_*.sql
+utm_*_catalog.json
+utm_agent_matrix.json
+utm_prompts.json
+utm_provider_vault.json
+fetch_prompts.py
+generate_sql_list.py
+create_batches.py
+create_temp_batch.py
+list_batch_9.py
+split_batch.py
+validate_sql.py

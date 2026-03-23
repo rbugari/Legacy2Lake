@@ -1,161 +1,185 @@
-# Arquitectura de Agentes y System Prompts (v4.1)
+# System Prompts And Agents (v4.0 Stabilized)
 
-El "cerebro" de la plataforma Legacy2Lake es una orquestación de **10 agentes especializados** en 2 categorías: 7 agentes LLM configurados por el tenant, y 3 motores determinísticos basados en reglas.
+> Last Updated: 2026-03-21
+> Status: Current operating model
 
-> **v4.1 Update (Mar 2026)**: Sistema auditado y completado — Agent B (Cartographer) eliminado por no tener implementación. Agent D corregido con su propio config en Agent Matrix. Agent QA incorporado al Intelligence Hub. Catálogo de agentes sincronizado con el código real.
+This document describes the real agent roster, the prompt architecture in production, and how prompt resolution works after the v4.0 prompt consolidation.
 
----
+## 1. Agent Roster
 
-## 1. Principio de Operación
+Legacy2Lake currently operates with `10` named agents or engines:
 
-**No existen LLMs "propios" de los agentes.** Todos los agentes LLM consumen el modelo configurado por el tenant en su Agent Matrix. El flujo de resolución es:
+### LLM agents
 
-```
-resolve_agent_model(agent_id)
-    → utm_agent_matrix  (qué model_id asignó el tenant a ese agente)
-    → utm_model_catalog (detalles técnicos del modelo)
-    → utm_provider_vault (API key y URL del tenant, aislada por tenant_id)
-    → { provider, deployment, endpoint, api_key, temperature }
-```
+| Agent ID | Name | Responsibility |
+|---|---|---|
+| `agent-qa` | Quick Assessor | Pre-triage viability assessment |
+| `agent-s` | Scout | Repository forensics and gap detection |
+| `agent-a` | Detective | Triage mesh construction and modernization reasoning |
+| `agent-c` | Developer | Code generation and transpilation |
+| `agent-f` | Critic | Per-asset review and scoring |
+| `agent-g` | Governor | Governance audit and runbook generation |
+| `agent-d` | Auditor | Final audit in later refinement/certification flows |
 
-Si un tenant no configura un agente, ese agente no opera — por seguridad no hay fallback hardcodeado.
+### Deterministic engines
 
----
+| Agent ID | Name | Responsibility |
+|---|---|---|
+| `agent-p` | Profiler | Static analysis of generated assets |
+| `agent-r` | Refactoring | Deterministic optimization/refactoring |
+| `agent-o` | OpsAuditor | Operational readiness and DevOps packaging |
 
-## 2. Los 10 Agentes — Mapa Completo
+## 2. Prompt Architecture
 
-### 2.1 Agentes LLM (7) — Configurados por tenant en Agent Matrix
+Legacy2Lake uses a 3-level prompt model.
 
-| Agent ID | Nombre | Fase | Responsabilidad principal |
-|---|---|---|---|
-| **agent-qa** | Quick Assessor | Pre-Triage | Evaluación híbrida (determinística + LLM) de viabilidad del proyecto antes del Triage completo |
-| **agent-s** | Scout | Pre-Triage | Análisis forense del repositorio para detectar tecnología origen, herramienta ETL, y gaps |
-| **agent-a** | Detective | Triage + Refinement | Triage: construye Mesh Graph. Refinement: orquesta la segmentación Medallion vía ArchitectService |
-| **agent-c** | Developer | Drafting | Transpila cada asset legacy al nuevo tech usando el cartucho activo |
-| **agent-f** | Critic | Drafting | Audita el código de Agent C inmediatamente (mismo loop por asset), scoring 0-10 |
-| **agent-g** | Governor | Drafting (final) | Genera Runbook y Certification Audit al final del pipeline |
-| **agent-d** | Auditor | Refinement | Code audit post-refinamiento vía `AuditService` (usa prompt `agent_d_auditor`) |
+### Level 1: Agent prompt
 
-### 2.2 Agentes Determinísticos (3) — Sin LLM, motores de reglas activos en Refinement
+- Owned by the application
+- Canonical source lives on disk
+- Synchronized to `utm_prompts`
+- Not editable by tenant users
 
-| Agent ID | Nombre | Fase | Qué hace |
-|---|---|---|---|
-| **agent-p** | Profiler | Refinement Phase 1 | `ProfilerService` — escanea archivos .py del Drafting, extrae metadata de tablas, PKs y conexiones |
-| **agent-r** | Refactoring | Refinement Phase 3 | `RefactoringService` — aplica optimizaciones determinísticas de Spark/SQL y controles de seguridad |
-| **agent-o** | OpsAuditor | Refinement Phase 4 | `OpsAuditorService` — valida readiness operacional y genera manifests DevOps |
+Examples:
 
----
+- `agent_qa_assessment`
+- `agent_s_scout`
+- `agent_a_discovery`
+- `agent_c_interpreter`
+- `agent_f_critic`
+- `agent_g_governance`
+- `agent_d_auditor`
 
-## 3. El Pipeline Completo en Orden
+### Level 2: Cartridge prompt
 
-```mermaid
-graph TD
-    Upload[Repositorio subido] --> QA[Agent QA: Evaluación de Viabilidad]
-    QA -->|Score verde| S[Agent S: Scout — Detección de tecnología]
-    S --> Librarian[Librarian — Parser DDL determinístico]
-    Librarian --> A1[Agent A: Detective — Triage Mesh Graph]
-    A1 --> HumanTriage[Validación Humana - Triage]
-    HumanTriage --> Topology[Topology — DAG determinístico]
-    Topology --> C[Agent C: Developer — Transpilación por asset]
-    C --> F[Agent F: Critic — Compliance audit por asset]
-    F -->|Loop hasta calidad OK| C
-    F -->|Aprobado| G[Agent G: Governor — Runbook + Certification]
-    G --> P[Agent P: Profiler — Análisis código Drafting]
-    P --> A2[ArchitectService Agent A — Segmentación Medallion]
-    A2 -->|Bronze/Silver/Gold vía Cartridges| R[Agent R: Refactoring — Optimizaciones]
-    R --> O[Agent O: OpsAuditor — DevOps]
-    O --> D[Agent D: Auditor — Code audit final]
-    D --> Output[COP Bundle entregable]
-```
+- Owned by the application
+- Canonical source lives on disk
+- Synchronized to `utm_prompts`
+- Specializes behavior by `tech_stack` and `layer`
+- Not editable by tenant users
 
-### Componentes no-agente en el pipeline
-- **Librarian** (`LibrarianService`) — Parser determinístico de DDL usando SQLGlot. Sin LLM.
-- **Topology** (`TopologyService`) — Construye el DAG de ejecución. Sin LLM.
-- **Los cartuchos** (`.md` en `utm_prompts`) — Son las reglas Medallion que `ArchitectService` aplica. No son agentes sino el "conocimiento" que el ArchitectService ejecuta.
+Layers currently in scope:
 
----
+- `bronze`
+- `silver`
+- `gold`
+- `direct`
 
-## 4. Cartuchos — Las Reglas de Arquitectura
+### Level 3: Project custom instructions
 
-Los cartuchos son los archivos `.md` cargados en `utm_prompts` con `tech_stack` y `pattern_type` (bronze/silver/gold). **No son generados por LLM en runtime** — son las instrucciones pre-escritas que `ArchitectService` inyecta en el código al segmentar en capas Medallion.
+- Optional
+- Empty by default
+- Stored as project settings / overrides
+- Used only for project-specific rules or context the user knows and the platform cannot infer safely
 
-`CartridgeFactory.get_cartridge(project_id, registry)` selecciona el cartucho correcto según el `target_tech` del proyecto.
+Level 3 is not a replacement for Level 1 or Level 2. The system is expected to behave correctly without it.
 
-**Cartuchos activos (10 tech stacks × 3 capas = 30 archivos):**
+## 3. Canonical Prompt Source
 
-| Carpeta | Bronze | Silver | Gold | Tecnología |
+The current model is:
+
+- disk = canonical source for app-governed prompts
+- Supabase = runtime mirror
+- project settings = optional Level 3 custom rules
+
+The active canonical prompt inventory is `48` prompts:
+
+- `7` agent prompts
+- `1` shared standards prompt
+- `40` cartridge prompts
+
+Legacy `cartridge_*` prompt ids are no longer part of the active runtime path.
+
+## 4. Prompt Resolution
+
+At runtime, the platform resolves prompts in this order:
+
+1. load the agent prompt
+2. load the cartridge prompt for the selected `tech_stack` and `layer`
+3. load optional project custom instructions if present
+4. assemble final prompt package for the target agent
+
+The important design rule is:
+
+- Level 1 should remain technology-neutral where possible
+- Level 2 should define target-specific behavior
+- Level 3 should only add project context, not redefine platform architecture
+
+## 5. Agent Contracts
+
+### Agent QA
+
+- Input: discovery summary and project context
+- Output: viability assessment JSON
+- Notes: now part of the canonical prompt model
+
+### Agent S
+
+- Input: repository inventory and contextual signals
+- Output: forensic assessment and gaps
+
+### Agent A
+
+- Input: manifest plus runtime context such as `tech_stats`, `file_inventory`, `user_context`, `support_intelligence`, and `schema_reference`
+- Output: modernization mesh and triage reasoning
+
+### Agent C
+
+- Input:
+  - task context
+  - agent prompt
+  - cartridge rules
+  - optional custom rules
+  - neighboring and metadata context when available
+- Output:
+  - code
+  - explanation
+  - assumptions
+  - requirements
+  - validation metadata
+- Notes:
+  - multi-target by design
+  - no longer PySpark-first in the core prompt
+
+### Agent F
+
+- Input: generated asset plus the same target-aware cartridge context
+- Output: review object with score and critique
+- Notes: evaluates against the actual target, not a fixed PySpark worldview
+
+### Agent G
+
+- Input: transformed assets, metadata, mesh
+- Output:
+  - `audit_json`
+  - `runbook_markdown`
+- Notes: supports SQL and Python outputs and was validated against fenced JSON with embedded markdown
+
+## 6. Cartridge Matrix
+
+The current cartridge matrix is `10` tech stacks x `4` layers:
+
+| Tech Stack | bronze | silver | gold | direct |
 |---|---|---|---|---|
-| `pyspark/` | ✅ | ✅ | ✅ | PySpark / Delta Lake |
-| `snowflake/` | ✅ | ✅ | ✅ | Snowpark Python |
-| `snowflake_sql/` | ✅ | ✅ | ✅ | SQL nativo Snowflake |
-| `sf/` | ✅ | ✅ | ✅ | Salesforce Data Cloud SQL |
-| `aws/` | ✅ | ✅ | ✅ | AWS Glue PySpark |
-| `dbt/` | ✅ | ✅ | ✅ | dbt SQL (Jinja) |
-| `gcp/` | ✅ | ✅ | ✅ | BigQuery Standard SQL |
-| `ms_fabric/` | ✅ | ✅ | ✅ | MS Fabric PySpark (Lakehouse) |
-| `ms_fabric_sql/` | ✅ | ✅ | ✅ | MS Fabric Warehouse T-SQL (con limitaciones documentadas) |
-| `base/` | ✅ | ✅ | ✅ | Genérico / Pseudocode |
+| `base` | yes | yes | yes | yes |
+| `pyspark` | yes | yes | yes | yes |
+| `snowflake` | yes | yes | yes | yes |
+| `snowflake_sql` | yes | yes | yes | yes |
+| `sf` | yes | yes | yes | yes |
+| `aws` | yes | yes | yes | yes |
+| `dbt` | yes | yes | yes | yes |
+| `gcp` | yes | yes | yes | yes |
+| `ms_fabric` | yes | yes | yes | yes |
+| `ms_fabric_sql` | yes | yes | yes | yes |
 
----
+## 7. Direct Layer
 
-## 5. Agent Matrix y Resolución de Modelos
+The `direct` layer is intentionally different from medallion layers:
 
-**Tablas involucradas:**
-- `utm_agent_catalog` — Catálogo maestro de los 10 agentes (definición)
-- `utm_agent_matrix` — Asignación tenant → agent → model_id
-- `utm_model_catalog` — Modelos disponibles con sus parámetros técnicos
-- `utm_provider_vault` — API keys por tenant/proveedor (aisladas)
+- goal is faithful translation, not architectural redesign
+- prompts require explicit `L2L DIRECT TRANSLATION` headers
+- prompts prohibit invented enhancements
+- prompts prefer parameterization over hardcoded values
+- prompts prefer explicit column mapping when metadata exists
 
-**Los 7 agentes LLM necesitan una entrada activa en `utm_agent_matrix` para operar:**
-
-```sql
--- Ejemplo: Tenant asigna GPT-4o a Agent C (Developer)
-INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, is_active)
-VALUES ('abc-123', 'agent-c', 'azure-gpt-4o', true);
-
--- Agent D (Auditor) tiene su propia entrada — no comparte config con Agent F
-INSERT INTO utm_agent_matrix (tenant_id, agent_id, model_id, is_active)
-VALUES ('abc-123', 'agent-d', 'azure-gpt-4o', true);
-```
-
----
-
-## 6. Prompts en Base de Datos
-
-**Prompts de agentes en `utm_prompts`** (7 entradas activas):
-
-| prompt_id | Usado por |
-|---|---|
-| `agent_qa_assessment` | Agent QA |
-| `agent_s_scout` | Agent S |
-| `agent_a_discovery` | Agent A |
-| `agent_c_interpreter` | Agent C |
-| `agent_f_critic` | Agent F |
-| `agent_g_governance` | Agent G |
-| `agent_d_auditor` | Agent D |
-
-Los agentes determinísticos (P, R, O) no tienen prompts — operan con reglas hardcodeadas en Python.
-
----
-
-## 7. Intelligence Hub
-
-El **Intelligence Hub** (PromptsExplorer) muestra los agentes LLM activos por fase. El `STAGE_MAP` en `PromptsExplorer.tsx` refleja los 7 agentes:
-
-| Vista | Agentes visibles |
-|---|---|
-| Triage | QA, S, A |
-| Drafting | C, F, G |
-| Refinement | D, G |
-| All | QA, S, A, C, F, G, D |
-
----
-
-**Document Version:** 3.0 (v4.1)  
-**Last Updated:** Marzo 5, 2026  
-**Cambios:** Auditoría completa de agentes — Agent B eliminado, Agent D corregido, Agent QA incorporado, cartuchos ms_fabric_sql agregados.
-
-**See Also:**
-- [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md)
-- [SYSTEM_ARCHITECTURE.md](../SYSTEM_ARCHITECTURE.md)
-- [ai_infrastructure.md](ai_infrastructure.md)
+This is especially important for `SQL` and `PySpark` direct outputs derived from SSIS or legacy SQL.

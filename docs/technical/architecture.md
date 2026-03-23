@@ -1,58 +1,123 @@
-# Technical Architecture: The Cloud-Native Compiler
-Legacy2Lake (formerly UTM) is a multi-tenant, data logic transpilation platform designed to decouple business intent from its technical implementation. The platform extracts the "DNA" of ETL processes and stores it in an agnostic Intermediate Representation (IR), leveraged across a distributed cloud-native architecture.
+# Technical Architecture
 
-## 1. The Four-Layer Cloud Architecture
+> Last Updated: 2026-03-23
+> Status: Current technical overview
 
-To ensure enterprise scalability and tenant isolation, Legacy2Lake implements a totally decoupled architecture:
+Legacy2Lake is a multi-tenant modernization platform that ingests legacy artifacts, extracts operational logic, and synthesizes modern outputs through a staged orchestration of agent prompts, cartridges, deterministic services, and tenant-scoped LLM routing.
 
-### A. Managed Ingestion Layer
-- **Mission**: Read original artifacts (XML, SQL, etc.) and extract raw metadata.
-- **Components**: Technology-specific **Input Cartridges**.
-- **Cloud-Native**: All uploads are staged in **Cloudflare R2** via `StorageProvider`.
+## 1. Runtime Layers
 
-### B. Universal Kernel (IR & Logic Store)
-- **Mission**: Normalize raw metadata into the **Universal Metadata Schema**.
-- **Components**: Logic inference engine and **Canonical Function Registry**.
-- **Persistence**: Metadata is stored in **Supabase** (PostgreSQL) with Row-Level Security (RLS) for multi-tenancy.
+### Ingestion Layer
 
-### C. Synthesis Layer (Back-End / Cartridges)
-- **Mission**: Translate the JSON-IR into the target language.
-- **Components**: **Output Cartridges** (Jinja2-based).
-- **Optimization**: Uses `asyncio` for parallel code generation.
+- reads legacy inputs such as `SQL`, `SSIS .dtsx`, DDL, manifests, and support files
+- classifies source and support assets
+- builds inventory and discovery metadata
 
-### D. Cloud Delivery & Packaging (COP)
-- **Mission**: Bundle code, logs, and audit reports into a production-ready package.
-- **Components**: `GovernanceService`, `PackagingService`.
-- **Performance**: Direct-to-client streaming via **Signed URLs** and memory-buffered zipping.
+### Analysis Layer
 
-## 2. Multi-Agent System (MAS v3.8)
+- evaluates project viability
+- detects source technology and contextual gaps
+- parses schema and dependency hints
+- constructs the modernization mesh used by downstream generation
 
-The system operates via specialized AI agents interacting through the metadata store and the cloud storage:
+### Synthesis Layer
 
-| Agent | Name | Role | Responsibility |
-| :--- | :--- | :--- | :--- |
-| **S** | **The Scout** | Discovery | Initial repository scan. Identifies context gaps and mission-critical files in R2 storage. |
-| **A** | **The Architect** | Forensics | Scans manifest, builds dependency graph, and **infers metadata** (PII, Volumes). Stores forensics in `UTM_Object.metadata`. |
-| **C** | **The Interpreter** | Transpilation | Converts legacy logic into optimized modern code. Applies **Auto-Partitioning** and **PII Masking** based on Architect forensics. |
-| **F** | **The Fixer** | Refinement | Operates on draft code in R2. Applies "Design Registry" patterns and checks for synthax errors. |
-| **G** | **The Guardian** | Certification | Performs **compliance audit** (0-100 score), generates **Runbooks**, and handles memory-safe bundle packaging. |
+- resolves the active agent prompt
+- resolves the cartridge prompt for the selected target and layer
+- appends optional project custom rules
+- invokes the tenant-configured LLM
+- validates generated output
 
-## 3. System Data Flow (Cloud-Native)
+### Governance Layer
 
-1. **Artifact Ingestion**: User uploads `.dtsx` (or clones Git). Files are written to **Cloudflare R2** under a tenant-prefixed key.
-2. **DNA Analysis**: `DiscoveryService` reads from R2 to identify components like "Lookup" and "Derived Column".
-3. **Normalization**: The Kernel translates logic into a **JOIN** or **TRANSFORM** object in the IR.
-4. **Persistence**: Logic is saved in Supabase. Project settings and variables are auto-injected.
-5. **Parallel Synthesis**: `Agent C` and `Agent F` generate code in parallel, reading/writing to the R2 `Refinement` stages.
-6. **Certified Packaging**: `Agent G` gathers code and logs from R2, generates an AI certification, and streams a ZIP bundle directly to the user.
+- reviews generated assets
+- scores code quality and target compliance
+- emits governance audit and runbook artifacts
 
-## 4. Multi-Tenant Guardrails (v3.8)
+## 2. Prompt Architecture
 
-- **Zero-Trust Access**: The backend now strictly enforces tenant-scoped access via the `SupabasePersistence` service. Ad-hoc connections are prohibited to prevent data leakage.
-- **Process Locking**: The `utm_process_locks` table prevents concurrent execution of the same process on a project, eliminating data corruption risks from simultaneous operations (triage, drafting, refinement, etc.).
-- **Lock Management**: Admin interface allows viewing all active locks and force-releasing stuck processes. Smart timeouts ensure stale locks automatically expire.
-- **Role-Based API Routing**: The refined System Router (`/system/*`) isolates administrative functions (Agent Management, Vault) from project execution logic, ensuring cleaner separation of concerns.
-- **Header Enforcement**: Every request must include `X-Tenant-ID`, which is sanitized and validated by the `get_identity` middleware.
-- **Process Robustness**: Long-running orchestrators (Triage, Drafting, Refinement) check the `cancellation_requested` flag at granular steps, ensuring projects can be stopped immediately and safely.
-- **Unified Action Ecosystem**: All stage execution actions are centralized in a unified `StageSidebar`, orchestrated globally by the `WorkspacePage` state router, eliminating circular dependencies between stage headers and execution logic.
-- **Storage Isolation**: R2 keys follow the pattern `{tenant_id}/{project_name}/...` with signed URLs used for secure, performant delivery.
+The current prompt model is:
+
+1. Level 1 agent prompt
+2. Level 2 cartridge prompt
+3. Level 3 optional custom project instructions
+
+Source of truth:
+
+- disk for Levels 1 and 2
+- Supabase as runtime mirror
+- project settings for Level 3
+
+## 3. Agent And Service Roles
+
+### LLM agents
+
+- `agent-qa`
+- `agent-s`
+- `agent-a`
+- `agent-c`
+- `agent-f`
+- `agent-g`
+- `agent-d`
+
+### Deterministic services
+
+- discovery, librarian, topology, validation, profiling, refactoring, ops audit, packaging
+
+## 4. Cartridge Model
+
+Cartridges specialize generation by:
+
+- target technology
+- layer
+
+Current supported layers:
+
+- `bronze`
+- `silver`
+- `gold`
+- `direct`
+
+Current active canonical cartridge inventory:
+
+- `40` prompts
+- `10` technologies x `4` layers
+
+## 5. LLM Routing
+
+Agents do not use hardcoded models. Runtime model resolution is tenant-scoped through:
+
+- `utm_agent_matrix`
+- `utm_model_catalog`
+- `utm_provider_vault`
+
+This lets the same prompt stack run against different providers and deployments per tenant.
+
+## 6. Validation Status
+
+The current architecture was validated end-to-end on `2026-03-21` against the SSIS fixture [`tests/fixtures/ssis_test_repo`](C:\proyectos_dev\UTM\tests\fixtures\ssis_test_repo), including:
+
+- viability assessment
+- mesh generation
+- direct output generation for SQL and PySpark
+- code review
+- governance runbook generation
+
+## 7. Workspace Navigation
+
+The workspace UX is aligned to the staged runtime model:
+
+- each phase has a dedicated `overview` landing page
+- phase transitions do not reuse unrelated sections from previous phases
+- the UI remembers the last meaningful subsection inside the same phase
+- transient execution actions do not become future landing points
+
+## 8. Recommended References
+
+For the current source of truth, prefer:
+
+- [`README.md`](C:\proyectos_dev\UTM\README.md)
+- [`docs/SYSTEM_ARCHITECTURE.md`](C:\proyectos_dev\UTM\docs\SYSTEM_ARCHITECTURE.md)
+- [`docs/technical/system_prompts_and_agents.md`](C:\proyectos_dev\UTM\docs\technical\system_prompts_and_agents.md)
+- [`docs/technical/cartridge_manual.md`](C:\proyectos_dev\UTM\docs\technical\cartridge_manual.md)
+- [`docs/technical/ai_infrastructure.md`](C:\proyectos_dev\UTM\docs\technical\ai_infrastructure.md)

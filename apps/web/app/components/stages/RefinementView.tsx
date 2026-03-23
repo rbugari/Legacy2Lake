@@ -70,7 +70,8 @@ interface RefinementViewProps {
     isFullscreen?: boolean;
     onToggleFullscreen?: () => void;
     onReset?: () => void;
-    onBackToCurrent?: () => void; activeSection: string;
+    onBackToCurrent?: () => void;
+    activeSection: string;
     onSectionChange: (section: string) => void;
 }
 
@@ -513,9 +514,9 @@ export default function RefinementView({
             <div className="flex flex-col h-full bg-[var(--background)]">
                 <StageHeader
                     title="Stage 3: Intelligent Refinement"
-                    subtitle="Compliance Auditor: Quality enforcement and pattern optimization"
+                    subtitle="Improve generated output, validate structure, and prepare the solution for governance"
                     icon={<Layers className="text-purple-500" />}
-                    helpText="Final code refinement ensuring adherence to established architectural patterns."
+                    helpText="Use Refinement to compare outputs, improve quality, validate schema alignment, and reduce obvious technical debt before Governance."
                     onApprove={handleApprove}
                     approveLabel="Next Phase: Governance"
                     isApproveDisabled={isRefinementRunning || !isComplete}
@@ -527,6 +528,62 @@ export default function RefinementView({
 
                 {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
                 <div className="flex-1 overflow-hidden p-6">
+                    {activeSection === 'overview' && (
+                        <div className="max-w-6xl mx-auto h-full overflow-auto space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Refinement Status</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{isRefinementRunning ? 'Running' : isComplete ? 'Complete' : 'Ready'}</p>
+                                    <p className="mt-2 text-sm text-gray-400">Pattern optimization, validation and modernization.</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Execution Logs</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{logs.length}</p>
+                                    <p className="mt-2 text-sm text-gray-400">Captured events for this refinement cycle.</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Generated Assets</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{assets.length}</p>
+                                    <p className="mt-2 text-sm text-gray-400">Files available for comparison and validation.</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
+                                <h2 className="text-xl font-black text-white">Stage Home</h2>
+                                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
+                                    Use Refinement to optimize generated code, compare against legacy behavior, validate schema alignment, and prepare the solution for governance.
+                                </p>
+                                <div className="mt-6 flex flex-wrap gap-3">
+                                    <button
+                                        onClick={() => onSectionChange('run-refinement')}
+                                        disabled={isRefinementRunning}
+                                        className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-500 disabled:opacity-50"
+                                    >
+                                        {isRefinementRunning ? 'Refining...' : 'Run Refinement'}
+                                    </button>
+                                    <button
+                                        onClick={() => onSectionChange('summary')}
+                                        className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                    >
+                                        Summary
+                                    </button>
+                                    <button
+                                        onClick={() => onSectionChange('comparison')}
+                                        className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                    >
+                                        Compare Files
+                                    </button>
+                                    <button
+                                        onClick={() => onSectionChange('settings')}
+                                        className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                    >
+                                        Design Settings
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {activeSection === 'status' && (
                         <div className="max-w-7xl mx-auto space-y-6 flex flex-col h-full">
                             {!isRefinementRunning && logs.length === 0 ? (

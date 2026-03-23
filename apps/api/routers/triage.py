@@ -339,12 +339,18 @@ async def _run_triage_background(
         # Clear previous execution logs for this phase (fresh start)
         await db.clear_execution_logs(project_uuid, phase="TRIAGE")
         
-        # GOVERNANCE CHECK: TRIAGE is only allowed in TRIAGE mode.
+        # GOVERNANCE CHECK: TRIAGE is only allowed before Drafting starts.
         current_status = await db.get_project_status(project_uuid)
-        if current_status == "DRAFTING":
+        locked_statuses = {
+            "TRIAGE_APPROVED", "DRAFTING", "ORCHESTRATING", "DRAFTED",
+            "REFINEMENT", "REFINING", "REFINED",
+            "GOVERNANCE", "DOCUMENTING", "GOVERNED", "CERTIFYING",
+            "CERTIFIED", "COMPLETED", "DELIVERED"
+        }
+        if current_status in locked_statuses:
             await db.log_execution(
                 project_uuid, "TRIAGE", 
-                "[ERROR] Project is in DRAFTING mode. Triage is locked.",
+                f"[ERROR] Project is in {current_status} mode. Triage is locked.",
                 step="SYSTEM"
             )
             return

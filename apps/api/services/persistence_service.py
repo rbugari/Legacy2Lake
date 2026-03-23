@@ -6,6 +6,7 @@ from datetime import datetime
 from supabase import create_client, Client
 from .storage.factory import StorageFactory
 import httpx
+from apps.api.prompts.catalog import get_prompt_spec
 
 # Disable SSL verification globally for development
 import urllib3
@@ -626,7 +627,7 @@ class SupabasePersistence:
             return False
 
     async def batch_save_assets(self, project_id: str, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Upserts multiple assets in a single call. Blocks if project is in DRAFTING mode."""
+        """Upserts multiple assets in a single call. Blocks once the project is post-triage."""
         
         resolved_id = await self._resolve_uuid(project_id)
         if not resolved_id:
@@ -638,8 +639,14 @@ class SupabasePersistence:
              proj_res = self.client.table("utm_projects").select("status").eq("project_id", resolved_id).execute()
              if proj_res.data:
                  current_status = proj_res.data[0].get("status", "TRIAGE")
-                 if current_status == "DRAFTING":
-                     raise ValueError("Project is in DRAFTING mode. Asset Inventory is locked. Unlock Triege first.")
+                 locked_statuses = {
+                     "TRIAGE_APPROVED", "DRAFTING", "ORCHESTRATING", "DRAFTED",
+                     "REFINEMENT", "REFINING", "REFINED",
+                     "GOVERNANCE", "DOCUMENTING", "GOVERNED", "CERTIFYING",
+                     "CERTIFIED", "COMPLETED", "DELIVERED"
+                 }
+                 if current_status in locked_statuses:
+                     raise ValueError(f"Project is in {current_status} mode. Asset Inventory is locked. Unlock Triage first.")
         except Exception as e:
              print(f"Error checking status for {project_id}: {e}")
              return []
@@ -853,7 +860,7 @@ class SupabasePersistence:
             return False
 
         data = {"status": status}
-        if status == "DRAFTING":
+        if status in {"TRIAGE_APPROVED", "DRAFTING"}:
             data["triage_approved_at"] = "now()"
         
         try:
@@ -1019,7 +1026,7 @@ class SupabasePersistence:
             
             # Fallback to local file with auto-seed
             print(f"DEBUG: Prompt '{prompt_id}' not found in DB. Attempting auto-seed from local file...")
-            return await self._auto_seed_prompt(prompt_id)
+            return await self._auto_seed_prompt_canonical(prompt_id)
                 
         except Exception as e:
             print(f"DEBUG: ❌ Error fetching prompt {prompt_id}: {e}")
@@ -1033,15 +1040,35 @@ class SupabasePersistence:
         No tenant_id - all prompts are global.
         """
         try:
-            prompt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prompts"))
-            file_path = os.path.join(prompt_dir, f"{prompt_id}.md")
+            canonical_spec = get_prompt_spec(prompt_id)
+            if canonical_spec:
+                content = canonical_spec.read_text()
+                data = {
+                    "prompt_id": prompt_id,
+                    "content": content,
+                    "agent_id": canonical_spec.agent_id,
+                    "tech_stack": canonical_spec.tech_stack,
+                    "pattern_type": canonical_spec.pattern_type,
+                    "is_active": True,
+                    "metadata": {
+                        "auto_seeded": True,
+                        "source_file": canonical_spec.relative_source,
+                        "category": canonical_spec.category,
+                        "seeded_at": datetime.now().isoformat()
+                    }
+                }
+                self.client.table("utm_prompts").insert(data).execute()
+                print(f"DEBUG: Successfully auto-seeded '{prompt_id}' from canonical source ({len(content)} chars)")
+                return content
+
+            print(f"DEBUG: Prompt source not found for {prompt_id}")
+            return ""
             
-            if not os.path.exists(file_path):
+            if not spec:
                 print(f"DEBUG: ❌ Local prompt file not found at {file_path}")
                 return ""
                 
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            content = spec.read_text()
                 
             # v4.0: Seed to DB (GLOBAL - no tenant_id)
             data = {
@@ -1061,6 +1088,40 @@ class SupabasePersistence:
             
         except Exception as e:
             print(f"DEBUG: ❌ Error auto-seeding prompt {prompt_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return ""
+
+    async def _auto_seed_prompt_canonical(self, prompt_id: str) -> str:
+        """
+        Canonical prompt auto-seed path for v4.0 prompts managed from disk.
+        """
+        try:
+            canonical_spec = get_prompt_spec(prompt_id)
+            if not canonical_spec:
+                print(f"DEBUG: Prompt source not found for {prompt_id}")
+                return ""
+
+            content = canonical_spec.read_text()
+            data = {
+                "prompt_id": prompt_id,
+                "content": content,
+                "agent_id": canonical_spec.agent_id,
+                "tech_stack": canonical_spec.tech_stack,
+                "pattern_type": canonical_spec.pattern_type,
+                "is_active": True,
+                "metadata": {
+                    "auto_seeded": True,
+                    "source_file": canonical_spec.relative_source,
+                    "category": canonical_spec.category,
+                    "seeded_at": datetime.now().isoformat()
+                }
+            }
+            self.client.table("utm_prompts").insert(data).execute()
+            print(f"DEBUG: Successfully auto-seeded '{prompt_id}' from canonical source ({len(content)} chars)")
+            return content
+        except Exception as e:
+            print(f"DEBUG: Canonical auto-seed error for prompt {prompt_id}: {e}")
             import traceback
             traceback.print_exc()
             return ""

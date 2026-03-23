@@ -369,9 +369,9 @@ export default function DiscoveryView({
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
                 title="Stage 0: Technical Discovery"
-                subtitle="The Scout: Forensic repository audit and gap detection"
+                subtitle="Understand the source, detect gaps, and confirm the project is ready for triage"
                 icon={<Activity className="text-cyan-500" />}
-                helpText="Initial analysis to ensure technical consistency and fill tribal knowledge gaps before triage."
+                helpText="Use Discovery to inspect what was ingested, validate detected technology, and identify missing context before classification starts."
                 onApprove={handleStartTriage}
                 approveLabel={showClassification ? `Start Triage (${fileInventory.filter(f => f.include).length} files)` : "Start Triage"}
                 isApproveDisabled={scanProgress < 100 || showConflict || (showClassification && fileInventory.filter(f => f.include).length === 0)}
@@ -394,6 +394,62 @@ export default function DiscoveryView({
             </StageHeader>
 
             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+
+                {activeSection === 'overview' && (
+                    <div className="max-w-6xl mx-auto space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Discovery Status</p>
+                                <p className="mt-3 text-2xl font-black text-white">{isScanning ? 'Scanning' : scanProgress >= 100 ? 'Ready for Triage' : 'Pending Scan'}</p>
+                                <p className="mt-2 text-sm text-gray-400">Progress: {scanProgress}%</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Files Classified</p>
+                                <p className="mt-3 text-2xl font-black text-white">{fileInventory.length}</p>
+                                <p className="mt-2 text-sm text-gray-400">Visible inventory before Triage promotion.</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Assessment</p>
+                                <p className="mt-3 text-2xl font-black text-white">{assessment.score || 0}%</p>
+                                <p className="mt-2 text-sm text-gray-400">Gap detection and technical completeness.</p>
+                            </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
+                            <h2 className="text-xl font-black text-white">Stage Home</h2>
+                            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
+                                Use Discovery to validate the repository, identify technical gaps, and decide which files should move into Triage.
+                            </p>
+                            <div className="mt-6 flex flex-wrap gap-3">
+                                <button
+                                    onClick={() => onSectionChange?.('run-scan')}
+                                    disabled={isScanning}
+                                    className="px-5 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-cyan-500 disabled:opacity-50"
+                                >
+                                    {isScanning ? 'Scanning...' : 'Run Discovery'}
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange?.('assessment')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    View Assessment
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange?.('files')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Review Files
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange?.('upload')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Add Context
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* LOGS VIEW */}
                 {activeSection === 'logs' && (
