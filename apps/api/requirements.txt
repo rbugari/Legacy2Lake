@@ -6,6 +6,7 @@ langgraph
 langchain
 langchain-openai
 sqlglot
+sqlparse
 lxml
 pydantic
 networkx
