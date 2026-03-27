@@ -7,6 +7,7 @@ from supabase import create_client, Client
 from .storage.factory import StorageFactory
 import httpx
 from apps.api.prompts.catalog import get_prompt_spec
+from apps.utm.core.interfaces import EvidenceItem, ProcessHint
 
 # Disable SSL verification globally for development
 import urllib3
@@ -1877,4 +1878,112 @@ class SupabasePersistence:
             return docs + gov_nodes
         except Exception as e:
             print(f"Error getting governance files: {e}")
+            return []
+
+    # --- V5 Knowledge Model Persistence Methods ---
+    
+    async def save_evidence_items(self, project_id: str, items: List['EvidenceItem'], asset_id: Optional[str] = None, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Saves a batch of tech-agnostic evidence items to utm_evidence_items."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id or not items:
+            return []
+            
+        insert_data = []
+        for item in items:
+            row = {
+                "project_id": resolved_id,
+                "asset_id": asset_id,
+                "source_path": item.source_path,
+                "source_block_type": item.source_block_type,
+                "snippet": item.snippet,
+                "line_start": item.line_start,
+                "line_end": item.line_end,
+                "parser_name": item.parser_name,
+                "extraction_method": item.extraction_method,
+                "confidence": item.confidence,
+                "rationale": item.rationale,
+                "run_id": run_id
+            }
+            if self.tenant_id:
+                row["tenant_id"] = self.tenant_id
+            insert_data.append(row)
+            
+        try:
+            res = self.client.table("utm_evidence_items").insert(insert_data).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Error saving evidence items: {e}")
+            return []
+
+    async def save_processes_and_steps(self, project_id: str, processes: List['ProcessHint'], asset_id: Optional[str] = None, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Saves processes, their orchestration steps, and operational constraints."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id or not processes:
+            return []
+            
+        saved_processes = []
+        try:
+            for proc in processes:
+                # 1. Save Process
+                proc_data = {
+                    "project_id": resolved_id,
+                    "asset_id": asset_id,
+                    "name": proc.name,
+                    "process_type": proc.process_type,
+                    "extraction_method": proc.extraction_method,
+                    "confidence": proc.confidence,
+                    "run_id": run_id
+                }
+                if self.tenant_id:
+                    proc_data["tenant_id"] = self.tenant_id
+                    
+                p_res = self.client.table("utm_processes").insert(proc_data).execute()
+                if not p_res.data:
+                    continue
+                    
+                process_id = p_res.data[0]["process_id"]
+                saved_processes.append(p_res.data[0])
+                
+                # 2. Save Orchestration Steps
+                if proc.orchestration_steps:
+                    step_data = []
+                    for step in proc.orchestration_steps:
+                        s_row = {
+                            "process_id": process_id,
+                            "project_id": resolved_id,
+                            "name": step.name,
+                            "step_type": step.step_type,
+                            "order_hint": step.order_hint,
+                            "branching_hint": step.branching_hint,
+                            "extraction_method": step.extraction_method,
+                            "confidence": step.confidence,
+                            "run_id": run_id
+                        }
+                        if self.tenant_id:
+                            s_row["tenant_id"] = self.tenant_id
+                        step_data.append(s_row)
+                    self.client.table("utm_orchestration_steps").insert(step_data).execute()
+                    
+                # 3. Save Operational Constraints
+                if proc.operational_constraints:
+                    constraint_data = []
+                    for const in proc.operational_constraints:
+                        c_row = {
+                            "process_id": process_id,
+                            "project_id": resolved_id,
+                            "constraint_type": const.constraint_type,
+                            "value_hint": const.value_hint,
+                            "severity": const.severity,
+                            "extraction_method": const.extraction_method,
+                            "confidence": const.confidence,
+                            "run_id": run_id
+                        }
+                        if self.tenant_id:
+                            c_row["tenant_id"] = self.tenant_id
+                        constraint_data.append(c_row)
+                    self.client.table("utm_operational_constraints").insert(constraint_data).execute()
+                    
+            return saved_processes
+        except Exception as e:
+            print(f"Error saving processes and steps: {e}")
             return []

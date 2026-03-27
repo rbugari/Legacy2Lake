@@ -12,6 +12,7 @@ This folder keeps only planning material that is still useful for the current pr
 | [PRODUCT_SPEC_v4.0_NEXT_ADJUSTMENTS.md](PRODUCT_SPEC_v4.0_NEXT_ADJUSTMENTS.md) | prioritized product changes after v4.0 stabilization |
 | [COMPETITIVE_ANALYSIS.md](COMPETITIVE_ANALYSIS.md) | market and positioning reference |
 | [VISION_v10.x.md](VISION_v10.x.md) | long-term product vision |
+| [SPRINT_PLAN_READINESS_GAPS_SUMMARY.md](SPRINT_PLAN_READINESS_GAPS_SUMMARY.md) | proposed sprint sequence for readiness, executive summary, and gap workspace |
 
 ## Cleanup Policy
 
