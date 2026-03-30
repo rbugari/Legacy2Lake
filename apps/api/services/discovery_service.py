@@ -4,7 +4,6 @@ import json
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
 from .persistence_service import PersistenceService
-from apps.utm.cartridges.ssis.parser import SSISCartridge
 
 class DiscoveryService:
     @staticmethod
@@ -49,6 +48,7 @@ class DiscoveryService:
         
         inventory = []
         tech_counts = {}
+        all_evidence_items = []
         
         # 1. Deep Scan using StorageProvider
         try:
@@ -89,6 +89,9 @@ class DiscoveryService:
             # We pass 'storage' so it can read the file content
             analysis = DiscoveryService._analyze_file_content(storage, full_path, ext)
             
+            file_evidence = analysis.get("evidence_items", [])
+            all_evidence_items.extend(file_evidence)
+
             inventory.append({
                 "path": rel_path,
                 "name": file_name,
@@ -98,7 +101,8 @@ class DiscoveryService:
                 "signatures": analysis["signatures"],
                 "invocations": analysis["invocations"],
                 "snippet": analysis["snippet"], 
-                "metadata": analysis.get("metadata", {})
+                "metadata": analysis.get("metadata", {}),
+                "evidence_count": len(file_evidence)
             })
 
         # 2. Extract Support Intelligence (schemas, volumes, rules)
@@ -117,14 +121,35 @@ class DiscoveryService:
                             "intel": sanitized_snippet[:200] + "..." # Keep it concise for the report
                         })
 
-        # 3. Construct Manifest
+        # 3. Persist V5 Evidence Items to DB (async-safe: fire-and-forget via sync best-effort)
+        if all_evidence_items:
+            try:
+                import asyncio
+                supabase_ps = PersistenceService.get_supabase_persistence(tenant_id)
+                if supabase_ps:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Running inside async context — schedule as a task
+                        asyncio.ensure_future(
+                            supabase_ps.save_evidence_items(project_id, all_evidence_items)
+                        )
+                    else:
+                        loop.run_until_complete(
+                            supabase_ps.save_evidence_items(project_id, all_evidence_items)
+                        )
+                    print(f"[Discovery] V5: Queued {len(all_evidence_items)} evidence items for project {project_id}")
+            except Exception as ev_err:
+                print(f"[Discovery] Warning: Could not persist evidence items: {ev_err}")
+
+        # 4. Construct Manifest
         return {
             "project_id": project_id,
             "root_path": triage_path,
             "tech_stats": tech_counts,
             "file_inventory": inventory,
             "support_intelligence": support_intel,
-            "user_context": user_context or []
+            "user_context": user_context or [],
+            "evidence_items_count": len(all_evidence_items)
         }
 
     @staticmethod
@@ -182,6 +207,7 @@ class DiscoveryService:
         snippet_lines = []
         metadata = {}
         line_count = 0
+        evidence_items = []
         
         # Skip binary or huge files
         if ext in ['exe', 'dll', 'png', 'jpg', 'zip']:
@@ -190,7 +216,8 @@ class DiscoveryService:
                 "invocations": [],
                 "line_count": 0,
                 "snippet": "[BINARY FILE]",
-                "metadata": {}
+                "metadata": {},
+                "evidence_items": []
             }
 
         temp_path = None
@@ -203,7 +230,8 @@ class DiscoveryService:
                      "invocations": [],
                      "line_count": 0,
                      "snippet": "",
-                     "metadata": {}
+                     "metadata": {},
+                     "evidence_items": []
                  }
 
             try:
@@ -236,55 +264,56 @@ class DiscoveryService:
                     f.write(content_bytes)
 
 
-                # SSIS (DTSX)
-                if ext == 'dtsx':
+                # V5 Cartridge Registry
+                from apps.utm.cartridges.registry import CartridgeRegistry
+                cartridge = CartridgeRegistry.get_cartridge(ext)
+                
+                if cartridge:
                     try:
-                        parser = SSISCartridge()
-                        meta_obj = parser.parse(temp_path)
-                        
-                        summary = meta_obj.metadata.get("summary", {})
-                        medulla = {
-                            "data_flow_logic": meta_obj.components,
-                            "control_flow_topology": meta_obj.metadata.get("control_flow_topology"),
-                            "constraints": meta_obj.metadata.get("constraints")
-                        }
-                        
-                        signatures.append("SSIS Package (Optimized Scan)")
-                        if summary.get("executable_count", 0) > 0:
-                            signatures.append(f"Contains {summary['executable_count']} Executables")
-                        
-                        # High-Quality Metadata for Architect Agents
-                        metadata["logical_medulla"] = medulla
-                        metadata["connections"] = summary.get("connection_managers", [])
-                        
-                        # Sprint 10: Extract column metadata from components
-                        columns = []
-                        for comp in meta_obj.components:
-                            # Extract from mappings (inputColumn/outputColumn)
-                            for mapping in comp.get("mappings", []):
-                                col_name = mapping.get("name") or mapping.get("target")
-                                if col_name and col_name not in [c["name"] for c in columns]:
-                                    columns.append({
-                                        "name": col_name,
-                                        "data_type": "STRING",  # Default, parser doesn't extract types
-                                        "nullable": True,
-                                        "is_primary_key": False,
-                                        "source_component": comp.get("name")
-                                    })
-                        
-                        if columns:
-                            metadata["columns"] = columns
-                            signatures.append(f"Schema: {len(columns)} columns detected")
-                        
-                        # Invocations (semantic detection)
-                        for comp in meta_obj.components:
-                            if comp.get("intent") == "SOURCE":
-                                invocations.append(f"Reads from: {comp.get('name')}")
-                            if comp.get("intent") == "DESTINATION":
-                                invocations.append(f"Writes to: {comp.get('name')}")
-
-                    except Exception as ssis_err:
-                        signatures.append(f"SSIS Parse Error: {str(ssis_err)}")
+                        evidence_items = cartridge.parse(temp_path, content_bytes)
+                        # Process backwards compatibility
+                        if hasattr(cartridge, 'parse_legacy'):
+                            meta_obj = cartridge.parse_legacy(temp_path)
+                            summary = meta_obj.metadata.get("summary", {})
+                            medulla = {
+                                "data_flow_logic": meta_obj.components,
+                                "control_flow_topology": meta_obj.metadata.get("control_flow_topology"),
+                                "constraints": meta_obj.metadata.get("constraints")
+                            }
+                            signatures.append(f"{meta_obj.source_tech} Package (Optimized Scan)")
+                            if summary.get("executable_count", 0) > 0:
+                                signatures.append(f"Contains {summary['executable_count']} Executables")
+                            metadata["logical_medulla"] = medulla
+                            metadata["connections"] = summary.get("connection_managers", [])
+                            
+                            columns = []
+                            for comp in meta_obj.components:
+                                for mapping in comp.get("mappings", []):
+                                    col_name = mapping.get("name") or mapping.get("target")
+                                    if col_name and col_name not in [c["name"] for c in columns]:
+                                        columns.append({
+                                            "name": col_name,
+                                            "data_type": "STRING",
+                                            "nullable": True,
+                                            "is_primary_key": False,
+                                            "source_component": comp.get("name")
+                                        })
+                            if columns:
+                                metadata["columns"] = columns
+                                signatures.append(f"Schema: {len(columns)} columns detected")
+                                
+                            for comp in meta_obj.components:
+                                intent = comp.get("original_intent")
+                                if intent == "SOURCE":
+                                    invocations.append(f"Reads from: {comp.get('name')}")
+                                if intent == "DESTINATION":
+                                    invocations.append(f"Writes to: {comp.get('name')}")
+                                    
+                    except Exception as err:
+                        signatures.append(f"Cartridge Parse Error: {str(err)}")
+                
+                elif ext == 'dtsx':
+                    signatures.append("SSIS Parse Error: Cartridge logic missing")
 
                 # DataStage (DSX)
                 elif ext == 'dsx':
@@ -389,7 +418,8 @@ class DiscoveryService:
             "invocations": list(set(invocations)), # unique
             "line_count": line_count,
             "snippet": "\n".join(snippet_lines),
-            "metadata": metadata
+            "metadata": metadata,
+            "evidence_items": evidence_items
         }
     
     # Keeping scan_project for backward compatibility if needed, 

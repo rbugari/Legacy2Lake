@@ -80,6 +80,7 @@ from apps.api.routers.reports import router as reports_router
 from apps.api.routers.locks import router as locks_router
 from apps.api.routers.visualization import router as visualization_router  # Sprint 13: Visualization endpoints
 from apps.api.routers.prompts import router as prompts_router  # v4.0: Zero-Hardcode Core
+from apps.api.routers.gaps import router as gaps_router  # Sprint 3: Gap & Decision Workspace
 from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
@@ -216,6 +217,7 @@ app.include_router(reports_router)
 app.include_router(locks_router)
 app.include_router(visualization_router)  # Sprint 13: Visualization endpoints
 app.include_router(prompts_router)  # v4.0: Zero-Hardcode Core - Prompt management
+app.include_router(gaps_router)  # Sprint 3: Gap & Decision Workspace
 app.include_router(config.router)
 app.include_router(system.router, prefix="/system")
 

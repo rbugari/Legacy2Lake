@@ -30,6 +30,7 @@ import StageHeader from '../StageHeader';
 
 import { fetchWithAuth } from '../../lib/auth-client';
 import { API_BASE_URL } from '../../lib/config';
+import ExecutiveSummaryPanel from '../ExecutiveSummaryPanel';
 
 interface Variable {
     key: string;
@@ -362,6 +363,11 @@ export default function HandoverView({
 
                         {/* Right: Cartridge & Summary */}
                         <div className="col-span-12 lg:col-span-4 space-y-6">
+
+                            {/* Sprint 2: Executive Summary */}
+                            <div className="bg-black/40 border border-white/5 rounded-3xl p-6 shadow-2xl">
+                                <ExecutiveSummaryPanel projectId={projectId} variant="compact" />
+                            </div>
 
                             {/* Bundle Type */}
                             <div className="bg-black/40 border border-white/5 rounded-3xl p-8 shadow-2xl">

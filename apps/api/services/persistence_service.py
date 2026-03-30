@@ -39,6 +39,10 @@ class PersistenceService:
     def get_storage(cls):
         return StorageFactory.get_provider()
 
+    @classmethod
+    def get_supabase_persistence(cls, tenant_id: str = None) -> 'SupabasePersistence':
+        return SupabasePersistence(tenant_id=tenant_id)
+
     @staticmethod
     def normalize_name(name: str) -> str:
         """Strict normalization: lowercase and alphanumeric only."""
@@ -562,7 +566,7 @@ class SupabasePersistence:
             if not resolved_id:
                 return None
 
-            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment").eq("project_id", resolved_id)
+            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary").eq("project_id", resolved_id)
             if self.tenant_id and self.role != "ADMIN":
                 query = query.eq("tenant_id", self.tenant_id)
                 
