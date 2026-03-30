@@ -28,6 +28,7 @@ import PIIHeatmap from '../visualization/PIIHeatmap'; // Sprint 11 - Advanced Tr
 import TableRegistry from '../visualization/TableRegistry'; // Sprint 14 - Table Impact Registry
 import ReactMarkdown from 'react-markdown';
 import { useConfirm } from '@/app/hooks/useConfirm';
+import ReadinessBadge from '../ReadinessBadge';
 
 // Lazy mismatch badge for Grid rows
 function MismatchBadge({ projectId, objectId, onClickSchema }: { projectId: string; objectId: string; onClickSchema: () => void }) {
@@ -813,6 +814,12 @@ export default function TriageView({
                                         <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
                                             Use Triage to classify assets, inspect lineage and schema, and lock the final migration scope before Drafting.
                                         </p>
+
+                                        {/* Sprint 1: Readiness summary */}
+                                        <div className="mt-6">
+                                            <ReadinessBadge projectId={projectId} variant="card" />
+                                        </div>
+
                                         <div className="mt-6 flex flex-wrap gap-3">
                                             <button
                                                 onClick={() => onSectionChange('run-triage')}

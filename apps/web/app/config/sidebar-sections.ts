@@ -290,6 +290,13 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             variant: 'view'
         },
         {
+            id: 'gaps',
+            label: 'Gap Workspace',
+            icon: AlertCircle,
+            variant: 'view',
+            badge: 'gapCount'
+        },
+        {
             id: 'quality',
             label: 'Quality Metrics',
             icon: BarChart3,

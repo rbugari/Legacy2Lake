@@ -1,12 +1,13 @@
-from apps.utm.core.interfaces import BaseParser, MetadataObject
+from apps.utm.core.interfaces import BaseParser, MetadataObject, CartridgeBase, EvidenceItem, ProcessHint
 from lxml import etree
 import hashlib
 from typing import Dict, List, Any
+import json
 
-class SSISCartridge(BaseParser):
+class SSISCartridge(CartridgeBase, BaseParser):
     """
     Cartridge for SSIS (.dtsx) Ingestion.
-    Implements BaseParser to standardize the 'Ear' of the system.
+    Implements CartridgeBase (V5) and optionally BaseParser (V4) for backwards compatibility.
     """
     
     def __init__(self):
@@ -15,10 +16,67 @@ class SSISCartridge(BaseParser):
             'SQLTask': 'www.microsoft.com/sqlserver/dts/tasks/sqltask'
         }
 
-    def parse(self, content_or_path: str, name: str = None) -> MetadataObject:
-        """
-        Parses a .dtsx (either raw content or path) and returns a MetadataObject.
-        """
+    def can_handle(self, ext: str, content_hint: str = None) -> bool:
+        return ext.lower() == 'dtsx'
+
+    def parse(self, file_path: str, content: bytes) -> List[EvidenceItem]:
+        """[V5] Extracts deterministic evidence items from the file."""
+        try:
+            content_str = content.decode('utf-8')
+        except:
+            content_str = content.decode('latin1', errors='ignore')
+
+        parser = _LegacySSISLogic(content_str, self.namespaces)
+        medulla = parser.get_logical_medulla()
+        
+        items = []
+        
+        # 1. Package Summary as Evidence
+        summary = medulla.get("summary", {})
+        items.append(EvidenceItem(
+            source_path=file_path,
+            source_block_type="package_summary",
+            snippet=json.dumps(summary, indent=2),
+            line_start=None,
+            line_end=None,
+            parser_name="SSISCartridge",
+            extraction_method="parser_deterministic",
+            confidence=1.0,
+            rationale="Deterministic extraction from SSIS Root Properties"
+        ))
+        
+        # 2. Control Flow Executables
+        topology = medulla.get("control_flow_topology", [])
+        for ex in topology:
+            items.append(EvidenceItem(
+                source_path=file_path,
+                source_block_type="executable",
+                snippet=json.dumps(ex, indent=2),
+                line_start=None, line_end=None,
+                parser_name="SSISCartridge",
+                extraction_method="parser_deterministic",
+                confidence=1.0,
+                rationale=f"Extracted Executable: {ex.get('name')}"
+            ))
+            
+        # 3. Data Flow Components
+        components = medulla.get("data_flow_logic", [])
+        for comp in components:
+            items.append(EvidenceItem(
+                source_path=file_path,
+                source_block_type="data_flow_component",
+                snippet=json.dumps(comp, indent=2),
+                line_start=None, line_end=None,
+                parser_name="SSISCartridge",
+                extraction_method="parser_deterministic",
+                confidence=1.0,
+                rationale=f"Extracted Component: {comp.get('name')} ({comp.get('type')})"
+            ))
+
+        return items
+
+    def parse_legacy(self, content_or_path: str, name: str = None) -> MetadataObject:
+        """[V4] Parses a .dtsx (either raw content or path) and returns a MetadataObject."""
         if "<DTS:Executable" in content_or_path or "<?xml" in content_or_path:
             content = content_or_path
             source_name = name or "unknown.dtsx"

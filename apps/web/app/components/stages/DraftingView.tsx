@@ -11,6 +11,7 @@ import GenerationStats from "../visualization/GenerationStats";
 import CodeGenerationSummary from "../visualization/CodeGenerationSummary";
 import StageHeader from "../StageHeader";
 import { useConfirm } from '@/app/hooks/useConfirm';
+import ReadinessBadge from '../ReadinessBadge';
 
 const DRAFTING_AGENTS = [
     { id: 'A', name: 'The Architect', role: 'Schema & DDL generation' },
@@ -425,6 +426,12 @@ export default function DraftingView({
             <div className="flex-1 overflow-hidden p-6">
                 {activeSection === "overview" && (
                     <div className="h-full max-w-6xl mx-auto overflow-y-auto space-y-6">
+                        {/* Sprint 1: Compact readiness strip */}
+                        <div className="flex items-center gap-3 px-1">
+                            <span className="text-[11px] text-white/40 uppercase tracking-widest font-semibold">Readiness</span>
+                            <ReadinessBadge projectId={projectId} variant="badge" />
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                 <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">Drafting Status</p>

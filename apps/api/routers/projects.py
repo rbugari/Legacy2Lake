@@ -17,6 +17,8 @@ from apps.api.services.table_impact_service import TableImpactService, TableSumm
 from apps.api.services.knowledge_packet_service import KnowledgePacketService, KnowledgePacket
 from apps.api.services.project_cleanup_service import ProjectCleanupService
 from apps.api.services.discovery_service import DiscoveryService
+from apps.api.services.readiness_service import ReadinessService
+from apps.api.services.executive_summary_service import ExecutiveSummaryService
 from apps.api.routers.dependencies import get_db, get_identity
 from apps.api.utils.logger import logger
 
@@ -220,6 +222,88 @@ async def get_quick_assessment(
     
     except HTTPException:
         raise
+
+
+# --- Readiness + Confidence Model (Sprint 1) ---
+
+@router.get("/{project_id}/readiness")
+async def get_readiness(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns the persisted readiness summary for the project.
+    If not yet computed, triggers a fresh computation automatically.
+    """
+    svc = ReadinessService(tenant_id=db.tenant_id, client_id=db.client_id)
+    payload = await svc.get_readiness(project_id)
+    if payload:
+        return payload
+    # Auto-compute on first access
+    try:
+        return await svc.compute_and_persist(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.warning(f"[Readiness] Auto-compute failed: {e}", "Readiness")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project_id}/readiness/recompute")
+async def recompute_readiness(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Forces a fresh recomputation of the readiness summary and persists the result.
+    """
+    svc = ReadinessService(tenant_id=db.tenant_id, client_id=db.client_id)
+    try:
+        return await svc.compute_and_persist(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"[Readiness] Recompute failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Executive Summary + Gaps (Sprint 2) ---
+
+@router.get("/{project_id}/executive-summary")
+async def get_executive_summary(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns a business-facing executive summary derived from all project signals.
+    Computed on demand — no DB storage in first pass.
+    """
+    svc = ExecutiveSummaryService(tenant_id=db.tenant_id, client_id=db.client_id)
+    try:
+        return await svc.get_executive_summary(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"[ExecutiveSummary] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/gaps-summary")
+async def get_gaps_summary(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Returns a grouped summary of identified gaps derived from triage, assessment, and validation signals.
+    """
+    svc = ExecutiveSummaryService(tenant_id=db.tenant_id, client_id=db.client_id)
+    try:
+        return await svc.get_gaps_summary(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"[GapsSummary] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{project_id}/file-inventory")

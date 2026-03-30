@@ -25,6 +25,7 @@ import StageHeader from '../StageHeader';
 import { fetchWithAuth } from '../../lib/auth-client';
 import UnifiedLogViewer from '../UnifiedLogViewer';
 import { useConfirm } from '../../hooks/useConfirm';
+import ReadinessBadge from '../ReadinessBadge';
 
 interface DiscoveryViewProps {
     projectId: string;
@@ -55,6 +56,9 @@ export default function DiscoveryView({
     const [hasContext, setHasContext] = useState(false);
     const [isApproved, setIsApproved] = useState(false);
     const [isApproving, setIsApproving] = useState(false);
+
+    // Readiness badge refresh trigger (incremented after a scan completes)
+    const [readinessKey, setReadinessKey] = useState(0);
 
     // File Inventory & Pre-Classification (NEW)
     const [fileInventory, setFileInventory] = useState<any[]>([]);
@@ -186,6 +190,9 @@ export default function DiscoveryView({
                 } catch (err) {
                     console.error("Failed to load file inventory:", err);
                 }
+
+                // Trigger readiness recompute after successful scan
+                setReadinessKey(k => k + 1);
             }
         } catch (e) {
             setScanLogs(prev => [...prev, `❌ Connection failed: ${e}`]);
@@ -476,6 +483,14 @@ export default function DiscoveryView({
                                 Forensic Assessment
                             </h2>
                         </div>
+
+                        {/* Sprint 1: Readiness + Confidence Model */}
+                        <ReadinessBadge
+                            projectId={projectId}
+                            variant="card"
+                            refreshKey={readinessKey}
+                        />
+
                         {assessment.summary ? (
                             <div className="bg-white/5 border border-white/5 rounded-3xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div className="flex items-center justify-between mb-6">

@@ -20,6 +20,8 @@ import { fetchWithAuth } from '../../lib/auth-client';
 import QualityDashboard from '../visualization/QualityDashboard';
 import UnifiedLogViewer from '../UnifiedLogViewer';
 import { useConfirm } from '@/app/hooks/useConfirm';
+import ExecutiveSummaryPanel from '../ExecutiveSummaryPanel';
+import GapWorkspace from '../GapWorkspace';
 
 const GOVERNANCE_AGENTS = [
     { id: 'F', name: 'Agent F (Critic)', role: 'Compliance & code quality audit' },
@@ -317,6 +319,11 @@ export default function GovernanceView({
                                     <StatCard label="Bronze Layer" value={`${stats.bronze_count} files`} icon={<Database className="text-orange-400" />} />
                                     <StatCard label="Silver + Gold" value={`${(stats.silver_count ?? 0) + (stats.gold_count ?? 0)} files`} icon={<ShieldCheck className="text-emerald-400" />} />
                                 </div>
+
+                                {/* Sprint 2: Executive Summary */}
+                                <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+                                    <ExecutiveSummaryPanel projectId={projectId} variant="full" />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -396,6 +403,13 @@ export default function GovernanceView({
                 )}
 
                 {/* â”€â”€ DOCUMENTATION: LINEAGE + RUNBOOK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* Sprint 3: Gap & Decision Workspace */}
+                {activeSection === 'gaps' && (
+                    <div className="max-w-4xl mx-auto h-full overflow-auto p-6">
+                        <GapWorkspace projectId={projectId} />
+                    </div>
+                )}
+
                 {activeSection === 'documentation' && (
                     <div className="max-w-7xl mx-auto h-full overflow-auto custom-scrollbar space-y-8">
                         {/* Lineage */}
