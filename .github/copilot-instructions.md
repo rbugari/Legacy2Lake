@@ -1,539 +1,296 @@
 # GitHub Copilot Instructions - Legacy2Lake UTM
 
-**Project:** Legacy2Lake UTM v3.9 GA (Multi-Tenant AI-Powered ETL Modernization Platform)  
-**Last Updated:** February 13, 2026  
-**Architecture:** Multi-Agent System with Cartridge-Based Code Generation
+Last Updated: 2026-03-30
+Status: v4.0 stabilized, production
+Scope: Repository-wide engineering guidance
 
----
+## Project Overview
 
-## 🎯 Project Overview
+Legacy2Lake UTM is a multi-tenant data modernization factory.
 
-Legacy2Lake is a **cloud-native, multi-tenant platform** that transforms legacy ETL architectures (SSIS, Informatica, DataStage, etc.) into modern Data Lake/Lakehouse solutions (Databricks, Snowflake, Fabric, BigQuery) using **6 specialized AI agents** and **15+ technology cartridges**.
+The platform ingests legacy assets such as:
+- SQL
+- SSIS `.dtsx`
+- DDL
+- manifests
+- support files
 
-### Core Architecture Components
-- **Backend:** FastAPI (Python 3.11+) + Supabase PostgreSQL + LangChain/LangGraph
-- **Frontend:** Next.js 15 + React 19 + TypeScript
-- **AI:** 6 LLM Agents (A/Architect, S/Scout, C/Coder, F/Critic, G/Governance, D/Deliverer)
-- **Storage:** Cloudflare R2 (asset storage) + Supabase (metadata/state)
-- **Security:** Row-Level Security (RLS), JWT auth, multi-tenant isolation
+It then orchestrates specialized agents and deterministic services to produce:
+- Snowflake SQL
+- PySpark
+- dbt
+- Microsoft Fabric outputs
+- governance and handover artifacts
 
-### 6-Stage Migration Flow
-1. **Discovery** - File upload to R2, asset inventory
-2. **Triage** - Technology detection (Agent S), forensic analysis
-3. **Drafting** - IR normalization (Agent C), zero-hardcode generation
-4. **Refinement** - Code generation with cartridges, real-time validation
-5. **Certification** - Quality scoring, compliance checks (Agent F)
-6. **Handover** - COP bundle generation (Agent G)
+Current architecture is not a generic LLM wrapper.
+It is a staged modernization platform with:
+- FastAPI backend
+- Next.js frontend
+- Supabase for metadata and runtime configuration
+- tenant-scoped storage for source and generated artifacts
+- disk-canonical and DB-mirrored prompt model
 
----
+## Current Operating Model
 
-## 🔒 CRITICAL: Multi-Tenancy Patterns (ALWAYS ENFORCE)
+Use the stabilized v4.0 architecture as the source of truth.
 
-### Rule 1: Every Database Operation MUST Include tenant_id
+Important realities:
+- disk is canonical for Level 1 and Level 2 prompts
+- Supabase is the runtime mirror
+- project-specific custom instructions are optional
+- the validated drafting chain is `Agent A -> Agent C -> Agent F -> Agent G`
+- `QuickAssessmentService` is part of the real production flow
+- `direct` mode is faithful translation, not redesign
+- governance findings are not automatically runtime failures
+
+Do not write code based on outdated assumptions such as:
+- v3.9 GA is still the current operating model
+- all migrations are PySpark-first
+- Level 3 project instructions are required for normal operation
+- Agent S is the only early-stage assessment path
+
+## Core Principles
+
+1. Multi-tenancy first
+2. Reuse existing platform services before adding new abstractions
+3. Prefer explicit staged behavior over hidden magic
+4. Keep prompt architecture stable unless change is clearly justified
+5. Treat project context as optional enrichment, not a patch for weak system behavior
+6. Preserve the distinction between `direct` translation and medallion modernization
+
+## Multi-Tenancy Rules
+
+These are mandatory.
+
+1. Every database query must respect `tenant_id` when applicable.
+2. Services must accept `tenant_id` and `client_id` in constructors when they operate on tenant data.
+3. FastAPI routes should prefer dependency injection through the existing database dependency.
+4. Do not introduce cross-tenant reads or writes.
+5. Validate UUID-like tenant and project identifiers when required.
+6. Do not bypass current persistence patterns for convenience.
+
+Preferred service pattern:
 
 ```python
-# ✅ CORRECT - Always filter by tenant_id
-query = self.client.table("utm_projects").select("*")
-if self.tenant_id:
-    query = query.eq("tenant_id", self.tenant_id)
-res = query.execute()
-
-# ❌ WRONG - Missing tenant isolation
-query = self.client.table("utm_projects").select("*").execute()
-```
-
-### Rule 2: All Services Must Accept tenant_id in Constructor
-
-```python
-# ✅ CORRECT - Multi-tenant service pattern
 class MyService:
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.db = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
-
-# ❌ WRONG - No tenant context
-class MyService:
-    def __init__(self):
-        self.db = SupabasePersistence()
 ```
 
-### Rule 3: FastAPI Dependency Injection for Multi-Tenancy
+Preferred router pattern:
 
 ```python
-# ✅ CORRECT - Use dependency injection
-from apps.api.routers.dependencies import get_db
-
 @router.get("/projects")
 async def list_projects(db: SupabasePersistence = Depends(get_db)):
-    # db already has tenant_id from X-Tenant-ID header
-    return await db.get_projects()
-
-# ❌ WRONG - Manual tenant handling
-@router.get("/projects")
-async def list_projects(tenant_id: str):
-    db = SupabasePersistence(tenant_id=tenant_id)
-    return await db.get_projects()
+    return await db.list_projects()
 ```
 
-### Rule 4: Validate UUIDs for tenant_id and project_id
+Preferred Supabase query pattern:
 
 ```python
-# ✅ CORRECT - UUID validation
-from uuid import UUID
-
-def validate_tenant_id(tenant_id: str) -> bool:
-    try:
-        UUID(tenant_id)
-        return True
-    except ValueError:
-        return False
+query = self.client.table("utm_projects").select("*")
+if self.tenant_id:
+    query = query.eq("tenant_id", self.tenant_id)
+res = query.execute()
 ```
 
----
+## Prompt Architecture Rules
 
-## 🤖 AI Agent Service Pattern (6 Agents)
+Legacy2Lake uses a 3-level prompt model:
 
-### Standard Agent Structure
+1. Level 1: agent prompt
+2. Level 2: cartridge prompt
+3. Level 3: project custom instructions
+
+Guidance:
+- do not hardcode prompt text into business logic unless clearly unavoidable
+- prefer prompt loading through the existing prompt and persistence path
+- do not treat Level 3 as required input
+- do not add project-specific hacks into Level 1 or Level 2 logic
+- preserve the canonical-on-disk plus runtime-in-DB model
+
+## Stage Model
+
+The product is stage-driven and the UI should respect that.
+
+Current runtime stages:
+1. Discovery
+2. Triage
+3. Drafting
+4. Refinement
+5. Certification
+6. Handover
+
+When changing stage behavior:
+- preserve the operational landing model
+- keep overview pages meaningful
+- do not make transient `run-*` actions sticky views
+- completed stages should bias toward summaries and reports
+- active stages should bias toward logs and progress
+
+## Agent And Service Guidance
+
+Current LLM agents include:
+- `agent-qa`
+- `agent-s`
+- `agent-a`
+- `agent-c`
+- `agent-f`
+- `agent-g`
+- `agent-d`
+
+Current deterministic and support services include:
+- `QuickAssessmentService`
+- `DiscoveryService`
+- `ValidationService`
+- `TopologyService`
+- `LibrarianService`
+
+Guidance:
+- use the existing service layer before creating parallel logic
+- extend current services when the feature is a natural continuation of existing behavior
+- avoid duplicate orchestration paths
+- do not hardcode models, deployments, or providers inside agent services
+- resolve LLM settings through tenant-scoped runtime configuration
+
+## Import Resolution Pattern
+
+Service files may need multi-context imports.
+Preserve the current fallback style when working in existing service modules:
 
 ```python
-from typing import Optional, Dict, Any
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
-
-class Agent{X}Service:
-    """
-    Agent {X}: {Purpose}
-    """
-    
-    def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None):
-        self.tenant_id = tenant_id
-        self.client_id = client_id
-    
-    async def _get_llm(self, project_id: Optional[str] = None):
-        """Resolves LLM client strictly from Agent Matrix (DB)"""
-        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-        config = await db.resolve_agent_model("agent-{x}")
-        
-        if config["provider"] == "azure":
-            return AzureChatOpenAI(
-                deployment_name=config["deployment_name"],
-                api_key=config["api_key"],
-                azure_endpoint=config["endpoint"],
-                api_version=config.get("api_version", "2024-05-01-preview")
-            )
-        else:  # openai, groq
-            return ChatOpenAI(
-                model=config["model"],
-                api_key=config["api_key"],
-                base_url=config.get("base_url")
-            )
-    
-    async def _load_prompt(self, prompt_id: str = "agent_{x}_name") -> str:
-        """Load prompt from database (global or tenant-specific)"""
-        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-        return await db.get_prompt(prompt_id)
-    
-    async def save_prompt(self, prompt_id: str, content: str):
-        """Save prompt to database (requires admin role)"""
-        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
-        await db.save_prompt(prompt_id, content)
-```
-
-### Agent Roster
-
-| Agent | ID | Purpose | Key Method |
-|-------|-----|---------|------------|
-| **Architect** | agent-a | Discovery & forensics | `analyze_repository()` |
-| **Scout** | agent-s | Technology detection | `detect_technology()` |
-| **Coder** | agent-c | Code generation (IR → Target) | `transpile_task()` |
-| **Critic** | agent-f | Code review & refinement | `critique_code()` |
-| **Governance** | agent-g | Documentation & COP | `generate_documentation()` |
-| **Deliverer** | agent-d | Handover package | `create_bundle()` |
-
----
-
-## 📦 Import Resolution Pattern (All Service Files)
-
-```python
-# ✅ CORRECT - Multi-context import handling
 try:
     from apps.api.utils.logger import logger
     from apps.api.services.persistence_service import SupabasePersistence
-    from apps.api.services.agent_c_service import AgentCService
 except ImportError:
     try:
         from utils.logger import logger
         from services.persistence_service import SupabasePersistence
-        from services.agent_c_service import AgentCService
     except ImportError:
         from ..utils.logger import logger
         from .persistence_service import SupabasePersistence
-        from .agent_c_service import AgentCService
 ```
 
-**Rationale:** Supports execution from multiple contexts (API server, scripts, tests).
+Use this only where the file already follows that pattern or where the module must support multiple execution contexts.
 
----
+## Backend Coding Guidance
 
-## 🗄️ Database Schema Reference
+Prefer:
+- FastAPI routers with explicit request and response models
+- async flows for I/O
+- structured logging
+- small service methods with clear ownership
+- existing persistence and storage abstractions
 
-### Core Tables (15 total)
+Avoid:
+- direct raw client calls scattered across routers when a service already exists
+- blocking calls inside async routes
+- hardcoded provider configuration
+- bypassing tenant filters
+- introducing schema writes without a migration
 
-| Table | Purpose | RLS Enabled | Key Columns |
-|-------|---------|-------------|-------------|
-| `utm_tenants` | Multi-tenant root | ✅ | tenant_id (PK), name, plan |
-| `utm_users` | User accounts | ✅ | user_id (PK), tenant_id (FK), role |
-| `utm_projects` | Migration projects | ✅ | project_id (PK), tenant_id (FK), owner_id |
-| `utm_project_members` | Access control | ✅ | project_id (FK), user_id (FK), role |
-| `utm_objects` | Source assets | ✅ | object_id (PK), project_id (FK), source_tech |
-| `utm_design_registry` | Medallion nodes | ✅ | node_id (PK), project_id (FK), layer |
-| `utm_prompts` | System prompts | ⚠️ | prompt_id (PK), tenant_id (nullable), content |
-| `utm_agent_matrix` | Agent-phase mappings | ✅ | tenant_id (FK), agent_id, model_id |
-| `utm_provider_vault` | LLM API keys | ✅ | tenant_id (FK), provider, api_key |
-| `utm_model_catalog` | Enabled LLM models | ✅ | tenant_id (FK), model_id, is_active |
+Before adding new backend code:
+1. check if a similar service already exists
+2. check if the data already exists in `utm_projects`, `utm_objects`, or related tables
+3. check if the frontend already has a place to surface the new information
+4. prefer consolidation over duplication
 
-**Full schema:** See [DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md)
+## Frontend Coding Guidance
 
-### Supabase Query Pattern
+Frontend stack is Next.js 15 + React 19 + TypeScript.
 
-```python
-# ✅ CORRECT - RLS-aware query
-async def get_projects(self) -> List[Dict[str, Any]]:
-    query = self.client.table("utm_projects").select("*")
-    if self.tenant_id:
-        query = query.eq("tenant_id", self.tenant_id)
-    return query.execute().data
+Prefer:
+- existing stage views and current workspace navigation model
+- `fetchWithAuth` for API requests
+- consistent stage-level summaries and operational panels
+- extending existing views before inventing new top-level routes
+- reuse of existing metrics, dashboards, and summary components when they already fit
 
-# ✅ CORRECT - Join with RLS
-projects_with_members = (
-    self.client
-    .table("utm_projects")
-    .select("*, utm_project_members(user_id, role)")
-    .eq("tenant_id", self.tenant_id)
-    .execute()
-)
-```
+Avoid:
+- generic placeholder UI
+- introducing a new phase when a tab or section fits better
+- `alert`, `confirm`, and hard reloads unless no existing modal or pattern exists
+- duplicating backend-derived summaries in local-only logic
+- building UI around assumptions that are not persisted or API-backed
 
----
+When adding product-facing status concepts:
+- make them explainable
+- show reasons, blockers, or next actions
+- do not present opaque scores without interpretation
 
-## 🎨 FastAPI Router Pattern (CRUD Endpoints)
+## Data And Schema Guidance
 
-```python
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import List, Optional
-from apps.api.routers.dependencies import get_db
-from apps.api.services.persistence_service import SupabasePersistence
+Before adding tables or columns:
+- verify whether the capability is already partially represented in `utm_projects`, `utm_objects`, or existing context tables
+- add migrations for all schema changes
+- keep tenant isolation explicit
+- prefer simple project-level JSONB fields before introducing new workflow tables when validating a concept
+- introduce a dedicated table only when the feature requires lifecycle, resolution states, ownership, or auditability
 
-router = APIRouter(prefix="/api/v1/resource", tags=["resource"])
+Examples:
+- project-level summary or readiness state can start as a JSONB field on `utm_projects`
+- a true gap or decision workflow should use a dedicated table rather than freeform JSON
 
-# Request/Response Models
-class CreateResourceRequest(BaseModel):
-    name: str
-    description: Optional[str] = None
-    settings: Optional[dict] = None
+## Product-Specific Guidance
 
-class ResourceResponse(BaseModel):
-    resource_id: str
-    tenant_id: str
-    name: str
-    created_at: str
+Current near-term work should be interpreted through the real repo state.
 
-# Endpoints
-@router.get("/", response_model=List[ResourceResponse])
-async def list_resources(db: SupabasePersistence = Depends(get_db)):
-    """List all resources for current tenant"""
-    return await db.get_resources()
+Already present in partial form:
+- quick assessment
+- discovery scoring and blockers
+- governance score and audit views
+- handover readiness summary
+- project and asset manual context
 
-@router.get("/{resource_id}", response_model=ResourceResponse)
-async def get_resource(resource_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Get specific resource by ID"""
-    resource = await db.get_resource(resource_id)
-    if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
-    return resource
+Not yet fully productized:
+- formal readiness model
+- executive summary as a unified experience
+- formal gap and decision workspace
 
-@router.post("/", response_model=ResourceResponse, status_code=201)
-async def create_resource(
-    payload: CreateResourceRequest,
-    db: SupabasePersistence = Depends(get_db)
-):
-    """Create new resource"""
-    return await db.create_resource(payload.dict())
+This means:
+- readiness features should consolidate existing signals
+- executive summaries should reuse existing reporting and governance surfaces
+- gap workspace should be treated as a new workflow feature, not just another text field
 
-@router.delete("/{resource_id}", status_code=204)
-async def delete_resource(resource_id: str, db: SupabasePersistence = Depends(get_db)):
-    """Delete resource by ID"""
-    await db.delete_resource(resource_id)
-    return None
-```
+## Validation And Testing
 
----
+When changing behavior:
+- verify tenant-safe access paths
+- verify stage navigation still behaves correctly
+- verify production summaries are grounded in persisted data
+- verify existing report and governance flows still work
+- prefer focused tests near the service or router you changed
 
-## ⚛️ React/TypeScript Component Pattern
+If a feature depends on staged outputs:
+- check Discovery and Triage signals first
+- then check Drafting and Governance outputs
+- do not assume every project has all later-stage artifacts available
 
-### Standard Component Structure
+## Historical Docs
 
-```typescript
-"use client";
+The repo contains historical planning material.
+Do not rely on older sprint language when current architecture docs or runtime behavior say otherwise.
 
-import React, { useState, useEffect } from 'react';
-import { fetchWithAuth } from '@/lib/auth-client';
+Prefer these as source of truth:
+- `README.md`
+- `docs/INDEX.md`
+- `docs/SYSTEM_ARCHITECTURE.md`
+- `docs/technical/system_prompts_and_agents.md`
+- `docs/technical/cartridge_manual.md`
+- `docs/RELEASE_NOTES.md`
 
-interface ComponentProps {
-    projectId: string;
-    tenantId?: string;
-}
+Use older planning docs only as context, not as authoritative implementation guidance.
 
-interface DataItem {
-    id: string;
-    name: string;
-    status: string;
-}
+## Final Rule
 
-export default function MyComponent({ projectId, tenantId }: ComponentProps) {
-    const [data, setData] = useState<DataItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+Be conservative with architecture changes.
 
-    useEffect(() => {
-        loadData();
-    }, [projectId]);
-
-    const loadData = async () => {
-        setIsLoading(true);
-        setError(null);
-        
-        try {
-            const response = await fetchWithAuth(
-                `/api/v1/projects/${projectId}/items`
-            );
+For this repo, the best default is:
+- consolidate existing capabilities
+- preserve staged behavior
+- preserve tenant isolation
+- keep prompt architecture stable
+- add new workflow entities only when the product truly needs them
             
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            setData(result);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unknown error');
-            console.error('[MyComponent] Load failed:', err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    if (isLoading) return <div>Loading...</div>;
-    if (error) return <div className="text-red-500">Error: {error}</div>;
-
-    return (
-        <div className="p-4">
-            {data.map(item => (
-                <div key={item.id}>{item.name}</div>
-            ))}
-        </div>
-    );
-}
-```
-
-### fetchWithAuth Pattern
-
-```typescript
-// ✅ CORRECT - Always use fetchWithAuth for API calls
-import { fetchWithAuth } from '@/lib/auth-client';
-
-const response = await fetchWithAuth('/api/v1/endpoint', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: 'value' })
-});
-
-// ❌ WRONG - Missing auth headers
-const response = await fetch('/api/v1/endpoint');
-```
-
----
-
-## 🔬 Real-Time Validation (Sprint 8)
-
-### Validation Service Usage
-
-```python
-from apps.api.services.validation_service import ValidationService
-
-validator = ValidationService()
-
-result = await validator.validate_code(
-    code="from pyspark.sql import SparkSession...",
-    tech_id="pyspark",  # pyspark, snowflake, dbt, fabric, aws, gcp
-    layer="bronze",     # bronze, silver, gold
-    context={"source_table": "customers", "target_table": "bronze_customers"}
-)
-
-if not result.is_valid:
-    print(f"Errors: {result.errors_count}")
-    print(f"Warnings: {result.warnings_count}")
-    print(result.get_llm_feedback())
-```
-
-### Validation API Contracts
-
-```python
-# Request Model
-class ValidateCodeRequest(BaseModel):
-    code: str
-    tech_id: str  # pyspark, snowflake, dbt, fabric, aws, gcp
-    layer: str = "bronze"
-    strict_mode: bool = True
-    context: Optional[Dict[str, Any]] = None
-
-# Response Model
-class ValidateCodeResponse(BaseModel):
-    is_valid: bool
-    tech_id: str
-    layer: str
-    errors_count: int
-    warnings_count: int
-    info_count: int
-    validated_at: str
-    issues: List[ValidationIssueResponse]
-    llm_feedback: Optional[str] = None
-```
-
----
-
-## 🎯 Cartridge System
-
-### Cartridge Types
-
-**Source Extraction Cartridges** (8 total):
-- SQL Server, Oracle, MySQL, PostgreSQL
-- Talend, Informatica, DataStage, Pentaho, SAP BODS
-
-**Destination/Generation Cartridges** (6 total):
-- Databricks (PySpark), Snowflake (SQL), Microsoft Fabric (Notebooks)
-- BigQuery (SQL), Redshift (SQL), Salesforce (Apex)
-
-### Cartridge Selection Pattern
-
-```python
-from apps.api.services.generation.cartridges.factory import CartridgeFactory
-
-# Get appropriate cartridge based on project settings
-cartridge = CartridgeFactory.get_cartridge(
-    project_id=project_id,
-    registry=design_registry,
-    tenant_id=tenant_id
-)
-
-# Generate code using cartridge
-output = await cartridge.generate(
-    node_data=node_data,
-    context=context
-)
-```
-
----
-
-## 📝 Logging Pattern
-
-```python
-from apps.api.utils.logger import logger
-
-# ✅ CORRECT - Structured logging with context
-logger.info(
-    f"[ServiceName] Processing started: project_id={project_id}, tenant_id={tenant_id}",
-    "ServiceName"
-)
-
-logger.error(
-    f"[ServiceName] Error occurred: {str(e)}",
-    "ServiceName"
-)
-
-# For LLM calls (special decorator)
-@logger.llm_debug("Agent-C-Developer")
-async def transpile_task(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
-    # Method implementation
-    pass
-```
-
----
-
-## 🚫 Common Anti-Patterns to AVOID
-
-### ❌ NO: Hardcoded Prompts (v4.0 Migration)
-
-```python
-# ❌ WRONG - Hardcoded template (v3.x legacy)
-PYSPARK_TEMPLATE = """
-from pyspark.sql import SparkSession
-# ... hardcoded code
-"""
-
-# ✅ CORRECT - Load from database (v4.0)
-prompt = await self.db.get_prompt(
-    prompt_id="agent_c_bronze_pyspark",
-    tech_stack="pyspark",
-    pattern_type="bronze"
-)
-```
-
-### ❌ NO: Missing Error Handling
-
-```python
-# ❌ WRONG - No error handling
-result = await api_call()
-return result
-
-# ✅ CORRECT - Proper error handling
-try:
-    result = await api_call()
-    return result
-except Exception as e:
-    logger.error(f"[Service] API call failed: {e}", "Service")
-    raise HTTPException(status_code=500, detail=str(e))
-```
-
-### ❌ NO: Mixing Sync and Async
-
-```python
-# ❌ WRONG - Mixing sync/async incorrectly
-async def my_function():
-    result = sync_function()  # Blocking call in async context
-    return result
-
-# ✅ CORRECT - Use async throughout or run_in_executor
-async def my_function():
-    result = await async_function()
-    return result
-```
-
----
-
-## 📚 Key Documentation Files
-
-- **[SYSTEM_ARCHITECTURE.md](../docs/SYSTEM_ARCHITECTURE.md)** - Complete architecture overview
-- **[DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md)** - All table schemas and RLS policies
-- **[technical/system_prompts_and_agents.md](../docs/technical/system_prompts_and_agents.md)** - Agent system details
-- **[technical/cartridge_manual.md](../docs/technical/cartridge_manual.md)** - Cartridge development guide
-- **[API Contract Reference](.github/copilot/schemas/api-contracts.md)** - All Pydantic models
-- **[Database Tables Reference](.github/copilot/schemas/database-tables.md)** - Table definitions
-
----
-
-## 🎯 Code Generation Priorities
-
-When generating code, prioritize in this order:
-
-1. **Multi-tenancy enforcement** - Always include tenant_id filtering
-2. **Type safety** - Use Pydantic models for validation
-3. **Error handling** - Wrap in try/except with proper logging
-4. **Async/await** - Use async throughout for I/O operations
-5. **Documentation** - Include docstrings and type hints
-6. **Testing** - Follow pytest patterns with fixtures
-
----
-
-**Questions?** Refer to project documentation in `/docs` or ask for clarification on specific patterns.
