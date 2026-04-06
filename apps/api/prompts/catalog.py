@@ -34,7 +34,6 @@ KNOWN_PATTERN_TYPES = set(PATTERN_TYPE_MAP.values())
 
 TECH_STACK_ALIASES: Dict[str, str] = {
     "databricks": "pyspark",
-    "databricks_pyspark": "pyspark",
     "fabric": "ms_fabric",
     "fabric_sql": "ms_fabric_sql",
     "microsoft_fabric": "ms_fabric",

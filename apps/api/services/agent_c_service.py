@@ -21,7 +21,7 @@ try:
     # v4.0: Zero-Hardcode Core (Database-driven prompts)
     from apps.api.services.prompts.prompt_service import PromptService
     from apps.api.services.prompts.prompt_assembler import PromptAssembler
-    from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
+    from apps.api.prompts.catalog import build_cartridge_prompt_id
     # Sprint 10: Schema Evolution
     from apps.api.services.schema_version_service import SchemaVersionService
     from apps.api.services.migration_generator_service import MigrationGeneratorService, Platform
@@ -48,7 +48,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from services.prompts.prompt_service import PromptService
         from services.prompts.prompt_assembler import PromptAssembler
-        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
+        from apps.api.prompts.catalog import build_cartridge_prompt_id
         # Sprint 10: Schema Evolution
         from services.schema_version_service import SchemaVersionService
         from services.migration_generator_service import MigrationGeneratorService, Platform
@@ -74,7 +74,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from .prompts.prompt_service import PromptService
         from .prompts.prompt_assembler import PromptAssembler
-        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
+        from apps.api.prompts.catalog import build_cartridge_prompt_id
         # Sprint 10: Schema Evolution
         from .schema_version_service import SchemaVersionService
         from .migration_generator_service import MigrationGeneratorService, Platform
@@ -399,9 +399,6 @@ class AgentCService:
             cache_key_data = {
                 'asset_id': node_data.get('asset_id'),
                 'project_id': node_data.get('project_id'),
-                'package_name': node_data.get('package_name'),
-                'name': node_data.get('name'),
-                'source_path': node_data.get('path') or node_data.get('source_path') or node_data.get('source_file'),
                 'tech_id': node_data.get('tech_id'),
                 'layer': node_data.get('layer'),
                 'source_tech': node_data.get('source_tech'),
@@ -460,7 +457,6 @@ class AgentCService:
         if '(' in target_engine:
             target_engine = target_engine.split('(')[0].strip()
         target_engine = target_engine.replace(' ', '_')
-        target_engine = normalize_tech_stack(target_engine) or target_engine
         
         source_engine = str(node_data.get("source_tech") or "mssql").lower()
         layer = node_data.get("layer", "direct")  # v4.0: Default to direct translation (1:1 transpilation)

@@ -823,7 +823,7 @@ async def get_project_quality(project_id: str):
             # Extract asset name and category from join
             asset_obj = col.get("utm_objects", {})
             asset_name = asset_obj.get("source_name", "Unknown") if isinstance(asset_obj, dict) else "Unknown"
-            asset_category = asset_obj.get("category", "unrecognized") if isinstance(asset_obj, dict) else "unrecognized"
+            asset_category = asset_obj.get("category", "no_reconocido") if isinstance(asset_obj, dict) else "no_reconocido"
             col_data = {
                 **col,
                 "asset_name": asset_name,
@@ -841,8 +841,8 @@ async def get_project_quality(project_id: str):
             columns = asset_data["columns"]
             asset_category = asset_data["category"]
             
-            # Only check PK/FK for 'support' category (SQL DDLs, not ETL packages)
-            if asset_category == "support":
+            # Only check PK/FK for 'soporte' category (SQL DDLs, not ETL packages)
+            if asset_category == "soporte":
                 # Issue 1: Missing Primary Key
                 has_pk = any(col.get("is_primary_key", False) for col in columns)
                 if not has_pk:

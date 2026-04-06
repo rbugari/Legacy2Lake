@@ -7,12 +7,12 @@ import { useEffect, useState } from "react";
 import { fetchWithAuth } from "../lib/auth-client";
 
 const ROUTE_LABELS: Record<string, string> = {
-    "dashboard": "Console",
-    "workspace": "Workspace",
-    "admin": "Platform Administration",
-    "system": "System Architecture",
-    "settings": "Tenant Settings",
-    "login": "Login"
+    "dashboard": "Consola",
+    "workspace": "Espacio de Trabajo",
+    "admin": "Administración de Plataforma",
+    "system": "Arquitectura de Sistema",
+    "settings": "Configuración Tenant",
+    "login": "Ingreso"
 };
 
 export default function Breadcrumbs() {

@@ -413,20 +413,20 @@ async def get_file_inventory(
                     "name": "Load_Customer.dtsx",
                     "path": "Triage/Load_Customer.dtsx",
                     "size": 45678,
-                    "category": "migratable",
+                    "category": "migrable",
                     "detected_tech": "ssis",
-                    "suggested_classification": "CORE",  # System suggests CORE for migratable
-                    "include": true  # Default: include migratable and support
+                    "suggested_classification": "CORE",  # Sistema sugiere CORE para migrables
+                    "include": true  # Default: incluir migrables y soporte
                 },
                 {
                     "name": "DB_Schema.sql",
-                    "category": "support",
-                    "suggested_classification": "SUPPORT",  # Support for context
+                    "category": "soporte",
+                    "suggested_classification": "SUPPORT",  # Soporte para contexto
                     "include": true
                 },
                 {
                     "name": "README.md",
-                    "category": "documentation",
+                    "category": "documentacion",
                     "suggested_classification": "IGNORED",  # Docs no aportan a migración
                     "include": false
                 }
@@ -476,18 +476,18 @@ async def get_file_inventory(
             file_category, detected_tech = qa_service._classify_file(item)
             
             # SUGGESTED classification logic:
-            # - migratable → CORE (deep analysis for migration)
-            # - support → SUPPORT (consult to complete CORE data)
-            # - documentation → IGNORED (no technical knowledge contribution)
-            # - unrecognized → IGNORED (cannot be processed)
+            # - migrable → CORE (analizar profundo para migrar)
+            # - soporte → SUPPORT (consultar para completar datos de CORE)
+            # - documentacion → IGNORED (no aporta conocimiento técnico)
+            # - no_reconocido → IGNORED (no se puede procesar)
             
-            if file_category == "migratable":
+            if file_category == "migrable":
                 suggested = "CORE"
                 include_default = True
-            elif file_category == "support":
+            elif file_category == "soporte":
                 suggested = "SUPPORT"
                 include_default = True
-            else:  # documentation, unrecognized
+            else:  # documentacion, no_reconocido
                 suggested = "IGNORED"
                 include_default = False
 
@@ -503,7 +503,7 @@ async def get_file_inventory(
                 "path": item["path"],
                 "size": item.get("size", 0),
                 "lines": item.get("lines", 0),
-                "category": file_category,  # migratable, support, documentation, unrecognized
+                "category": file_category,  # migrable, soporte, documentacion, no_reconocido
                 "detected_tech": detected_tech,
                 "suggested_classification": suggested,  # CORE, SUPPORT, IGNORED
                 "classification": classification,
@@ -1765,7 +1765,7 @@ async def get_generation_stats(
         if db.tenant_id:
             query = query.eq("tenant_id", db.tenant_id)
         
-        query = query.eq("project_id", project_id).eq("category", "migratable")
+        query = query.eq("project_id", project_id).eq("category", "migrable")
         res = query.execute()
         
         objects = res.data if res.data else []

@@ -136,9 +136,9 @@ export default function AssetsInventory({ assets, onDragStart, isLoading }: { as
 
             <div className="p-4 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-black/40">
                 <div className="flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-                    <span className="text-cyan-500">Drag</span>
+                    <span className="text-cyan-500">Arrastra</span>
                     <GripVertical size={12} className="text-cyan-500/40" />
-                    <span>to orchestrate the resolution</span>
+                    <span>para orquestar la resolución</span>
                 </div>
             </div>
         </div>

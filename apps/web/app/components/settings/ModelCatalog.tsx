@@ -93,7 +93,7 @@ export default function ModelCatalog() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this model?")) return;
+        if (!confirm("¿Eliminar este modelo?")) return;
         try {
             await fetchWithAuth("system/catalog", {
                 method: "DELETE",
@@ -178,7 +178,7 @@ export default function ModelCatalog() {
         return providerActive && matchesFilter;
     });
 
-    if (loading) return <div className="p-4 text-center text-[var(--text-secondary)]">Loading Catalog...</div>;
+    if (loading) return <div className="p-4 text-center text-[var(--text-secondary)]">Cargando Catálogo...</div>;
 
     return (
         <div className="space-y-6">
@@ -329,7 +329,7 @@ export default function ModelCatalog() {
                             </div>
 
                             <div className="border-t border-[var(--border)] pt-4 mt-4">
-                                <h4 className="text-[10px] font-black text-[var(--text-secondary)] uppercase mb-3 tracking-widest">Technical Configuration</h4>
+                                <h4 className="text-[10px] font-black text-[var(--text-secondary)] uppercase mb-3 tracking-widest">Configuración Técnica</h4>
                                 <div className="space-y-3">
                                     {currentModelProvider.toLowerCase() === "azure" && (
                                         <>

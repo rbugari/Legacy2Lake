@@ -1,33 +1,5 @@
 # Release Notes
 
-## Version 4.2.0 - Drafting Stability And Prompt/Cache Hardening - 2026-04-06
-
-### Drafting Topology Stability
-
-- fixed SSIS parser compatibility in topology orchestration for mixed parser interfaces
-- added a compatibility bridge in topology to support both:
-  - legacy metadata parsing (`parse_legacy`) used by DAG component extraction
-  - v5 evidence extraction (`parse(file_path, content_bytes)`) with component reconstruction
-- resolved `.dtsx` parse runtime failures that were collapsing the DAG to SQL-only assets
-
-### Prompt Resolution Hardening
-
-- normalized `databricks_pyspark` to canonical `pyspark` in prompt tech aliases
-- aligned Agent C and Agent F prompt lookup to use normalized target tech values
-- improved cartridge prompt resolution for `direct` mode in Databricks/PySpark projects
-
-### Performance And Correctness
-
-- fixed Agent C transpilation cache key collisions when `asset_id` is null
-- cache key now includes package/task identity fields (`package_name`, `name`, source path)
-- prevents accidental cache reuse across different assets in the same run
-
-### Expected Runtime Impact
-
-- topology now keeps SSIS packages in orchestration instead of silently skipping them due to signature mismatches
-- prompt loading for direct PySpark cartridges is more reliable in tenant runtime DB lookups
-- compliance outcomes are no longer affected by cross-asset cached developer outputs
-
 ## Version 4.0.4 - Sprint v4.0.3 Test Coverage - 2026-03-30
 
 ### Testing

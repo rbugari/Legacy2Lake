@@ -1,7 +1,6 @@
 import os
 import json
 from typing import Dict, Any, List
-from types import SimpleNamespace
 from apps.utm.cartridges.ssis.parser import SSISCartridge
 try:
     from apps.api.utils.logger import logger
@@ -121,12 +120,7 @@ class TopologyService:
 
                 if pkg_name.lower().endswith(".dtsx"):
                     parser = SSISCartridge()
-                    metadata = self._parse_ssis_metadata(
-                        parser=parser,
-                        content=content,
-                        file_name=f_node["name"],
-                        file_path=p_path,
-                    )
+                    metadata = parser.parse(content, name=f_node["name"])
                     data_flow = metadata.components
                     
                     for comp in data_flow:
@@ -177,13 +171,14 @@ class TopologyService:
                 })
             except Exception as e:
                 logger.error(f"Failed to parse {p_path}: {e}", "Topology")
+
         # 2. Build DAG (Naive Approach: Layers)
         # Rule 1: Bronze = No Lookups, or lookups to static config. Reads from Flat File/Source.
         # Rule 2: Silver = Reads from Bronze/Source, Looks up Dimensions.
         # Rule 3: Gold = Reads from Silver, Aggregates.
-
+        
         # Implicit Dependency: If PkgA looks up TableX, and PkgB outputs to TableX -> PkgB MUST run before PkgA.
-
+        
         # Dependency Map: Table -> [ProducerPackages]
         producers = {}
         for pm in package_metadatas:
@@ -192,25 +187,25 @@ class TopologyService:
                 if clean_table not in producers:
                     producers[clean_table] = []
                 producers[clean_table].append(pm["package_name"])
-
+                
         # Assign Layers & Dependencies
         execution_plan = []
-
+        
         # In this simplified pass, we'll bucket by logic:
         # Phase 1: Dimensions (Independent)
         # Phase 2: Dimensions (Dependent / having lookups)
         # Phase 3: Facts
-
+        
         orchestration = {
             "project_id": self.project_id,
             "dag_execution": []
         }
-
+        
         # Identify "Bronze" / independent loaders
         bronze_layer = []
         silver_layer = []
         gold_layer = []
-
+        
         for pm in package_metadatas:
             # Heuristic: Name contains 'Dim' -> Dimension
             if "Dim" in pm["package_name"]:
@@ -220,8 +215,8 @@ class TopologyService:
                     clean_lookup = self._clean_table_name(lookup)
                     if clean_lookup in producers:
                         # Depends on something we produce
-                        has_internal_dependency = True
-
+                         has_internal_dependency = True
+                
                 if not has_internal_dependency:
                     bronze_layer.append(pm["package_name"])
                 else:
@@ -238,7 +233,7 @@ class TopologyService:
                 "description": "Independent Dimensions & Raw Loads",
                 "packages": bronze_layer
             })
-
+            
         if silver_layer:
             orchestration["dag_execution"].append({
                 "phase": "Silver_Refinement",
@@ -258,47 +253,12 @@ class TopologyService:
         # Save Artifact to Storage (Drafting folder)
         output_key = f"{self.output_path.rstrip('/')}/orchestration_plan.json"
         self.storage.save_file(output_key, json.dumps(orchestration, indent=2))
-
+            
         logger.debug("Orchestration Plan Generated", "Topology", orchestration)
         return {
             "orchestration": orchestration,
             "package_metadatas": package_metadatas
         }
-
-    def _parse_ssis_metadata(
-        self,
-        parser: SSISCartridge,
-        content: str,
-        file_name: str,
-        file_path: str,
-    ):
-        """Compatibility bridge for SSIS parser V4/V5 signatures and return types."""
-        # V4 path: returns MetadataObject with .components
-        if hasattr(parser, "parse_legacy"):
-            try:
-                return parser.parse_legacy(content, name=file_name)
-            except TypeError:
-                # Some legacy variants may not accept name keyword.
-                return parser.parse_legacy(content)
-
-        # V5 path: parse(file_path, content_bytes) returns evidence list.
-        content_bytes = content.encode("utf-8", errors="ignore")
-        evidence = parser.parse(file_path, content_bytes)
-
-        components = []
-        for item in evidence or []:
-            if getattr(item, "source_block_type", "") != "data_flow_component":
-                continue
-            snippet = getattr(item, "snippet", "")
-            if not snippet:
-                continue
-            try:
-                components.append(json.loads(snippet))
-            except Exception:
-                # Ignore malformed snippets instead of failing the full topology pass.
-                continue
-
-        return SimpleNamespace(components=components)
 
     def _clean_table_name(self, raw: str) -> str:
         """Standardizes table names helpers (remove brackets, schema)."""

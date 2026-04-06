@@ -15,8 +15,7 @@ import StageSidebar from "../components/navigation/StageSidebar";
 import { getSectionsForStage } from "../config/sidebar-sections";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 import WorkspaceShield from "../components/WorkspaceShield";
-import ReportsCatalogModal from "../components/ReportsCatalogModal";
-import ReportsAccessPanel from "../components/ReportsAccessPanel";
+import ReportsLibraryModal from "../components/ReportsLibraryModal";
 // import StageControls from "../components/StageControls";
 
 import { API_BASE_URL } from "../lib/config";
@@ -457,13 +456,6 @@ function WorkspaceContent() {
                         />
                     </header>
 
-                    {projectStage >= 5 && (
-                        <ReportsAccessPanel
-                            currentStage={projectStage}
-                            onOpenCatalog={() => setShowReportsLibrary(true)}
-                        />
-                    )}
-
                     {/* Stage Content */}
                     <div className="flex-1 relative overflow-hidden">
                         {/* Inspection Mode Banner */}
@@ -584,8 +576,8 @@ function WorkspaceContent() {
                         targetTech={targetTech}
                     />
 
-                    {/* Reports Catalog Modal */}
-                    <ReportsCatalogModal
+                    {/* Reports Library Modal */}
+                    <ReportsLibraryModal
                         isOpen={showReportsLibrary}
                         onClose={() => setShowReportsLibrary(false)}
                         projectId={id}
