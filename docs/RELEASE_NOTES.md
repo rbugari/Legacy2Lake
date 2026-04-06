@@ -1,5 +1,30 @@
 # Release Notes
 
+## Version 4.0.4 - Sprint v4.0.3 Test Coverage - 2026-03-30
+
+### Testing
+
+- added `tests/test_sprint_v4_0_3.py` with 59 tests covering the v4.0.3 sprint
+- fixed `tests/conftest.py`: corrected module paths, UUID headers, and `sample_project` fixture
+- validated all tests green: 59 passed, 0 failed
+
+### Test Coverage Added
+
+- `TestDetectStageFromStatus` — status → stage mapping for all 15 known statuses
+- `TestCalculateProgressFromLogs` — agent-based progress estimation (A/C/F/G chain)
+- `TestExtractCurrentAgent` — active agent extraction from execution logs
+- `TestSidebarMetricsEndpoint` — sidebar metrics endpoint for all stages (0–4)
+- `TestPhaseLandingLifecycle` — approve and unlock phase transitions
+- `TestSidebarSectionsConfig` — navigation config: overview as canonical landing, run-action variants
+- `TestStageHelpContent` — Markdown and HTML help files for all 6 stages
+
+### conftest.py Fixes
+
+- corrected Supabase mock patch path (`services.persistence_service` → `apps.api.services.persistence_service`)
+- corrected app import (`apps.api.main_refactored` → `apps.api.main`)
+- updated `auth_headers` fixture to use valid UUID values
+- added `project_id` key to `sample_project` fixture (required by `SupabasePersistence.get_project_metadata`)
+
 ## Version 4.0.3 - Phase Landing Consistency And Help Refresh - 2026-03-23
 
 ### Workspace Navigation

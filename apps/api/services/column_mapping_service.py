@@ -69,26 +69,35 @@ class ColumnMappingService:
         return result.data[0] if result.data else None
     
     async def bulk_upsert(self, mappings: List[ColumnMapping]) -> int:
-        """Upsert multiple mappings at once"""
-        data_list = [
-            {
+        """Upsert multiple mappings at once."""
+        deduped: Dict[tuple, Dict] = {}
+
+        for m in mappings:
+            source_column = (m.source_column or '').strip()
+            if not source_column:
+                continue
+
+            # Preserve the latest mapping seen for the conflict key.
+            deduped[(m.asset_id, source_column)] = {
                 'asset_id': m.asset_id,
-                'source_column': m.source_column,
+                'source_column': source_column,
                 'source_datatype': m.source_datatype,
                 'target_column': m.target_column,
                 'target_datatype': m.target_datatype,
                 'transformation_rule': m.transformation_rule,
                 'is_pii': m.is_pii,
                 'is_nullable': m.is_nullable,
-                'default_value': m.default_value
+                'default_value': m.default_value,
             }
-            for m in mappings
-        ]
-        
+
+        data_list = list(deduped.values())
+        if not data_list:
+            return 0
+
         result = self.db.table('utm_column_mappings')\
             .upsert(data_list, on_conflict='asset_id,source_column')\
             .execute()
-        
+
         return len(result.data) if result.data else 0
     
     async def delete_mapping(self, asset_id: str, source_column: str) -> bool:

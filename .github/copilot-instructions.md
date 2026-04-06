@@ -4,6 +4,8 @@ Last Updated: 2026-03-30
 Status: v4.0 stabilized, production
 Scope: Repository-wide engineering guidance
 
+PROJECT_ROOT: . (Current Directory). Always execute from here. Do not assume other paths.
+
 ## Project Overview
 
 Legacy2Lake UTM is a multi-tenant data modernization factory.

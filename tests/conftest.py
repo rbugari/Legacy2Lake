@@ -45,7 +45,7 @@ def mock_supabase_client():
 def mock_supabase(mock_supabase_client):
     """Patches the Supabase client creation."""
     with patch('supabase.create_client', return_value=mock_supabase_client):
-        with patch('services.persistence_service.create_client', return_value=mock_supabase_client):
+        with patch('apps.api.services.persistence_service.create_client', return_value=mock_supabase_client):
             yield mock_supabase_client
 
 
@@ -55,7 +55,7 @@ def mock_supabase(mock_supabase_client):
 def test_client(mock_supabase):
     """Creates a FastAPI TestClient with mocked dependencies."""
     # Import here to ensure mocks are in place
-    from apps.api.main_refactored import app
+    from apps.api.main import app
     return TestClient(app)
 
 
@@ -72,12 +72,14 @@ def test_client_legacy(mock_supabase):
 def sample_project():
     """Returns a sample project dictionary."""
     return {
+        "project_id": "550e8400-e29b-41d4-a716-446655440000",
         "id": "550e8400-e29b-41d4-a716-446655440000",
         "name": "TestProject",
         "stage": "1",
         "status": "TRIAGE",
         "source_tech": "SQLSERVER",
         "target_tech": "DATABRICKS",
+        "settings": {"source_tech": "SQLSERVER", "target_tech": "DATABRICKS"},
         "is_active": True,
         "created_at": "2026-01-01T00:00:00Z"
     }
@@ -144,10 +146,10 @@ def sample_manifest():
 
 @pytest.fixture
 def auth_headers():
-    """Returns sample authentication headers."""
+    """Returns sample authentication headers with valid UUIDs."""
     return {
-        "X-Tenant-ID": "tenant-uuid-12345",
-        "X-Client-ID": "client-uuid-12345"
+        "X-Tenant-ID": "550e8400-e29b-41d4-a716-446655440001",
+        "X-Client-ID": "550e8400-e29b-41d4-a716-446655440002"
     }
 
 
