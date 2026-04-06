@@ -6,10 +6,13 @@ Migrated from main.py for better modularity.
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
+import hashlib
 import os
 import io
 import json
 import zipfile
+import time
 
 from apps.api.services.persistence_service import SupabasePersistence, PersistenceService
 from apps.api.services.quick_assessment_service import QuickAssessmentService, QuickAssessmentResult
@@ -19,10 +22,69 @@ from apps.api.services.project_cleanup_service import ProjectCleanupService
 from apps.api.services.discovery_service import DiscoveryService
 from apps.api.services.readiness_service import ReadinessService
 from apps.api.services.executive_summary_service import ExecutiveSummaryService
+from apps.api.services.understanding_service import UnderstandingService
 from apps.api.routers.dependencies import get_db, get_identity
 from apps.api.utils.logger import logger
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
+
+
+def _build_evidence_review_key(record: Dict[str, Any]) -> str:
+    basis = "|".join([
+        str(record.get("source_path", "")),
+        str(record.get("line_start", "")),
+        str(record.get("line_end", "")),
+        str(record.get("parser_name", "")),
+        str(record.get("snippet", ""))[:2000],
+    ])
+    return hashlib.sha1(basis.encode("utf-8", errors="ignore")).hexdigest()
+
+
+async def _resolve_project_uuid(db: SupabasePersistence, project_id: str) -> str:
+    if "-" in project_id:
+        return project_id
+
+    resolved = await db.get_project_id_by_name(project_id)
+    return resolved or project_id
+
+
+def _validate_understanding_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate mandatory contract fields for understanding rebuild responses."""
+    if not isinstance(payload, dict):
+        raise ValueError("understanding payload must be an object")
+
+    required_top_level = {
+        "generated_at",
+        "version",
+        "project_id",
+        "functional_map",
+        "operational_map",
+        "recommendation_set",
+        "rule_candidate_summary",
+    }
+    missing = sorted(required_top_level.difference(payload.keys()))
+    if missing:
+        raise ValueError(f"understanding payload missing keys: {', '.join(missing)}")
+
+    if not payload.get("generated_at"):
+        raise ValueError("understanding payload generated_at is required")
+
+    section_to_collection = {
+        "functional_map": "domains",
+        "operational_map": "processes",
+        "recommendation_set": "items",
+        "rule_candidate_summary": "candidates",
+    }
+    for section, required_collection in section_to_collection.items():
+        section_payload = payload.get(section)
+        if not isinstance(section_payload, dict):
+            raise ValueError(f"understanding section {section} must be an object")
+        if required_collection not in section_payload:
+            raise ValueError(
+                f"understanding section {section} missing {required_collection}"
+            )
+
+    return payload
 
 
 # --- List & Get Projects ---
@@ -177,6 +239,12 @@ async def run_quick_assessment(
         QuickAssessmentResult with complete evaluation
     """
     try:
+        started_at = time.perf_counter()
+        logger.info(
+            f"[QuickAssessment] START project_id={project_id}, tenant_id={db.tenant_id}",
+            "QuickAssessment",
+        )
+
         service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
         result = await service.assess(project_id)
         
@@ -184,6 +252,25 @@ async def run_quick_assessment(
         db.client.table("utm_projects").update({
             "quick_assessment": result.dict()
         }).eq("project_id", project_id).execute()
+
+        # Keep readiness in sync with the new assessment signal.
+        try:
+            readiness_service = ReadinessService(tenant_id=db.tenant_id, client_id=db.client_id)
+            await readiness_service.compute_and_persist(project_id)
+        except Exception as readiness_error:
+            logger.warning(
+                f"[Readiness] Auto-recompute after quick assessment failed: {readiness_error}",
+                "Readiness"
+            )
+
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            (
+                f"[QuickAssessment] TERMINO OK project_id={project_id}, "
+                f"score={result.score}, semaforo={result.semaforo}, elapsed_ms={elapsed_ms}"
+            ),
+            "QuickAssessment",
+        )
         
         return result
     
@@ -375,6 +462,11 @@ async def get_file_inventory(
                 status_code=404,
                 detail="No file inventory found. Upload files to Triage folder first."
             )
+
+        project_settings = await db.get_project_settings(project_id) or {}
+        saved_pre_classification = project_settings.get("pre_classification", {}) if isinstance(project_settings, dict) else {}
+        if not isinstance(saved_pre_classification, dict):
+            saved_pre_classification = {}
         
         # Transform file_inventory with SUGGESTED classification
         qa_service = QuickAssessmentService(tenant_id=db.tenant_id, client_id=db.client_id)
@@ -398,6 +490,13 @@ async def get_file_inventory(
             else:  # documentacion, no_reconocido
                 suggested = "IGNORED"
                 include_default = False
+
+            override = saved_pre_classification.get(item["path"], {}) if isinstance(saved_pre_classification, dict) else {}
+            if not isinstance(override, dict):
+                override = {}
+
+            classification = override.get("classification", suggested)
+            include = override.get("include", include_default)
             
             files.append({
                 "name": item["name"],
@@ -407,8 +506,10 @@ async def get_file_inventory(
                 "category": file_category,  # migrable, soporte, documentacion, no_reconocido
                 "detected_tech": detected_tech,
                 "suggested_classification": suggested,  # CORE, SUPPORT, IGNORED
-                "classification": suggested,  # Default to suggested (usuario puede ajustar)
-                "include": include_default,
+                "classification": classification,
+                "include": include,
+                "has_override": bool(override),
+                "classification_source": "manual" if override else "suggested",
                 "signatures": item.get("signatures", [])
             })
         
@@ -467,6 +568,7 @@ async def save_pre_classification(
         # Guardar en project settings (método simple)
         current_settings = await db.get_project_settings(project_id) or {}
         current_settings["pre_classification"] = classification
+        current_settings["pre_classification_updated_at"] = datetime.now(timezone.utc).isoformat()
         await db.update_project_settings(project_id, current_settings)
 
         # Copiar los archivos clasificados como CORE/SUPPORT desde source a triage
@@ -476,35 +578,47 @@ async def save_pre_classification(
         import shutil
         import os
 
-        # First, ensure Triage folder exists and optionally clear it ? 
-        # For safety we just overwrite.
+        triage_folder_key = f"{project_base.rstrip('/')}/{PersistenceService.STAGE_TRIAGE}"
+        # Rebuild the destination folder on every save so reruns do not keep stale files.
+        storage.delete_directory(triage_folder_key)
+        storage.ensure_directory(triage_folder_key)
+
         copied_count = 0
         for file_path, data in classification.items():
-             if data.get("include", False) or data.get("classification") in ["CORE", "SUPPORT"]:
-                  src_fs_path = storage.resolve_absolute_path(file_path)
-                  if src_fs_path and os.path.exists(src_fs_path):
-                       # Extract relative to project_base
-                       # file_path is like tenant/project_name/source/file.sql
-                       # project_base is like tenant/project_name
-                       
-                       # We remove project_base prefix
-                       if file_path.startswith(project_base):
-                            rel_to_project = file_path[len(project_base):].lstrip('/')
-                            parts = rel_to_project.split('/')
-                            # Force the outer folder to be 'triage' (STAGE_TRIAGE)
-                            if len(parts) > 1:
-                                parts[0] = PersistenceService.STAGE_TRIAGE
-                                new_rel = '/'.join(parts)
-                                
-                                dst_file_path = f"{project_base.rstrip('/')}/{new_rel}"
-                                dst_fs_path = storage.resolve_absolute_path(dst_file_path)
-                                
-                                if src_fs_path != dst_fs_path:
-                                     os.makedirs(os.path.dirname(dst_fs_path), exist_ok=True)
-                                     shutil.copy2(src_fs_path, dst_fs_path)
-                                     copied_count += 1
+            if data.get("include", False) or data.get("classification") in ["CORE", "SUPPORT"]:
+                src_fs_path = storage.resolve_absolute_path(file_path)
+                if src_fs_path and os.path.exists(src_fs_path):
+                    # Extract relative to project_base
+                    # file_path is like tenant/project_name/source/file.sql
+                    # project_base is like tenant/project_name
+
+                    # We remove project_base prefix
+                    if file_path.startswith(project_base):
+                        rel_to_project = file_path[len(project_base):].lstrip('/')
+                        parts = rel_to_project.split('/')
+                        # Force the outer folder to be 'triage' (STAGE_TRIAGE)
+                        if len(parts) > 1:
+                            parts[0] = PersistenceService.STAGE_TRIAGE
+                            new_rel = '/'.join(parts)
+
+                            dst_file_path = f"{project_base.rstrip('/')}/{new_rel}"
+                            dst_fs_path = storage.resolve_absolute_path(dst_file_path)
+
+                            if src_fs_path != dst_fs_path:
+                                os.makedirs(os.path.dirname(dst_fs_path), exist_ok=True)
+                                shutil.copy2(src_fs_path, dst_fs_path)
+                                copied_count += 1
         
         logger.info(f"Copied {copied_count} selected files to triage folder.")
+
+        try:
+            readiness_service = ReadinessService(tenant_id=db.tenant_id, client_id=db.client_id)
+            await readiness_service.compute_and_persist(project_id)
+        except Exception as readiness_error:
+            logger.warning(
+                f"[Readiness] Auto-recompute after pre-classification failed: {readiness_error}",
+                "Readiness"
+            )
 
         return {
             "success": True,
@@ -513,6 +627,107 @@ async def save_pre_classification(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save pre-classification: {str(e)}")
+
+
+@router.get("/{project_id}/evidence")
+async def get_project_evidence(
+    project_id: str,
+    limit: int = 50,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Returns project evidence items with persisted review state from project settings."""
+    try:
+        resolved_project_id = await _resolve_project_uuid(db, project_id)
+        settings = await db.get_project_settings(project_id) or {}
+        review_map = settings.get("evidence_review", {}) if isinstance(settings, dict) else {}
+        if not isinstance(review_map, dict):
+            review_map = {}
+
+        try:
+            query = db.client.table("utm_evidence_items").select("*").eq("project_id", resolved_project_id)
+            if db.tenant_id:
+                query = query.eq("tenant_id", db.tenant_id)
+            result = query.execute()
+            rows = result.data or []
+        except Exception as query_error:
+            logger.warning(
+                f"[Evidence] Falling back to empty evidence set for project {project_id}: {query_error}"
+            )
+            rows = []
+
+        rows = sorted(rows, key=lambda row: row.get("created_at", ""), reverse=True)[:limit]
+
+        items = []
+        for row in rows:
+            review_key = _build_evidence_review_key(row)
+            review_state = review_map.get(review_key, {}) if isinstance(review_map, dict) else {}
+            if not isinstance(review_state, dict):
+                review_state = {}
+
+            items.append({
+                **row,
+                "review_key": review_key,
+                "review_status": review_state.get("state", "detected"),
+                "review_note": review_state.get("note"),
+                "review_updated_at": review_state.get("updated_at"),
+            })
+
+        summary = {
+            "detected": len([item for item in items if item.get("review_status") == "detected"]),
+            "reviewed": len([item for item in items if item.get("review_status") == "reviewed"]),
+            "pinned": len([item for item in items if item.get("review_status") == "pinned"]),
+            "dismissed": len([item for item in items if item.get("review_status") == "dismissed"]),
+        }
+
+        return {
+            "success": True,
+            "count": len(items),
+            "items": items,
+            "summary": summary,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load evidence: {str(e)}")
+
+
+@router.patch("/{project_id}/evidence/review")
+async def update_project_evidence_review(
+    project_id: str,
+    payload: Dict[str, Any],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Persists review state for a single evidence item in project settings."""
+    try:
+        review_key = payload.get("review_key")
+        state = payload.get("state", "reviewed")
+        note = payload.get("note")
+
+        if not review_key:
+            raise HTTPException(status_code=400, detail="review_key is required")
+
+        current_settings = await db.get_project_settings(project_id) or {}
+        evidence_review = current_settings.get("evidence_review", {}) if isinstance(current_settings, dict) else {}
+        if not isinstance(evidence_review, dict):
+            evidence_review = {}
+
+        evidence_review[review_key] = {
+            "state": state,
+            "note": note,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        current_settings["evidence_review"] = evidence_review
+        await db.update_project_settings(project_id, current_settings)
+
+        return {
+            "success": True,
+            "review_key": review_key,
+            "state": state,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update evidence review: {str(e)}")
 
 
 # --- Table Impact Analysis (Phase C) ---
@@ -939,6 +1154,17 @@ async def delete_project_backup(
 async def update_project_settings(project_id: str, settings: Dict[str, Any], db: SupabasePersistence = Depends(get_db)):
     """Updates project-level settings (e.g. Source/Target Tech)."""
     success = await db.update_project_settings(project_id, settings)
+
+    if success and any(key in settings for key in ("source_tech", "target_tech", "discovery_intake")):
+        try:
+            readiness_service = ReadinessService(tenant_id=db.tenant_id, client_id=db.client_id)
+            await readiness_service.compute_and_persist(project_id)
+        except Exception as readiness_error:
+            logger.warning(
+                f"[Readiness] Auto-recompute after settings update failed: {readiness_error}",
+                "Readiness"
+            )
+
     return {"success": success}
 
 
@@ -1696,3 +1922,523 @@ async def get_generation_summary(
     except Exception as e:
         logger.error(f"[GenerationSummary] Error: {e}", "GenerationSummary")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Understanding endpoints — Block 3
+# ---------------------------------------------------------------------------
+
+@router.get("/{project_id}/understanding/functional-map")
+async def get_functional_map(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Return the functional map: business domains, capabilities, and datasets."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        svc = UnderstandingService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        return await svc.get_functional_map()
+    except Exception as exc:
+        logger.error(f"[Understanding] functional-map error: {exc}", "Understanding")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/understanding/operational-map")
+async def get_operational_map(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Return the operational map: processes, execution order, and fragility signals."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        svc = UnderstandingService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        return await svc.get_operational_map()
+    except Exception as exc:
+        logger.error(f"[Understanding] operational-map error: {exc}", "Understanding")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/understanding/recommendations")
+async def get_recommendations(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Return prioritized migration recommendations grounded in evidence."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        svc = UnderstandingService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        return await svc.get_recommendation_set()
+    except Exception as exc:
+        logger.error(f"[Understanding] recommendations error: {exc}", "Understanding")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/understanding/rule-candidates")
+async def get_rule_candidates(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Return rule candidate summary: reusable transformation patterns across assets."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        svc = UnderstandingService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        return await svc.get_rule_candidates()
+    except Exception as exc:
+        logger.error(f"[Understanding] rule-candidates error: {exc}", "Understanding")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/{project_id}/understanding/rebuild")
+async def rebuild_understanding(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Rebuild all four understanding artifacts and persist to utm_projects.
+    Returns the full understanding payload.
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        svc = UnderstandingService(
+            project_id=project_id,
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        payload = _validate_understanding_payload(await svc.rebuild())
+        return {"status": "rebuilt", "generated_at": payload["generated_at"], "payload": payload}
+    except Exception as exc:
+        logger.error(f"[Understanding] rebuild error: {exc}", "Understanding")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/{project_id}/understanding/refresh")
+async def refresh_understanding(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Alias endpoint for deterministic understanding refresh."""
+    return await rebuild_understanding(project_id=project_id, db=db)
+
+
+# ==================== EXPORT ENDPOINTS (Block 4 Downstreams) ====================
+
+
+@router.get("/{project_id}/export/documentation")
+async def export_documentation(
+    project_id: str,
+    format: str = "markdown",
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Export complete documentation from understanding snapshot.
+    
+    Formats: markdown, html, json
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        from apps.api.services.documentation_export_service import (
+            DocumentationExportService,
+            ExportFormat,
+        )
+        
+        # Validate format
+        try:
+            export_format = ExportFormat(format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid format '{format}'. Supported: markdown, html, json",
+            )
+        
+        svc = DocumentationExportService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        result = await svc.export_full_documentation(project_id, export_format)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result.get("message", "Export failed"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Export] documentation error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/export/rule-candidates")
+async def export_rule_candidates(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Export rule candidates with implementation tracking and consolidation analysis.
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        from apps.api.services.documentation_export_service import DocumentationExportService
+        
+        svc = DocumentationExportService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        result = await svc.export_rule_candidates_with_tracking(project_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result.get("message", "Export failed"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Export] rule-candidates error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/export/recommendation-actions")
+async def export_recommendation_actions(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Export recommendation mappings to concrete implementation actions.
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+        from apps.api.services.documentation_export_service import DocumentationExportService
+        
+        svc = DocumentationExportService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+        result = await svc.export_recommendation_actions(project_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result.get("message", "Export failed"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Export] recommendation-actions error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==================== SNAPSHOT & RULE REFINEMENT (Block 5) ====================
+
+
+@router.get("/{project_id}/snapshot")
+async def get_knowledge_snapshot(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Retrieve the current knowledge package snapshot for a project.
+
+    Contains: understanding artifacts + refined rules + metadata.
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        snapshot = settings.get("knowledge_package_snapshot")
+
+        if not snapshot:
+            return {"error": "No snapshot yet", "message": "Run /refine to generate snapshot"}
+
+        return {
+            "snapshot_id": snapshot.get("metadata", {}).get("snapshot_id"),
+            "created_at": snapshot.get("metadata", {}).get("created_at"),
+            "understanding_artifacts": len(snapshot.get("understanding", {}).keys()),
+            "refined_rules_count": len(snapshot.get("refined_rules", [])),
+            "package_hash": snapshot.get("package_hash"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Snapshot] get error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/{project_id}/refine")
+async def refine_and_snapshot(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Refine rule candidates and create knowledge package snapshot.
+
+    Scores all rule candidates by:
+    - Reusability (across assets/processes)
+    - Complexity (effort to implement)
+    - Confidence (backing evidence)
+
+    Returns ranked, materialized rules + snapshot ID.
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        understanding = settings.get("understanding_generated") or settings.get("understanding_payload")
+
+        if not understanding:
+            return {
+                "error": "No understanding yet",
+                "message": "Run /understanding/rebuild first",
+            }
+
+        rule_candidates = understanding.get("rule_candidates", {}).get("candidates", [])
+        if not rule_candidates:
+            rule_candidates = understanding.get("rule_candidate_summary", {}).get("rules", [])
+
+        from apps.api.services.rule_refinement_service import RuleRefinementService
+
+        svc = RuleRefinementService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+
+        operational_context = understanding.get("operational_map", {})
+        project_scope = {
+            "object_count": len(settings.get("discovery_results", {}).get("objects", [])),
+            "stage": record.get("stage"),
+        }
+
+        refined = svc.score_rule_candidates(
+            rule_candidates, operational_context, project_scope
+        )
+
+        snapshot = svc.create_knowledge_package_snapshot(
+            project_id,
+            understanding,
+            refined,
+            metadata={"project_name": record.get("name")},
+        )
+
+        updated_settings = settings.copy()
+        updated_settings["knowledge_package_snapshot"] = snapshot
+        updated_settings["snapshot_refreshed_at"] = datetime.now(timezone.utc).isoformat()
+
+        await db.update_project_settings(project_id, updated_settings)
+
+        logger.info(
+            f"Created knowledge snapshot for {project_id}: "
+            f"{snapshot['metadata']['snapshot_id']}"
+        )
+
+        return {
+            "snapshot_id": snapshot["metadata"]["snapshot_id"],
+            "created_at": snapshot["metadata"]["created_at"],
+            "refined_rules": len(refined),
+            "top_3_rules": [
+                {
+                    "id": r.get("id"),
+                    "type": r.get("type"),
+                    "composite_score": r.get("composite_score"),
+                    "recommendation": r.get("recommendation"),
+                }
+                for r in refined[:3]
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Refinement] refine error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/refined-rules")
+async def get_refined_rules(
+    project_id: str,
+    top_n: int = 20,
+    applicability: Optional[str] = None,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """
+    Retrieve refined rules from latest snapshot.
+
+    Query params:
+    - top_n: number of top rules to return (default 20)
+    - applicability: filter by LOCAL or GLOBAL
+    """
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        snapshot = settings.get("knowledge_package_snapshot")
+
+        if not snapshot:
+            return {"error": "No snapshot", "message": "Run /refine first"}
+
+        rules = snapshot.get("refined_rules", [])[:top_n]
+
+        if applicability:
+            rules = [r for r in rules if r.get("applicability") == applicability.upper()]
+
+        return {
+            "snapshot_id": snapshot.get("metadata", {}).get("snapshot_id"),
+            "total_rules": len(rules),
+            "rules": rules,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Rules] get-refined error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==================== GOVERNANCE & VERSIONING (Block 6) ====================
+
+
+@router.get("/{project_id}/governance/checks")
+async def validate_governance(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Validate project governance readiness before finalization."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        snapshot = settings.get("knowledge_package_snapshot")
+
+        if not snapshot:
+            return {"error": "No snapshot", "message": "Run /refine first"}
+
+        from apps.api.services.governance_service import SnapshotVersioningService
+
+        svc = SnapshotVersioningService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+
+        return svc.validate_governance_readiness(
+            snapshot,
+            {
+                "stage": record.get("stage"),
+                "name": record.get("name"),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Governance] validation error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/snapshot/diff")
+async def get_snapshot_diff(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Compare current snapshot against previous version to detect changes."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        current_snapshot = settings.get("knowledge_package_snapshot")
+
+        if not current_snapshot:
+            return {"error": "No snapshot", "message": "Run /refine first"}
+
+        previous_snapshot = settings.get("knowledge_package_snapshot_previous")
+
+        from apps.api.services.governance_service import SnapshotVersioningService
+
+        svc = SnapshotVersioningService(
+            tenant_id=db.tenant_id,
+            client_id=db.client_id,
+        )
+
+        diff = svc.compute_snapshot_diff(previous_snapshot, current_snapshot)
+
+        return {
+            "current_snapshot_id": current_snapshot.get("metadata", {}).get("snapshot_id"),
+            "previous_snapshot_id": (
+                previous_snapshot.get("metadata", {}).get("snapshot_id")
+                if previous_snapshot
+                else None
+            ),
+            "diff": diff,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Snapshot] diff error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{project_id}/snapshot/history")
+async def get_snapshot_history(
+    project_id: str,
+    limit: int = 10,
+    db: SupabasePersistence = Depends(get_db),
+):
+    """Retrieve snapshot history for the project (versioning audit trail)."""
+    try:
+        project_id = await _resolve_project_uuid(db, project_id)
+
+        record = await db.get_project_metadata(project_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = record.get("settings", {})
+        history = []
+
+        current = settings.get("knowledge_package_snapshot")
+        if current:
+            history.append({
+                "version": "current",
+                "snapshot_id": current.get("metadata", {}).get("snapshot_id"),
+                "created_at": current.get("metadata", {}).get("created_at"),
+                "rules_count": len(current.get("refined_rules", [])),
+                "package_hash": current.get("package_hash"),
+            })
+
+        return {
+            "project_id": project_id,
+            "history": history[:limit],
+            "total_versions": len(history),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Snapshot] history error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))

@@ -7,13 +7,18 @@ from .persistence_service import PersistenceService
 
 class DiscoveryService:
     @staticmethod
-    def generate_manifest(project_id: str, tenant_id: str = None, user_context: List[Dict[str, Any]] = None, source_folder: str = None) -> Dict[str, Any]:
+    def generate_manifest(project_id: str, tenant_id: str = None, user_context: List[Dict[str, Any]] = None, source_folder: str = None, project_settings: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Generates a comprehensive 'Triage Manifest' for Agent A.
         Includes structure, snippets of logic, and detected invocations.
         Scans the specified folder (defaults to Triage) where uploaded objects are stored.
         Uses StorageProvider for abstraction (R2/Local).
         """
+        intake_context = DiscoveryService._build_project_intake_context(project_settings)
+        combined_user_context = list(user_context or [])
+        if intake_context:
+            combined_user_context = intake_context + combined_user_context
+
         # Get base project directory (key prefix)
         project_base = PersistenceService.ensure_solution_dir(project_id, tenant_id)
         storage = PersistenceService.get_storage()
@@ -100,6 +105,7 @@ class DiscoveryService:
                 "lines": analysis["line_count"],
                 "signatures": analysis["signatures"],
                 "invocations": analysis["invocations"],
+                "content": analysis.get("content", ""),
                 "snippet": analysis["snippet"], 
                 "metadata": analysis.get("metadata", {}),
                 "evidence_count": len(file_evidence)
@@ -148,9 +154,33 @@ class DiscoveryService:
             "tech_stats": tech_counts,
             "file_inventory": inventory,
             "support_intelligence": support_intel,
-            "user_context": user_context or [],
+            "user_context": combined_user_context,
+            "project_intake": project_settings.get("discovery_intake") if isinstance(project_settings, dict) else None,
             "evidence_items_count": len(all_evidence_items)
         }
+
+    @staticmethod
+    def _build_project_intake_context(project_settings: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        if not isinstance(project_settings, dict):
+            return []
+
+        intake = project_settings.get("discovery_intake")
+        if not isinstance(intake, dict) or not intake:
+            return []
+
+        return [{
+            "context_type": "discovery_intake",
+            "source_path": "project_settings",
+            "user_context": intake,
+            "notes": "Structured Discovery intake captured at project level",
+            "rules": {
+                "business_domain": intake.get("business_domain"),
+                "migration_goals": intake.get("migration_goals"),
+                "critical_processes": intake.get("critical_processes"),
+                "operational_constraints": intake.get("operational_constraints"),
+                "data_sensitivity": intake.get("data_sensitivity")
+            }
+        }]
 
     @staticmethod
     def _map_extension_to_type(ext: str) -> str:
@@ -214,6 +244,7 @@ class DiscoveryService:
             return {
                 "signatures": [],
                 "invocations": [],
+                "content": "",
                 "line_count": 0,
                 "snippet": "[BINARY FILE]",
                 "metadata": {},
@@ -228,6 +259,7 @@ class DiscoveryService:
                  return {
                      "signatures": ["Read Error"],
                      "invocations": [],
+                     "content": "",
                      "line_count": 0,
                      "snippet": "",
                      "metadata": {},
@@ -416,6 +448,7 @@ class DiscoveryService:
         return {
             "signatures": signatures,
             "invocations": list(set(invocations)), # unique
+            "content": DiscoveryService._sanitize_snippet(content_str),
             "line_count": line_count,
             "snippet": "\n".join(snippet_lines),
             "metadata": metadata,

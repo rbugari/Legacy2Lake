@@ -324,7 +324,8 @@ class LibrarianService:
         
         block_start_keywords = {
             "CREATE PROCEDURE", "CREATE FUNCTION", "CREATE TRIGGER", "CREATE DEFINER",
-            "CREATE OR REPLACE PROCEDURE", "CREATE OR REPLACE FUNCTION"
+            "CREATE OR REPLACE PROCEDURE", "CREATE OR REPLACE FUNCTION",
+            "CREATE PROCEDURE IF NOT EXISTS", "CREATE FUNCTION IF NOT EXISTS"
         }
         
         in_large_block = False
@@ -368,6 +369,12 @@ class LibrarianService:
                 in_plsql_block = True
                 continue
 
+            # MySQL/MariaDB routines sometimes reach here without explicit CREATE line
+            # after preprocessing delimiters/comments. Treat DECLARE blocks as procedural.
+            if upper_stripped.startswith("DECLARE "):
+                in_plsql_block = True
+                continue
+
             if any(upper_stripped.startswith(k) for k in skip_line_keywords):
                 if not upper_stripped.endswith(";"):
                     in_large_block = True
@@ -403,15 +410,46 @@ class LibrarianService:
                         tables[table_def["name"]] = table_def
         except Exception as e:
             logger.error(f"SQLGlot Parse Error ({dialect}): {e}", "Librarian")
-            # Optional: Fallback to tsql if oracle failed?
-            if dialect == "oracle":
-                 logger.debug("Falling back to TSQL parser...", "Librarian")
-                 try:
+
+            # For MySQL/MariaDB mixed scripts (DDL + routines), salvage CREATE TABLE statements
+            # individually so one invalid routine block does not drop all table metadata.
+            if dialect == "mysql":
+                recovered = self._parse_create_table_statements(ddl_content, dialect)
+                if recovered:
+                    logger.info(
+                        f"Recovered {len(recovered)} table(s) from MySQL statement-level fallback",
+                        "Librarian",
+                    )
+                    tables.update(recovered)
+
+            # Optional: Fallback to tsql if oracle failed
+            if not tables and dialect == "oracle":
+                logger.debug("Falling back to TSQL parser...", "Librarian")
+                try:
                     for expression in sqlglot.parse(ddl_content, read="tsql"):
                         if isinstance(expression, exp.Create):
                             table_def = self._extract_table_info(expression)
                             if table_def:
                                 tables[table_def["name"]] = table_def
-                 except: pass
+                except Exception:
+                    pass
 
         return tables
+
+    def _parse_create_table_statements(self, ddl_content: str, dialect: str) -> Dict[str, Any]:
+        """Fallback parser that extracts CREATE TABLE blocks and parses them independently."""
+        recovered_tables: Dict[str, Any] = {}
+
+        statements = re.findall(r"(?is)\bCREATE\s+TABLE\b.*?;", ddl_content)
+        for stmt in statements:
+            try:
+                expr = sqlglot.parse_one(stmt, read=dialect)
+                if isinstance(expr, exp.Create):
+                    table_def = self._extract_table_info(expr)
+                    if table_def:
+                        recovered_tables[table_def["name"]] = table_def
+            except Exception:
+                # Ignore statement-level failures and continue with the next table block.
+                continue
+
+        return recovered_tables

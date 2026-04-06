@@ -14,32 +14,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 class TestAgentAService:
     """Tests for Agent A (Discovery/Triage) service."""
     
-    def test_load_prompt_returns_string(self):
+    @pytest.mark.asyncio
+    async def test_load_prompt_returns_string(self):
         """Test that _load_prompt returns a non-empty string."""
-        with patch('services.agent_a_service.os.path.exists', return_value=True):
+        with patch('apps.api.services.agent_a_service.os.path.exists', return_value=True):
             with patch('builtins.open', MagicMock()) as mock_file:
                 mock_file.return_value.__enter__.return_value.read.return_value = "Test prompt content"
-                
-                from services.agent_a_service import AgentAService
+
+                from apps.api.services.agent_a_service import AgentAService
                 agent = AgentAService()
-                
-                # Should return some prompt (may be from file or default)
-                prompt = agent._load_prompt()
+
+                # _load_prompt is async
+                prompt = await agent._load_prompt()
                 assert isinstance(prompt, str)
     
     @pytest.mark.asyncio
     async def test_analyze_manifest_with_mock_llm(self, sample_manifest, mock_llm_response):
-        """Test manifest analysis with mocked LLM response."""
-        with patch('services.agent_a_service.AgentAService._call_llm', new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = mock_llm_response
-            
-            from services.agent_a_service import AgentAService
-            agent = AgentAService()
-            
-            # This would need the actual method to accept our mock
-            # For now, we're testing the structure
-            assert sample_manifest["project_id"] is not None
-            assert len(sample_manifest["file_inventory"]) == 2
+        """Test that AgentAService has analyze_manifest method."""
+        from apps.api.services.agent_a_service import AgentAService
+        agent = AgentAService()
+
+        assert hasattr(agent, 'analyze_manifest')
+        assert sample_manifest["project_id"] is not None
+        assert len(sample_manifest["file_inventory"]) == 2
 
 
 class TestAgentCService:
@@ -95,9 +92,9 @@ class TestAgentGService:
                 
                 assert agent is not None
     
-    def test_has_generate_documentation_method(self):
-        """Test that service has generate_documentation method."""
-        from services.agent_g_service import AgentGService
+    def test_has_generate_governance_method(self):
+        """Test that service has generate_governance method."""
+        from apps.api.services.agent_g_service import AgentGService
         agent = AgentGService()
-        
-        assert hasattr(agent, 'generate_documentation')
+
+        assert hasattr(agent, 'generate_governance')

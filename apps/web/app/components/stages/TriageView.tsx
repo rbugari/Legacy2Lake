@@ -26,6 +26,10 @@ import CodeQualityAnalysis from '../visualization/CodeQualityAnalysis'; // Sprin
 import SchemaViewer from '../visualization/SchemaViewer'; // Sprint 13
 import PIIHeatmap from '../visualization/PIIHeatmap'; // Sprint 11 - Advanced Triage
 import TableRegistry from '../visualization/TableRegistry'; // Sprint 14 - Table Impact Registry
+import UnderstandingPanel from '../UnderstandingPanel'; // Block 3 - Project Understanding
+import ExportPanel from '../ExportPanel'; // Block 4 - Documentation Exports
+import RuleRefinementPanel from '../RuleRefinementPanel'; // Block 5 - Rule Refinement & Snapshots
+import GovernancePanel from '../GovernancePanel'; // Block 6 - Governance & Versioning
 import ReactMarkdown from 'react-markdown';
 import { useConfirm } from '@/app/hooks/useConfirm';
 import ReadinessBadge from '../ReadinessBadge';
@@ -75,6 +79,10 @@ const TABS = [
     { id: 'context', label: 'Manual Input', icon: <MessageSquare size={14} />, group: 'Config' },
     { id: 'logs', label: 'Execution', icon: <FileText size={14} />, group: 'Config' },
     { id: 'files', label: 'File Explorer', icon: <FolderOpen size={14} />, group: 'Config' }, // Added per request
+    { id: 'understanding', label: 'Understanding', icon: <Brain size={14} />, group: 'Analysis' }, // Block 3
+    { id: 'export', label: 'Export', icon: <FileEdit size={14} />, group: 'Analysis' }, // Block 4
+    { id: 'refinement', label: 'Refinement', icon: <Zap size={14} />, group: 'Analysis' }, // Block 5 - Rule Refinement
+    { id: 'governance', label: 'Governance', icon: <Shield size={14} />, group: 'Analysis' }, // Block 6 - Governance & Versioning
 ];
 
 const TRIAGE_AGENTS = [
@@ -82,8 +90,30 @@ const TRIAGE_AGENTS = [
     { id: 'B', name: 'The Privacy Guard', role: 'PII detection & risk labelling' },
 ];
 
+type StructuredContextEntry = {
+    notes: string;
+    rules: Record<string, any>;
+};
+
+function buildContextSummary(
+    userContext: string,
+    assetContexts: Record<string, StructuredContextEntry>,
+    preClassification: Record<string, any>
+) {
+    const assetEntries = Object.entries(assetContexts);
+
+    return {
+        hasGlobalContext: Boolean(userContext.trim()),
+        assetContextCount: assetEntries.length,
+        assetContextWithNotes: assetEntries.filter(([, value]) => Boolean(value.notes?.trim())).length,
+        assetContextWithRules: assetEntries.filter(([, value]) => Boolean(value.rules) && Object.keys(value.rules || {}).length > 0).length,
+        overrideCount: Object.keys(preClassification || {}).length,
+    };
+}
+
 export default function TriageView({
     projectId,
+    projectName,
     activeTenantId,
     projectStage,
     onStageChange,
@@ -97,6 +127,7 @@ export default function TriageView({
     onSectionChange
 }: {
     projectId: string,
+    projectName?: string,
     activeTenantId?: string,
     projectStage?: number,
     onStageChange?: (stage: number) => void,
@@ -145,7 +176,7 @@ export default function TriageView({
     const [showSidebar, setShowSidebar] = useState(true);
 
     // Release 1.1: Context State
-    const [assetContexts, setAssetContexts] = useState<Record<string, { notes: string, rules: any }>>({});
+    const [assetContexts, setAssetContexts] = useState<Record<string, StructuredContextEntry>>({});
     const [selectedAssetForContext, setSelectedAssetForContext] = useState<any | null>(null);
     const [isSavingContext, setIsSavingContext] = useState(false);
     const [editingAsset, setEditingAsset] = useState<any | null>(null);
@@ -342,6 +373,32 @@ export default function TriageView({
                 setSystemPrompt(projectData.prompt || "");
                 setSourceTech(projectData.source_tech);
                 setDestTech(projectData.target_tech);
+
+                try {
+                    const contextRes = await fetchWithAuth(`projects/${projectId}/context`);
+                    if (contextRes.ok) {
+                        const contextData = await contextRes.json();
+                        const nextAssetContexts: Record<string, StructuredContextEntry> = {};
+
+                        (contextData.contexts || []).forEach((entry: any) => {
+                            if (entry.source_path === '__global__') {
+                                if (typeof entry.notes === 'string') {
+                                    setUserContext(entry.notes);
+                                }
+                                return;
+                            }
+
+                            nextAssetContexts[entry.source_path] = {
+                                notes: entry.notes || '',
+                                rules: entry.rules || {},
+                            };
+                        });
+
+                        setAssetContexts(nextAssetContexts);
+                    }
+                } catch (contextError) {
+                    console.warn('[TriageView fetchProject] Failed to load project context:', contextError);
+                }
             } else {
                 console.warn('[TriageView fetchProject] Status not eligible for loading:', statusData.status);
             }
@@ -365,6 +422,15 @@ export default function TriageView({
         }
     }, [projectId, enrichNodes]);
 
+    const refreshTriagedSnapshot = useCallback(async () => {
+        if (activeSection === 'context') return;
+
+        await Promise.all([
+            fetchProject(),
+            fetchLayout()
+        ]);
+    }, [activeSection, fetchProject, fetchLayout]);
+
     useEffect(() => {
         if (projectId && projectId !== 'undefined' && projectId !== '') {
             fetchProject();
@@ -374,6 +440,25 @@ export default function TriageView({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]); // Only re-run when projectId changes, not when callbacks change
+
+    useEffect(() => {
+        if (!isTriageRunning) return;
+
+        // Keep the visible triage data fresh while the background run is active.
+        let cancelled = false;
+        const tick = async () => {
+            if (cancelled) return;
+            await refreshTriagedSnapshot();
+        };
+
+        tick();
+        const interval = setInterval(tick, 15000);
+
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [isTriageRunning, refreshTriagedSnapshot]);
 
     // Update parent stats whenever assets change
     const lastSidebarStatsReported = useRef("");
@@ -406,7 +491,12 @@ export default function TriageView({
         }
     }, [projectId, isReadOnly]);
 
-    const handleSaveContext = useCallback(async (sourcePath: string, notes: string) => {
+    const handleSaveContext = useCallback(async (
+        sourcePath: string,
+        notes: string,
+        rules: Record<string, any> = {},
+        rerunAfterSave: boolean = true
+    ) => {
         setIsSavingContext(true);
         try {
             const res = await fetchWithAuth(`projects/${projectId}/context`, {
@@ -414,14 +504,22 @@ export default function TriageView({
                 body: JSON.stringify({
                     source_path: sourcePath,
                     notes,
-                    rules: assetContexts[sourcePath]?.rules || {}
+                    rules
                 })
             });
             if (res.ok) {
                 setAssetContexts(prev => ({
                     ...prev,
-                    [sourcePath]: { ...prev[sourcePath], notes }
+                    [sourcePath]: { notes, rules }
                 }));
+
+                if (sourcePath === '__global__') {
+                    setUserContext(notes);
+                }
+
+                if (rerunAfterSave) {
+                    await handleRunTriage();
+                }
             }
         } catch (e) {
             console.error("Failed to save context", e);
@@ -429,7 +527,7 @@ export default function TriageView({
             setIsSavingContext(false);
             setSelectedAssetForContext(null);
         }
-    }, [projectId, assetContexts]);
+    }, [projectId, handleRunTriage]);
 
     const onConnect = useCallback((params: any) => {
         if (isReadOnly) return;
@@ -551,12 +649,14 @@ export default function TriageView({
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (isTriageRunning) {
-            // Poll logs every 5 seconds during active triage process
+            const pollIntervalMs = activeSection === 'logs' ? 5000 : 15000;
+
+            // Poll faster when the execution log is visible; slow down elsewhere to reduce noise.
             fetchTriageLogs(); // Fetch immediately
-            interval = setInterval(fetchTriageLogs, 5000); // Then every 5s
+            interval = setInterval(fetchTriageLogs, pollIntervalMs);
         }
         return () => clearInterval(interval);
-    }, [isTriageRunning, fetchTriageLogs]);
+    }, [activeSection, isTriageRunning, fetchTriageLogs]);
 
     // Load historical logs when logs tab is opened
     useEffect(() => {
@@ -579,7 +679,7 @@ export default function TriageView({
 
     // Legacy files loading code removed - now using UnifiedFileExplorer
 
-    const handleRunTriage = async () => {
+    async function handleRunTriage() {
         console.log("DEBUG: handleRunTriage called for projectId:", projectId);
 
         // Check if re-executing a previous stage (rollback warning)
@@ -624,12 +724,23 @@ export default function TriageView({
         setTriageLog("Initializing Triage process in background..."); // Reset log
 
         try {
+            let preClassification = {};
+            try {
+                const settingsRes = await fetchWithAuth(`projects/${projectId}/settings`);
+                const settings = await settingsRes.json();
+                preClassification = settings?.pre_classification || {};
+            } catch (settingsError) {
+                console.warn("DEBUG: Could not load pre-classification settings:", settingsError);
+            }
+
+            const contextSummary = buildContextSummary(userContext, assetContexts, preClassification);
+
             const res = await fetchWithAuth(`projects/${projectId}/triage`, {
                 method: 'POST',
                 body: JSON.stringify({
                     system_prompt: systemPrompt,
                     user_context: userContext,
-                    pre_classification: {} // Pass pre-classification from Discovery if needed
+                    pre_classification: preClassification
                 })
             });
             const data = await res.json();
@@ -666,7 +777,7 @@ export default function TriageView({
             alert("Connection error running triage. Please verify backend server is running.");
             setIsTriageRunning(false);
         }
-    };
+    }
 
 
     const handleReset = async () => {
@@ -708,8 +819,7 @@ export default function TriageView({
             const data = await res.json();
 
             if (data.success) {
-                setIsTriageRunning(false);
-                setTriageLog(prev => prev + "\n[SYSTEM] Process cancelled by user.");
+                setTriageLog(prev => prev + '\n[INFO] Triage cancellation requested successfully.');
             } else {
                 setTriageLog(prev => prev + `\n[ERROR] Failed to cancel: ${data.error || 'Unknown error'}`);
             }
@@ -749,41 +859,57 @@ export default function TriageView({
                         onBackToCurrent={onBackToCurrent}
                     />
 
-                    {/* GRAPH INTELLIGENCE (HEATMAPS) */}
-                    {/* TODO v4+: Graph Intelligence Heatmaps - Feature incomplete, hidden for now */}
-                    {/*
-                <div className="bg-black/20 border-b border-white/5 px-8 py-2 flex items-center justify-between">
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
-                            <Activity size={14} className="text-gray-500" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Graph Intelligence</span>
-                        </div>
-                        <div className="flex bg-white/5 p-1 rounded-lg border border-white/5 gap-1">
-                            {[
-                                { id: 'none', label: 'Default', icon: <Map size={12} /> },
-                                { id: 'pii', label: 'PII Heatmap', icon: <ShieldAlert size={12} /> },
-                                { id: 'criticality', label: 'Criticality', icon: <AlertTriangle size={12} /> },
-                                { id: 'volume', label: 'Load Volume', icon: <Infinity size={12} /> },
-                            ].map(h => (
-                                <button
-                                    key={h.id}
-                                    onClick={() => setActiveHeatmap(h.id as any)}
-                                    className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${activeHeatmap === h.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20' : 'text-gray-500 hover:text-cyan-500'
-                                        }`}
-                                >
-                                    {h.icon} {h.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    {isTriageRunning && (
-                        <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
-                            <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest">Architect Analyzing Flow...</span>
+                    {activeSection === 'graph' && (
+                        <div className="bg-black/20 border-b border-white/5 px-8 py-2 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-6 overflow-x-auto custom-scrollbar">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <Activity size={14} className="text-gray-500" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Graph Intelligence</span>
+                                </div>
+                                <div className="flex bg-white/5 p-1 rounded-lg border border-white/5 gap-1 shrink-0">
+                                    {[
+                                        { id: 'none', label: 'Default', icon: <Map size={12} /> },
+                                        { id: 'pii', label: 'PII Heatmap', icon: <ShieldAlert size={12} /> },
+                                        { id: 'criticality', label: 'Criticality', icon: <AlertTriangle size={12} /> },
+                                        { id: 'volume', label: 'Load Volume', icon: <Infinity size={12} /> },
+                                    ].map(h => (
+                                        <button
+                                            key={h.id}
+                                            onClick={() => setActiveHeatmap(h.id as any)}
+                                            className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${activeHeatmap === h.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20' : 'text-gray-500 hover:text-cyan-500'
+                                                }`}
+                                        >
+                                            {h.icon} {h.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="hidden xl:flex items-center gap-2 text-[10px] text-gray-500 max-w-3xl">
+                                    <span className="font-black uppercase tracking-widest text-gray-400">Overlay guide:</span>
+                                    <span>
+                                        {activeHeatmap === 'none' && 'Default layout. Use this view to inspect structure before applying a risk overlay.'}
+                                        {activeHeatmap === 'pii' && 'Highlights assets that carry PII sensitivity and deserve review before handoff.'}
+                                        {activeHeatmap === 'criticality' && 'Emphasizes nodes with higher business or migration criticality.'}
+                                        {activeHeatmap === 'volume' && 'Surfaces heavier-load assets that may dominate processing windows.'}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                                {isTriageRunning && (
+                                    <>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
+                                        <span className="text-[9px] font-bold text-cyan-500 uppercase tracking-widest">Architect Analyzing Flow...</span>
+                                    </>
+                                )}
+                                {activeHeatmap !== 'none' && (
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-3 py-1">
+                                        {activeHeatmap === 'pii' && 'PII overlay'}
+                                        {activeHeatmap === 'criticality' && 'Criticality overlay'}
+                                        {activeHeatmap === 'volume' && 'Volume overlay'}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     )}
-                </div>
-                */}
 
                     {/* Main Content Area - Sprint 14: Sidebar managed at workspace level */}
                     <div className="flex-1 overflow-hidden relative">
@@ -804,7 +930,7 @@ export default function TriageView({
                                         </div>
                                         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                             <p className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Context</p>
-                                            <p className="mt-3 text-2xl font-black text-white">{Object.keys(assetContexts).length}</p>
+                                            <p className="mt-3 text-2xl font-black text-white">{Object.keys(assetContexts).length + (userContext.trim() ? 1 : 0)}</p>
                                             <p className="mt-2 text-sm text-gray-400">Manual notes and project-specific guidance captured.</p>
                                         </div>
                                     </div>
@@ -904,6 +1030,34 @@ export default function TriageView({
                         {activeSection === 'tables' && (
                             <div className="h-full w-full p-8 overflow-y-auto bg-[var(--background)]">
                                 <TableRegistry projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* UNDERSTANDING TAB — Block 3 */}
+                        {activeSection === 'understanding' && (
+                            <div className="h-full w-full overflow-hidden">
+                                <UnderstandingPanel projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* EXPORT TAB — Block 4 */}
+                        {activeSection === 'export' && (
+                            <div className="h-full w-full overflow-y-auto p-8 bg-[var(--background)]">
+                                <ExportPanel projectId={projectId} projectName={projectName || 'Project'} />
+                            </div>
+                        )}
+
+                        {/* REFINEMENT TAB — Block 5 */}
+                        {activeSection === 'refinement' && (
+                            <div className="h-full w-full overflow-y-auto p-8 bg-[var(--background)]">
+                                <RuleRefinementPanel projectId={projectId} />
+                            </div>
+                        )}
+
+                        {/* GOVERNANCE TAB — Block 6 */}
+                        {activeSection === 'governance' && (
+                            <div className="h-full w-full overflow-y-auto p-8 bg-[var(--background)]">
+                                <GovernancePanel projectId={projectId} />
                             </div>
                         )}
 
@@ -1042,6 +1196,9 @@ export default function TriageView({
                                                     <span className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">{selectedNodeData.category}</span>
                                                     <h2 className="text-xl font-bold text-[var(--text-primary)] mt-1 break-all">{selectedNodeData.label}</h2>
                                                     <p className="text-xs text-[var(--text-tertiary)] font-medium mt-2">{selectedNodeData.id}</p>
+                                                    <p className="text-xs text-[var(--text-tertiary)] mt-3 leading-relaxed">
+                                                        This panel summarizes the selected asset, the target shape being proposed, and any risk flags worth reviewing before moving to schema details.
+                                                    </p>
                                                 </div>
 
                                                 {/* Metadata Grid */}
@@ -1066,13 +1223,14 @@ export default function TriageView({
                                                             <ShieldCheck size={14} className="text-emerald-500" />
                                                             <span className="text-[10px] font-black text-white uppercase tracking-widest">Architect Suggestion</span>
                                                         </div>
+                                                        <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-4">Use this as the draft target shape for the asset.</p>
                                                         <div className="space-y-4">
                                                             <div>
-                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Target Name:</span>
+                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Proposed Target:</span>
                                                                 <p className="text-xs font-mono text-cyan-500 mt-1">{selectedNodeData.target_name || 'N/A'}</p>
                                                             </div>
                                                             <div>
-                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Partition Strategy:</span>
+                                                                <span className="text-[9px] font-bold text-gray-600 uppercase">Partitioning Hint:</span>
                                                                 <p className="text-xs font-bold text-white mt-1">{selectedNodeData.metadata?.partition_key || 'No partitioning suggested'}</p>
                                                             </div>
                                                         </div>
@@ -1083,10 +1241,11 @@ export default function TriageView({
                                                             <Zap size={14} className="text-amber-500" />
                                                             <span className="text-[10px] font-black text-white uppercase tracking-widest">Actionable Intel</span>
                                                         </div>
+                                                        <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-4">Quick flags that can change the migration path or review order.</p>
                                                         <div className="flex items-center gap-3">
                                                             <div className={`w-3 h-3 rounded-full ${selectedNodeData.metadata?.is_pii ? 'bg-red-500' : 'bg-gray-700'}`} />
                                                             <span className="text-[10px] font-bold text-gray-400 uppercase">
-                                                                PII Content: {selectedNodeData.metadata?.is_pii ? 'YES (High Risk)' : 'NO (Clean)'}
+                                                                Sensitive Data Flag: {selectedNodeData.metadata?.is_pii ? 'YES (High Risk)' : 'NO (Clean)'}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1337,6 +1496,21 @@ export default function TriageView({
                         {activeSection === 'context' && (
                             <div className="h-full w-full p-8 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                                 <div className="max-w-7xl mx-auto space-y-10">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="rounded-xl border border-yellow-400/30 bg-yellow-50 dark:bg-yellow-900/20 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-yellow-700 dark:text-yellow-300">Global Context</p>
+                                            <p className="mt-2 text-xl font-black text-yellow-900 dark:text-yellow-100">{userContext.trim() ? 'Captured' : 'Empty'}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400">Asset Contexts</p>
+                                            <p className="mt-2 text-xl font-black text-white">{Object.keys(assetContexts).length}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Guided Re-run</p>
+                                            <p className="mt-2 text-xl font-black text-white">{userContext.trim() || Object.keys(assetContexts).length > 0 ? 'Ready' : 'Waiting'}</p>
+                                        </div>
+                                    </div>
+
                                     {/* Global Context */}
                                     <div className="space-y-6 pb-20">
                                         {/* Warning Banner */}
@@ -1362,6 +1536,21 @@ export default function TriageView({
                                         <p className="text-sm text-gray-600 dark:text-gray-400">
                                             Provide analysis guidelines for the agent (e.g., ignore specific schemas, prioritize certain packages, naming conventions). Markdown formatting supported.
                                         </p>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Project-level guidance</p>
+                                                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">Saved once and reused automatically on the next Triage run.</p>
+                                            </div>
+                                            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Per-asset notes</p>
+                                                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">Each asset can carry notes and structured rules that travel with the rerun.</p>
+                                            </div>
+                                            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Preview before run</p>
+                                                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">The re-run dialog now shows how many context blocks and overrides will be applied.</p>
+                                            </div>
+                                        </div>
 
                                         {/* Split Panel: Editor (Left) + Preview (Right) */}
                                         <div className="grid grid-cols-2 gap-4">
@@ -1400,7 +1589,7 @@ export default function TriageView({
                                                 <span className="font-bold">Remember: Save changes and re-run Triage to apply new rules</span>
                                             </p>
                                             <button
-                                                onClick={() => handleSaveContext('__global__', userContext)}
+                                                onClick={() => handleSaveContext('__global__', userContext, {}, true)}
                                                 className="px-6 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-bold transition-colors flex items-center gap-2 shadow-lg"
                                                 disabled={isSavingContext}
                                             >
@@ -1537,7 +1726,7 @@ export default function TriageView({
                                                     [selectedAssetForContext]: { notes, rules }
                                                 }));
                                                 // Save to backend
-                                                handleSaveContext(selectedAssetForContext, notes);
+                                                handleSaveContext(selectedAssetForContext, notes, rules, true);
                                             }}
                                             className="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
                                             disabled={isSavingContext}

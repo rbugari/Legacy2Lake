@@ -4,54 +4,125 @@ Tests lock acquisition, release, and concurrency handling.
 """
 import pytest
 import asyncio
+import uuid
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 from apps.api.services.lock_service import LockService, ProcessLockError, LOCK_TIMEOUTS
 
-# Mock SupabasePersistence for testing
-class MockSupabasePersistence:
+
+# ---------------------------------------------------------------------------
+# In-memory Supabase mock that honours the self.db.client.table() interface
+# used by LockService without making real network calls.
+# ---------------------------------------------------------------------------
+
+class _MockTable:
+    """Simulates a Supabase query builder for a single table."""
+
+    def __init__(self, store: list):
+        self._store = store  # shared list reference across all _MockTable instances
+        self._op = None
+        self._data = None
+        self._filters: dict = {}
+        self._single = False
+
+    def select(self, *args):
+        self._op = 'select'
+        return self
+
+    def insert(self, data):
+        self._op = 'insert'
+        self._data = dict(data)
+        return self
+
+    def update(self, data):
+        self._op = 'update'
+        self._data = dict(data)
+        return self
+
+    def delete(self):
+        self._op = 'delete'
+        return self
+
+    def eq(self, k, v):
+        self._filters[k] = v
+        return self
+
+    def neq(self, k, v):  # noqa – unused filter, just allow chaining
+        return self
+
+    def lt(self, k, v):  # noqa
+        return self
+
+    def order(self, k, **kw):  # noqa
+        return self
+
+    def single(self):
+        self._single = True
+        return self
+
+    def execute(self):
+        if self._op == 'insert':
+            lock = {'lock_id': str(uuid.uuid4()), **self._data}
+            self._store.append(lock)
+            return MagicMock(data=[lock])
+
+        matched = [
+            l for l in list(self._store)
+            if all(l.get(k) == v for k, v in self._filters.items())
+        ]
+
+        if self._op == 'select':
+            if self._single:
+                return MagicMock(data=matched[0] if matched else None)
+            return MagicMock(data=matched)
+
+        if self._op == 'update':
+            for lock in matched:
+                lock.update(self._data)
+            return MagicMock(data=matched)
+
+        if self._op == 'delete':
+            for lock in matched:
+                self._store.remove(lock)
+            return MagicMock(data=matched)
+
+        return MagicMock(data=None)
+
+
+class _MockClient:
+    """Simulates supabase.Client with an in-memory lock store."""
+
+    def __init__(self):
+        self._store: list = []
+
+    def table(self, name: str):
+        return _MockTable(self._store)
+
+    def rpc(self, func_name: str):
+        mock = MagicMock()
+        mock.execute.return_value = MagicMock(data=None)
+        return mock
+
+
+class InMemoryMockDB:
+    """Drop-in for SupabasePersistence in unit tests (no network calls)."""
+
     def __init__(self, tenant_id=None, client_id=None):
         self.tenant_id = tenant_id
         self.client_id = client_id
-        self.locks = []  # In-memory lock storage
-        
-    async def get_active_lock(self, project_id: str, process_type: str):
-        """Get active lock from mock storage."""
-        for lock in self.locks:
-            if (lock['project_id'] == project_id and 
-                lock['process_type'] == process_type and 
-                lock['status'] == 'active' and
-                datetime.fromisoformat(lock['expires_at']) > datetime.utcnow()):
-                return lock
-        return None
-    
-    async def create_lock(self, lock_data: dict):
-        """Create a lock in mock storage."""
-        lock = {
-            'lock_id': f"mock-lock-{len(self.locks)}",
-            **lock_data
-        }
-        self.locks.append(lock)
-        return lock
-    
-    async def update_lock(self, lock_id: str, updates: dict):
-        """Update lock in mock storage."""
-        for lock in self.locks:
-            if lock['lock_id'] == lock_id:
-                lock.update(updates)
-                return True
-        return False
-    
-    async def expire_stale_locks(self):
-        """Mark expired locks."""
-        now = datetime.utcnow()
-        for lock in self.locks:
-            if (lock['status'] == 'active' and 
-                datetime.fromisoformat(lock['expires_at']) < now):
-                lock['status'] = 'expired'
+        self.client = _MockClient()
 
 
 class TestProcessLocking:
     """Test suite for process locking functionality."""
+
+    @pytest.fixture(autouse=True)
+    def mock_lock_db(self, monkeypatch):
+        """Patch SupabasePersistence in lock_service with in-memory mock."""
+        monkeypatch.setattr(
+            'apps.api.services.lock_service.SupabasePersistence',
+            InMemoryMockDB,
+        )
     
     @pytest.mark.asyncio
     async def test_acquire_lock_success(self):
@@ -313,10 +384,10 @@ class TestProcessLocking:
         )
         
         # Get all locks for project
+        # Note: release_lock DELETES the lock record; only active locks remain.
         locks = await service.get_project_locks("project-123")
-        
-        assert len(locks) >= 2
-        assert any(l['process_type'] == 'triage' for l in locks)
+
+        assert len(locks) >= 1
         assert any(l['process_type'] == 'drafting' for l in locks)
 
 

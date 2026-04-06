@@ -89,14 +89,15 @@ class TableImpactService:
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.db = SupabasePersistence(tenant_id=tenant_id, client_id=client_id)
+        self._impact_conflict_target = "project_id,asset_id,full_name,operation"
     
     async def analyze_impacts(self) -> Dict[str, Any]:
         """
         Analyzes all assets in project and registers table impacts.
         
         For each asset:
-        1. Read metadata.logical_medulla
-        2. Extract tables from each component (SqlCommand, OpenRowset, TableOrViewName)
+        1. Read metadata.logical_medulla when available
+        2. Fallback to raw SQL content for SQL-only assets
         3. Determine operation (SELECT, INSERT, UPDATE, etc.)
         4. Infer columns_affected
         5. Register in utm_table_impacts
@@ -130,11 +131,13 @@ class TableImpactService:
                 metadata = asset.get("metadata", {})
                 medulla = metadata.get("logical_medulla", {})
                 
-                if not medulla:
+                if medulla:
+                    impacts = self._extract_impacts_from_asset(asset, medulla)
+                else:
+                    impacts = self._extract_impacts_from_sql_asset(asset)
+
+                if not impacts:
                     continue
-                
-                # Extract impacts from all components
-                impacts = self._extract_impacts_from_asset(asset, medulla)
                 
                 # Save to database
                 for impact in impacts:
@@ -333,6 +336,81 @@ class TableImpactService:
                 impacts.append(impact)
         
         return impacts
+
+    def _extract_impacts_from_sql_asset(self, asset: Dict) -> List[Dict]:
+        """
+        Extract impacts directly from raw SQL content for SQL-only assets.
+
+        This is the fallback path for projects that do not provide an SSIS-style
+        logical_medulla but still contain DML/DDL logic in stored procedures or scripts.
+        """
+        raw_content = asset.get("raw_content")
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            return []
+
+        source_name = (asset.get("source_name") or asset.get("asset_name") or "").lower()
+        source_tech = str(asset.get("source_tech") or asset.get("metadata", {}).get("source_tech") or "").lower()
+
+        if not source_name.endswith((".sql", ".ddl")) and "sql" not in source_tech and "mysql" not in source_tech and "mariadb" not in source_tech:
+            return []
+
+        impacts: List[Dict] = []
+        seen_impacts: Set[Tuple[str, str, bool, bool]] = set()
+
+        for statement in self._split_sql_statements(raw_content):
+            operation = self._parse_sql_operation(statement)
+            if operation == "UNKNOWN":
+                continue
+
+            target_tables = self._extract_target_tables(statement, operation)
+            source_tables = self._extract_source_tables(statement, operation, target_tables)
+            columns = self._infer_columns_affected(statement, operation)
+            access_pattern = self._infer_sql_access_pattern(statement, operation)
+            asset_name = asset.get("source_name", asset.get("name", "unknown"))
+
+            for table in source_tables:
+                impact_key = (table["full_name"], "SELECT", True, False)
+                if impact_key in seen_impacts:
+                    continue
+                seen_impacts.add(impact_key)
+                impacts.append({
+                    "tenant_id": self.tenant_id,
+                    "project_id": self.project_id,
+                    "schema_name": table.get("schema_name"),
+                    "table_name": table["table_name"],
+                    "full_name": table["full_name"],
+                    "asset_id": asset["object_id"],
+                    "asset_name": asset_name,
+                    "operation": "SELECT",
+                    "access_pattern": access_pattern if operation == "SELECT" else None,
+                    "is_source": True,
+                    "is_target": False,
+                    "sql_statement": statement,
+                    "columns_affected": columns if operation == "SELECT" else []
+                })
+
+            for table in target_tables:
+                impact_key = (table["full_name"], operation, False, True)
+                if impact_key in seen_impacts:
+                    continue
+                seen_impacts.add(impact_key)
+                impacts.append({
+                    "tenant_id": self.tenant_id,
+                    "project_id": self.project_id,
+                    "schema_name": table.get("schema_name"),
+                    "table_name": table["table_name"],
+                    "full_name": table["full_name"],
+                    "asset_id": asset["object_id"],
+                    "asset_name": asset_name,
+                    "operation": operation,
+                    "access_pattern": access_pattern,
+                    "is_source": False,
+                    "is_target": True,
+                    "sql_statement": statement,
+                    "columns_affected": columns
+                })
+
+        return impacts
     
     def _extract_tables_from_component(self, comp: Dict) -> List[Dict]:
         """
@@ -447,6 +525,108 @@ class TableImpactService:
                 cleaned.append(cleaned_name)
         
         return sorted(list(set(cleaned)))
+
+    def _split_sql_statements(self, sql: str) -> List[str]:
+        """Split SQL scripts into executable statements, tolerating MySQL delimiters and SP bodies."""
+        if not sql:
+            return []
+
+        cleaned = sql.replace("\r\n", "\n")
+        cleaned = re.sub(r"(?im)^\s*DELIMITER\s+.+$", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*USE\s+[^;]+;\s*$", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*DROP\s+(?:PROCEDURE|FUNCTION|TRIGGER)\b[^;]*;\s*$", "", cleaned)
+        cleaned = re.sub(r"/\*.*?\*/", " ", cleaned, flags=re.S)
+        cleaned = cleaned.replace("$$", ";")
+
+        parts = re.split(r";", cleaned)
+        statements: List[str] = []
+        operation_pattern = re.compile(
+            r"(?is)\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE(?:\s+INTO)?|TRUNCATE\s+TABLE|SELECT)\b"
+        )
+
+        for part in parts:
+            if not part or not part.strip():
+                continue
+
+            stripped = part.strip()
+            match = operation_pattern.search(stripped)
+            if match:
+                stripped = stripped[match.start():].strip()
+
+            statements.append(stripped)
+
+        return statements
+
+    def _extract_target_tables(self, sql: str, operation: str) -> List[Dict[str, Optional[str]]]:
+        """Return tables written by the statement."""
+        table_patterns = {
+            "INSERT": [r"\bINSERT\s+INTO\s+"],
+            "UPDATE": [r"\bUPDATE\s+"],
+            "DELETE": [r"\bDELETE\s+FROM\s+"],
+            "MERGE": [r"\bMERGE\s+(?:INTO\s+)?"],
+            "TRUNCATE": [r"\bTRUNCATE\s+TABLE\s+"],
+        }
+        patterns = table_patterns.get(operation, [])
+        return self._extract_tables_by_prefix_patterns(sql, patterns)
+
+    def _extract_source_tables(
+        self,
+        sql: str,
+        operation: str,
+        target_tables: Optional[List[Dict[str, Optional[str]]]] = None,
+    ) -> List[Dict[str, Optional[str]]]:
+        """Return tables read by the statement."""
+        source_tables = self._extract_tables_by_prefix_patterns(
+            sql,
+            [r"\bFROM\s+", r"\bJOIN\s+", r"\bUSING\s+"],
+        )
+
+        if operation == "SELECT":
+            return source_tables
+
+        target_names = {table["full_name"].lower() for table in (target_tables or [])}
+        return [table for table in source_tables if table["full_name"].lower() not in target_names]
+
+    def _extract_tables_by_prefix_patterns(
+        self,
+        sql: str,
+        prefix_patterns: List[str],
+    ) -> List[Dict[str, Optional[str]]]:
+        """Extract tables referenced after known SQL prefixes."""
+        if not sql:
+            return []
+
+        results: List[Dict[str, Optional[str]]] = []
+        seen: Set[str] = set()
+        table_ref_pattern = r'(?:[`"\[]?(\w+)[`"\]]?\.)?[`"\[]?(\w+)[`"\]]?'
+
+        for prefix in prefix_patterns:
+            pattern = prefix + table_ref_pattern
+            for match in re.finditer(pattern, sql, re.IGNORECASE):
+                schema = match.group(1)
+                table_name = match.group(2) if match.lastindex and match.lastindex >= 2 else None
+                if not table_name:
+                    continue
+                full_name = f"{schema}.{table_name}" if schema else table_name
+                normalized = self._clean_table_name(full_name)
+                if not normalized or normalized.lower() in {"select", "set", "values"}:
+                    continue
+                if normalized.lower() in seen:
+                    continue
+                seen.add(normalized.lower())
+                parts = normalized.split(".", 1)
+                if len(parts) == 2:
+                    schema_name, cleaned_table = parts
+                else:
+                    schema_name = None
+                    cleaned_table = parts[0]
+                results.append({
+                    "schema_name": schema_name,
+                    "table_name": cleaned_table,
+                    "full_name": normalized,
+                })
+
+        return results
     
     def _clean_table_name(self, raw_name: str) -> str:
         """
@@ -454,7 +634,7 @@ class TableImpactService:
         [dbo].[Table] → dbo.Table
         "dbo"."Table" → dbo.Table
         """
-        cleaned = re.sub(r'[\[\]"]', '', raw_name)
+        cleaned = re.sub(r'[\[\]"`]', '', raw_name)
         return cleaned.strip()
     
     def _classify_operation(self, comp: Dict) -> str:
@@ -487,138 +667,208 @@ class TableImpactService:
         return "UNKNOWN"
     
     def _parse_sql_operation(self, sql: str) -> str:
-        """
-        Parses SQL to determine operation type using sqlglot (if available) or regex fallback.
-        """
-        try:
-            import sqlglot
-            
-            # Parse SQL (T-SQL dialect)
-            parsed = sqlglot.parse_one(sql, dialect="tsql")
-            
-            if not parsed:
-                return "UNKNOWN"
-            
-            # Determine statement type
-            stmt_type = type(parsed).__name__
-            
-            if "Select" in stmt_type:
-                return "SELECT"
-            elif "Insert" in stmt_type:
-                return "INSERT"
-            elif "Update" in stmt_type:
-                return "UPDATE"
-            elif "Delete" in stmt_type:
-                return "DELETE"
-            elif "Merge" in stmt_type:
-                return "MERGE"
-            elif "Truncate" in stmt_type or "TRUNCATE" in sql.upper():
-                return "TRUNCATE"
-            
+        """Parses SQL to determine the leading DML operation without invoking heavy parsers."""
+        if not sql:
             return "UNKNOWN"
-        
-        except Exception as e:
-            # Fallback to regex if sqlglot fails or not available
-            sql_upper = sql.strip().upper()
-            if sql_upper.startswith("SELECT"):
-                return "SELECT"
-            elif sql_upper.startswith("INSERT"):
-                return "INSERT"
-            elif sql_upper.startswith("UPDATE"):
-                return "UPDATE"
-            elif sql_upper.startswith("DELETE"):
-                return "DELETE"
-            elif sql_upper.startswith("MERGE"):
-                return "MERGE"
-            elif sql_upper.startswith("TRUNCATE"):
-                return "TRUNCATE"
-            
-            return "UNKNOWN"
-    
+
+        sql_upper = sql.strip().upper()
+        operation_patterns = [
+            (r"^SELECT\b", "SELECT"),
+            (r"^INSERT\b", "INSERT"),
+            (r"^UPDATE\b", "UPDATE"),
+            (r"^DELETE\b", "DELETE"),
+            (r"^MERGE\b", "MERGE"),
+            (r"^TRUNCATE\b", "TRUNCATE"),
+        ]
+
+        for pattern, operation in operation_patterns:
+            if re.match(pattern, sql_upper, re.IGNORECASE):
+                return operation
+
+        return "UNKNOWN"
+
+    def _split_top_level_csv(self, value: str) -> List[str]:
+        """Split comma-separated SQL fragments while preserving nested expressions."""
+        if not value:
+            return []
+
+        items: List[str] = []
+        current: List[str] = []
+        depth = 0
+        quote_char: Optional[str] = None
+
+        for char in value:
+            if quote_char:
+                current.append(char)
+                if char == quote_char:
+                    quote_char = None
+                continue
+
+            if char in {"'", '"'}:
+                quote_char = char
+                current.append(char)
+                continue
+
+            if char == "(":
+                depth += 1
+            elif char == ")" and depth > 0:
+                depth -= 1
+            elif char == "," and depth == 0:
+                item = "".join(current).strip()
+                if item:
+                    items.append(item)
+                current = []
+                continue
+
+            current.append(char)
+
+        tail = "".join(current).strip()
+        if tail:
+            items.append(tail)
+
+        return items
+
+    def _infer_columns_with_regex(self, sql: str, operation: str) -> Optional[List[str]]:
+        """Infer affected columns using lightweight regex rules for common DML shapes."""
+        if operation == "DELETE":
+            return ["*"]
+
+        if operation == "INSERT":
+            match = re.search(
+                r"\bINSERT(?:\s+IGNORE)?\s+INTO\s+(?:[`\"\[]?\w+[`\"\]]?\.)?[`\"\[]?\w+[`\"\]]?\s*\((.*?)\)",
+                sql,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if not match:
+                return ["*"]
+
+            columns = [self._clean_table_name(column) for column in self._split_top_level_csv(match.group(1))]
+            return sorted(list({column for column in columns if column}))
+
+        if operation == "UPDATE":
+            match = re.search(r"\bSET\b(.*?)(?:\bWHERE\b|$)", sql, re.IGNORECASE | re.DOTALL)
+            if not match:
+                return []
+
+            columns: List[str] = []
+            for assignment in self._split_top_level_csv(match.group(1)):
+                left_side = assignment.split("=", 1)[0].strip()
+                if not left_side:
+                    continue
+                columns.append(self._clean_table_name(left_side).split(".")[-1])
+
+            return sorted(list({column for column in columns if column}))
+
+        if operation == "SELECT":
+            match = re.search(r"\bSELECT\b(.*?)(?:\bFROM\b|$)", sql, re.IGNORECASE | re.DOTALL)
+            if not match:
+                return []
+
+            select_list = match.group(1).strip()
+            if not select_list:
+                return []
+            if select_list == "*":
+                return ["*"]
+
+            columns: List[str] = []
+            for expression in self._split_top_level_csv(select_list):
+                expr = re.sub(r"\bAS\b\s+[`\"\[]?\w+[`\"\]]?$", "", expression, flags=re.IGNORECASE).strip()
+                if expr == "*" or expr.endswith(".*"):
+                    return ["*"]
+                name_match = re.search(r"([`\"\[]?\w+[`\"\]]?)(?:\s*)$", expr)
+                if not name_match:
+                    continue
+                columns.append(self._clean_table_name(name_match.group(1)).split(".")[-1])
+
+            return sorted(list({column for column in columns if column}))
+
+        return None
+
+    def _iter_sqlglot_dialects(self, sql: str) -> List[str]:
+        """Prefer MySQL parsing for MySQL-style statements, then fall back to T-SQL."""
+        sql_upper = (sql or "").upper()
+        mysql_markers = ["INSERT IGNORE", "CURDATE(", "DATE_SUB(", "DELIMITER", "LAST_INSERT_ID", "IFNULL(", "ON DUPLICATE KEY UPDATE"]
+        if any(marker in sql_upper for marker in mysql_markers):
+            return ["mysql", "tsql"]
+        return ["tsql", "mysql"]
+
     def _infer_columns_affected(self, sql: str, operation: str) -> List[str]:
         """
         Infers which columns are affected by SQL operation.
-        
+
         - UPDATE dbo.X SET col1 = ..., col2 = ... → ["col1", "col2"]
         - INSERT INTO dbo.X (col1, col2) → ["col1", "col2"]
         - SELECT col1, col2 FROM → ["col1", "col2"]
         - SELECT * FROM → ["*"]
-        
-        Uses sqlglot for precise parsing, regex fallback if unavailable.
         """
         if not sql:
             return []
-        
+
+        regex_columns = self._infer_columns_with_regex(sql, operation)
+        if regex_columns is not None:
+            return regex_columns
+
         try:
             import sqlglot
             from sqlglot import expressions as exp
-            
-            parsed = sqlglot.parse_one(sql, dialect="tsql")
-            columns = []
-            
-            if operation == "UPDATE":
-                # Find SET clauses
-                for node in parsed.find_all(exp.Update):
-                    for set_item in node.find_all(exp.EQ):
-                        if isinstance(set_item.left, exp.Column):
-                            columns.append(set_item.left.name)
-            
-            elif operation == "INSERT":
-                # Find columns in INSERT INTO table (col1, col2)
-                for node in parsed.find_all(exp.Insert):
-                    if node.this:
-                        # Explicit columns
-                        if hasattr(node, 'columns') and node.columns:
-                            columns.extend([col.name for col in node.columns])
-                        else:
-                            # No explicit columns = all columns
-                            columns = ["*"]
-            
-            elif operation == "SELECT":
-                # Find columns in SELECT
-                for node in parsed.find_all(exp.Select):
-                    for col in node.expressions:
-                        if isinstance(col, exp.Star):
-                            return ["*"]
-                        elif isinstance(col, exp.Column):
-                            columns.append(col.name)
-                        elif isinstance(col, exp.Alias):
-                            # Alias (col AS alias) → use original name
-                            if isinstance(col.this, exp.Column):
-                                columns.append(col.this.name)
-            
-            elif operation == "DELETE":
-                # DELETE affects entire row
-                return ["*"]
-            
-            elif operation == "MERGE":
-                # MERGE can UPDATE and INSERT
-                update_cols = []
-                insert_cols = []
-                
-                for node in parsed.find_all(exp.Merge):
-                    # WHEN MATCHED THEN UPDATE SET ...
-                    for update in node.find_all(exp.Update):
-                        for set_item in update.find_all(exp.EQ):
-                            if isinstance(set_item.left, exp.Column):
-                                update_cols.append(set_item.left.name)
-                    
-                    # WHEN NOT MATCHED THEN INSERT ...
-                    for insert in node.find_all(exp.Insert):
-                        if hasattr(insert, 'columns') and insert.columns:
-                            insert_cols.extend([col.name for col in insert.columns])
-                
-                columns = list(set(update_cols + insert_cols))
-            
-            return sorted(list(set(columns))) if columns else []
-        
-        except Exception as e:
-            logger.warning(
-                f"[TableImpact] Column inference error: {e}",
-                "TableImpact"
-            )
+        except Exception:
             return []
-    
+
+        for dialect in self._iter_sqlglot_dialects(sql):
+            try:
+                parsed = sqlglot.parse_one(sql, dialect=dialect)
+                columns = []
+
+                if operation == "UPDATE":
+                    for node in parsed.find_all(exp.Update):
+                        for set_item in node.find_all(exp.EQ):
+                            if isinstance(set_item.left, exp.Column):
+                                columns.append(set_item.left.name)
+
+                elif operation == "INSERT":
+                    for node in parsed.find_all(exp.Insert):
+                        if node.this:
+                            if hasattr(node, "columns") and node.columns:
+                                columns.extend([col.name for col in node.columns])
+                            else:
+                                columns = ["*"]
+
+                elif operation == "SELECT":
+                    for node in parsed.find_all(exp.Select):
+                        for col in node.expressions:
+                            if isinstance(col, exp.Star):
+                                return ["*"]
+                            if isinstance(col, exp.Column):
+                                columns.append(col.name)
+                            elif isinstance(col, exp.Alias) and isinstance(col.this, exp.Column):
+                                columns.append(col.this.name)
+
+                elif operation == "DELETE":
+                    return ["*"]
+
+                elif operation == "MERGE":
+                    update_cols = []
+                    insert_cols = []
+
+                    for node in parsed.find_all(exp.Merge):
+                        for update in node.find_all(exp.Update):
+                            for set_item in update.find_all(exp.EQ):
+                                if isinstance(set_item.left, exp.Column):
+                                    update_cols.append(set_item.left.name)
+
+                        for insert in node.find_all(exp.Insert):
+                            if hasattr(insert, "columns") and insert.columns:
+                                insert_cols.extend([col.name for col in insert.columns])
+
+                    columns = list(set(update_cols + insert_cols))
+
+                if columns:
+                    return sorted(list(set(columns)))
+            except Exception:
+                continue
+
+        return []
+
     def _infer_access_pattern(self, comp: Dict, operation: str) -> Optional[str]:
         """
         Infers access pattern based on component properties and operation.
@@ -646,6 +896,19 @@ class TableImpactService:
             return "FULL_LOAD"
         
         return None
+
+    def _infer_sql_access_pattern(self, sql: str, operation: str) -> Optional[str]:
+        """Infer access pattern directly from a SQL statement."""
+        sql_upper = (sql or "").upper()
+
+        if operation == "MERGE":
+            return "UPSERT"
+        if operation == "SELECT" and "WHERE" not in sql_upper:
+            return "FULL_LOAD"
+        if operation in {"INSERT", "UPDATE", "DELETE", "SELECT"} and any(token in sql_upper for token in ["CURDATE(", "CURRENT_DATE", "GETDATE(", "DATE_SUB(", "DATEADD(", "BETWEEN", ">", "<"]):
+            return "INCREMENTAL"
+
+        return None
     
     async def _save_impact(self, impact: Dict) -> None:
         """
@@ -656,8 +919,12 @@ class TableImpactService:
             # Remove generated column (full_name is generated in DB)
             data = {k: v for k, v in impact.items() if k != 'full_name'}
             
-            # UPSERT
-            self.db.client.table("utm_table_impacts").upsert(data).execute()
+            # UPSERT with the exact natural key used by the table constraint.
+            # This keeps reruns idempotent for the same project/asset/table/operation tuple.
+            self.db.client.table("utm_table_impacts").upsert(
+                data,
+                on_conflict=self._impact_conflict_target,
+            ).execute()
         
         except Exception as e:
             logger.error(

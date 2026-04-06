@@ -38,6 +38,24 @@ interface DiscoveryViewProps {
     onSectionChange?: (section: string) => void;
 }
 
+interface DiscoveryIntake {
+    business_domain: string;
+    migration_goals: string;
+    critical_processes: string;
+    operational_constraints: string;
+    data_sensitivity: string;
+    notes: string;
+}
+
+const emptyIntake: DiscoveryIntake = {
+    business_domain: '',
+    migration_goals: '',
+    critical_processes: '',
+    operational_constraints: '',
+    data_sensitivity: '',
+    notes: ''
+};
+
 export default function DiscoveryView({
     projectId,
     onStageChange,
@@ -48,6 +66,16 @@ export default function DiscoveryView({
     activeSection = 'assessment',
     onSectionChange
 }: DiscoveryViewProps) {
+    const SUPPORTED_SOURCE_TECHS = new Set([
+        "MYSQL",
+        "SQL_SERVER",
+        "ORACLE",
+        "SSIS",
+        "INFORMATICA",
+        "DATASTAGE",
+        "PENTAHO",
+    ]);
+
     const { confirm, ConfirmDialog } = useConfirm();
     const [isScanning, setIsScanning] = useState(false);
     const [scanProgress, setScanProgress] = useState(0);
@@ -56,6 +84,11 @@ export default function DiscoveryView({
     const [hasContext, setHasContext] = useState(false);
     const [isApproved, setIsApproved] = useState(false);
     const [isApproving, setIsApproving] = useState(false);
+    const [projectSettings, setProjectSettings] = useState<Record<string, any>>({});
+    const [projectIntake, setProjectIntake] = useState<DiscoveryIntake>(emptyIntake);
+    const [savingIntake, setSavingIntake] = useState(false);
+    const [evidenceItems, setEvidenceItems] = useState<any[]>([]);
+    const [savingEvidenceKey, setSavingEvidenceKey] = useState<string | null>(null);
 
     // Readiness badge refresh trigger (incremented after a scan completes)
     const [readinessKey, setReadinessKey] = useState(0);
@@ -83,6 +116,7 @@ export default function DiscoveryView({
 
     const normalizeTech = (tech: string) => {
         const t = tech.toUpperCase();
+        if (t.includes("MYSQL") || t.includes("MARIADB")) return "MYSQL";
         if (t.includes("SSIS") || t.includes("SQL SERVER") || t.includes("T-SQL") || t.includes("TSQL")) return "SQL_SERVER";
         if (t.includes("ORACLE") || t.includes("PLSQL") || t.includes("PL/SQL")) return "ORACLE";
         if (t.includes("PYTHON") || t.includes("PY")) return "PYTHON";
@@ -90,6 +124,24 @@ export default function DiscoveryView({
         if (t.includes("SNOWFLAKE") || t.includes("SNOWPARK")) return "SNOWFLAKE";
         if (t.includes("FABRIC")) return "FABRIC";
         return t;
+    };
+
+    const isCompatibleTech = (source: string, detected: string) => {
+        const s = normalizeTech(source || "");
+        const d = normalizeTech(detected || "");
+
+        if (!s || !d || s === "UNKNOWN" || d === "UNKNOWN") return false;
+        if (s === d) return true;
+
+        // Generic SQL detection is acceptable for MySQL/MariaDB source projects.
+        if (s === "MYSQL" && d === "SQL") return true;
+
+        return false;
+    };
+
+    const isSupportedSourceTech = (tech: string) => {
+        const n = normalizeTech(tech || "");
+        return SUPPORTED_SOURCE_TECHS.has(n);
     };
 
     useEffect(() => {
@@ -166,7 +218,7 @@ export default function DiscoveryView({
 
                 const mismatch = data.detected_techs?.[0] &&
                     currentSourceTech !== "UNKNOWN" &&
-                    detectedNormalized !== sourceNormalized;
+                    !isCompatibleTech(currentSourceTech, data.detected_techs?.[0]);
 
                 // Only show conflict if there is a real mismatch and we have a decent score
                 // or if it's unknown but we detected something.
@@ -191,6 +243,18 @@ export default function DiscoveryView({
                     console.error("Failed to load file inventory:", err);
                 }
 
+                try {
+                    const evidenceRes = await fetchWithAuth(`projects/${projectId}/evidence`);
+                    const evidenceData = await evidenceRes.json();
+
+                    if (evidenceData.success && Array.isArray(evidenceData.items)) {
+                        setEvidenceItems(evidenceData.items);
+                        setScanLogs(prev => [...prev, `✓ Loaded ${evidenceData.count || evidenceData.items.length} evidence items`]);
+                    }
+                } catch (err) {
+                    console.error("Failed to load evidence items:", err);
+                }
+
                 // Trigger readiness recompute after successful scan
                 setReadinessKey(k => k + 1);
             }
@@ -203,10 +267,22 @@ export default function DiscoveryView({
     };
 
     useEffect(() => {
-        // Fetch project settings to get Source Tech
+        // Fetch project settings to get Source Tech + structured intake
         fetchWithAuth(`projects/${projectId}`)
             .then(res => res.json())
             .then(data => {
+                if (data?.settings) {
+                    setProjectSettings(data.settings);
+                    if (data.settings.source_tech) {
+                        setSourceTech(data.settings.source_tech);
+                    }
+                    if (data.settings.discovery_intake && typeof data.settings.discovery_intake === 'object') {
+                        setProjectIntake(prev => ({
+                            ...prev,
+                            ...data.settings.discovery_intake
+                        }));
+                    }
+                }
                 if (data.settings?.source_tech) {
                     setSourceTech(data.settings.source_tech);
                 }
@@ -238,22 +314,92 @@ export default function DiscoveryView({
 
     const handleUpdateTech = async () => {
         if (!assessment.detectedTech) return;
+        if (!isSupportedSourceTech(assessment.detectedTech)) {
+            setScanLogs(prev => [
+                ...prev,
+                `⚠️ Detected origin '${assessment.detectedTech}' is not supported. Report this origin to admin.`
+            ]);
+            return;
+        }
 
         try {
             const res = await fetchWithAuth(`projects/${projectId}/settings`, {
                 method: "PATCH",
                 body: JSON.stringify({
-                    settings: { source_tech: assessment.detectedTech }
+                    ...projectSettings,
+                    source_tech: assessment.detectedTech,
                 })
             });
 
             if (res.ok) {
                 setSourceTech(assessment.detectedTech);
+                setProjectSettings(prev => ({
+                    ...prev,
+                    source_tech: assessment.detectedTech
+                }));
                 setShowConflict(false);
                 setScanLogs(prev => [...prev, `✓ Updated project source technology to ${assessment.detectedTech}`]);
+                setReadinessKey(k => k + 1);
             }
         } catch (err) {
             console.error("Failed to update project settings", err);
+        }
+    };
+
+    const handleSaveIntake = async () => {
+        setSavingIntake(true);
+
+        try {
+            const nextSettings = {
+                ...projectSettings,
+                discovery_intake: {
+                    ...projectIntake,
+                    updated_at: new Date().toISOString()
+                }
+            };
+
+            const res = await fetchWithAuth(`projects/${projectId}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(nextSettings)
+            });
+
+            if (res.ok) {
+                setProjectSettings(nextSettings);
+                setReadinessKey(k => k + 1);
+                setScanLogs(prev => [...prev, "✓ Project intake saved and readiness refreshed"]);
+            } else {
+                alert("Failed to save project intake");
+            }
+        } catch (err) {
+            console.error("Failed to save project intake", err);
+            alert("Connection error while saving project intake");
+        } finally {
+            setSavingIntake(false);
+        }
+    };
+
+    const handleEvidenceReview = async (reviewKey: string, state: 'detected' | 'reviewed' | 'pinned' | 'dismissed', note?: string) => {
+        setSavingEvidenceKey(reviewKey);
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/evidence/review`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ review_key: reviewKey, state, note })
+            });
+
+            if (res.ok) {
+                setEvidenceItems(prev => prev.map(item => (
+                    item.review_key === reviewKey
+                        ? { ...item, review_status: state, review_note: note || item.review_note, review_updated_at: new Date().toISOString() }
+                        : item
+                )));
+                setScanLogs(prev => [...prev, `✓ Evidence ${state}: ${reviewKey.slice(0, 8)}...`]);
+            }
+        } catch (err) {
+            console.error("Failed to update evidence review", err);
+        } finally {
+            setSavingEvidenceKey(null);
         }
     };
 
@@ -376,9 +522,9 @@ export default function DiscoveryView({
         <div className="flex flex-col h-full bg-[#050505]">
             <StageHeader
                 title="Stage 0: Technical Discovery"
-                subtitle="Understand the source, detect gaps, and confirm the project is ready for triage"
+                subtitle="Inspect what was ingested, validate the detected stack, and prepare the project for Triage"
                 icon={<Activity className="text-cyan-500" />}
-                helpText="Use Discovery to inspect what was ingested, validate detected technology, and identify missing context before classification starts."
+                helpText="Discovery is the intake checkpoint: review repository contents, confirm technology, add supporting context, and promote only the files that should enter Triage."
                 onApprove={handleStartTriage}
                 approveLabel={showClassification ? `Start Triage (${fileInventory.filter(f => f.include).length} files)` : "Start Triage"}
                 isApproveDisabled={scanProgress < 100 || showConflict || (showClassification && fileInventory.filter(f => f.include).length === 0)}
@@ -395,7 +541,7 @@ export default function DiscoveryView({
                         className="px-6 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-500 transition-all shadow-xl shadow-cyan-600/20 disabled:opacity-50 active:scale-95"
                     >
                         {isScanning ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                        {isScanning ? "Scanning..." : "Start Forensic Scan"}
+                        {isScanning ? "Scanning..." : "Run Discovery Audit"}
                     </button>
                 </div>
             </StageHeader>
@@ -425,7 +571,7 @@ export default function DiscoveryView({
                         <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
                             <h2 className="text-xl font-black text-white">Stage Home</h2>
                             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
-                                Use Discovery to validate the repository, identify technical gaps, and decide which files should move into Triage.
+                                Use Discovery to inspect the source repository, confirm the detected technology, record project context, and decide which files should move into Triage.
                             </p>
                             <div className="mt-6 flex flex-wrap gap-3">
                                 <button
@@ -433,7 +579,7 @@ export default function DiscoveryView({
                                     disabled={isScanning}
                                     className="px-5 py-2.5 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-cyan-500 disabled:opacity-50"
                                 >
-                                    {isScanning ? 'Scanning...' : 'Run Discovery'}
+                                    {isScanning ? 'Scanning...' : 'Run Discovery Audit'}
                                 </button>
                                 <button
                                     onClick={() => onSectionChange?.('assessment')}
@@ -451,7 +597,13 @@ export default function DiscoveryView({
                                     onClick={() => onSectionChange?.('upload')}
                                     className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
                                 >
-                                    Add Context
+                                    Add Supporting Context
+                                </button>
+                                <button
+                                    onClick={() => onSectionChange?.('intake')}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                >
+                                    Project Intake Notes
                                 </button>
                             </div>
                         </div>
@@ -506,6 +658,21 @@ export default function DiscoveryView({
                                 <p className="text-sm text-gray-300 leading-relaxed mb-8 font-medium bg-black/20 p-6 rounded-2xl border border-white/5">
                                     {assessment.summary}
                                 </p>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+                                    <div className="rounded-2xl border border-white/5 bg-black/30 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Detected Stack</p>
+                                        <p className="mt-2 text-sm font-bold text-white">{assessment.detectedTech || 'Unknown'}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/5 bg-black/30 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Files Ready</p>
+                                        <p className="mt-2 text-sm font-bold text-white">{fileInventory.filter(file => file.include !== false).length} selected</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/5 bg-black/30 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Next Step</p>
+                                        <p className="mt-2 text-sm font-bold text-white">Review gaps, then promote the right files to Triage</p>
+                                    </div>
+                                </div>
 
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Identified Gaps</h4>
@@ -597,18 +764,28 @@ export default function DiscoveryView({
                                             You selected <span className="text-white bg-black/30 px-2 py-0.5 rounded">{sourceTech}</span>, but the forensic analysis concludes that <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is a better match. Do you want to update the project configuration?
                                         </p>
                                     </div>
+                                    {!isSupportedSourceTech(assessment.detectedTech || "") && (
+                                        <div className="flex items-start gap-4 p-5 bg-red-500/10 rounded-2xl border border-red-500/20">
+                                            <AlertCircle className="text-red-400 shrink-0" size={20} />
+                                            <p className="text-xs text-red-200/90 font-bold leading-relaxed">
+                                                The detected origin <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is not supported by the configured source cartridges. Please report this origin to the admin team.
+                                            </p>
+                                        </div>
+                                    )}
                                     <div className="flex gap-4">
-                                        <button
-                                            onClick={handleUpdateTech}
-                                            className="px-6 py-3 bg-cyan-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-cyan-500 transition-all shadow-lg active:scale-95"
-                                        >
-                                            Update Configuration
-                                        </button>
+                                        {isSupportedSourceTech(assessment.detectedTech || "") && (
+                                            <button
+                                                onClick={handleUpdateTech}
+                                                className="px-6 py-3 bg-cyan-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-cyan-500 transition-all shadow-lg active:scale-95"
+                                            >
+                                                Update Configuration
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setShowConflict(false)}
                                             className="px-6 py-3 bg-white/5 border border-white/10 text-gray-400 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-white/10 hover:text-white transition-all"
                                         >
-                                            Keep {sourceTech}
+                                            {isSupportedSourceTech(assessment.detectedTech || "") ? `Keep ${sourceTech}` : "Report to Admin"}
                                         </button>
                                     </div>
                                 </div>
@@ -625,18 +802,119 @@ export default function DiscoveryView({
                 )}
 
                 {/* TRIBAL KNOWLEDGE */}
+                {activeSection === 'intake' && (
+                    <div className="max-w-5xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                <Database size={24} className="text-cyan-500" />
+                                Project Intake
+                            </h2>
+                            <div className="text-xs font-black uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-4 py-2 rounded-full border border-cyan-500/20">
+                                Baseline Context
+                            </div>
+                        </div>
+
+                        <div className="p-8 rounded-3xl border bg-white/5 border-white/5 space-y-6">
+                            <p className="text-sm text-gray-400 leading-relaxed max-w-4xl">
+                                Capture the business and operational context that should travel with Discovery into Triage. This intake is stored with the project and reused by the manifest and readiness model.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Business Domain</span>
+                                    <input
+                                        value={projectIntake.business_domain}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, business_domain: e.target.value }))}
+                                        placeholder="Insurance, retail, finance, healthcare..."
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40"
+                                    />
+                                </label>
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Migration Goals</span>
+                                    <input
+                                        value={projectIntake.migration_goals}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, migration_goals: e.target.value }))}
+                                        placeholder="Lift-and-shift, refactor, modernization, decommission..."
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Critical Processes</span>
+                                    <textarea
+                                        value={projectIntake.critical_processes}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, critical_processes: e.target.value }))}
+                                        placeholder="Orders, billing, claims, ETL windows, daily feeds..."
+                                        rows={4}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40 resize-none"
+                                    />
+                                </label>
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Operational Constraints</span>
+                                    <textarea
+                                        value={projectIntake.operational_constraints}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, operational_constraints: e.target.value }))}
+                                        placeholder="Batch windows, dependencies, outages, release freeze, SLAs..."
+                                        rows={4}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40 resize-none"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Data Sensitivity</span>
+                                    <textarea
+                                        value={projectIntake.data_sensitivity}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, data_sensitivity: e.target.value }))}
+                                        placeholder="PII, PCI, PHI, regulated data, retention rules..."
+                                        rows={4}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40 resize-none"
+                                    />
+                                </label>
+                                <label className="space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Notes</span>
+                                    <textarea
+                                        value={projectIntake.notes}
+                                        onChange={(e) => setProjectIntake(prev => ({ ...prev, notes: e.target.value }))}
+                                        placeholder="Any extra context useful for triage or assessment..."
+                                        rows={4}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-cyan-500/40 resize-none"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4 pt-2">
+                                <div className="text-xs text-gray-500">
+                                    Saved intake updates the manifest context and refreshes readiness automatically.
+                                </div>
+                                <button
+                                    onClick={handleSaveIntake}
+                                    disabled={savingIntake}
+                                    className="px-6 py-3 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50 transition-all shadow-lg shadow-cyan-600/20"
+                                >
+                                    {savingIntake ? 'Saving...' : 'Save Intake'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* TRIBAL KNOWLEDGE */}
                 {activeSection === 'upload' && (
                     <div className="max-w-4xl mx-auto space-y-6">
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                                 <Upload size={24} className="text-purple-500" />
-                                Tribal Knowledge Ingest
+                                Supporting Context Upload
                             </h2>
                         </div>
 
                         <div className="p-8 rounded-3xl border bg-white/5 border-white/5">
                             <p className="text-sm text-gray-400 mb-8 leading-relaxed">
-                                Upload business rules, data dictionaries, mapping documents, or any other tribal knowledge that can help the AI agents understand the legacy system context better.
+                                Upload business rules, data dictionaries, mapping documents, or other supporting material that helps Discovery and Triage understand the legacy system context.
                             </p>
 
                             <label className={`flex flex-col items-center justify-center w-full border-2 border-dashed border-white/10 rounded-3xl cursor-pointer hover:bg-white/5 hover:border-purple-500/50 transition-all group relative h-48 mb-8`}>
@@ -704,7 +982,7 @@ export default function DiscoveryView({
                                     File Pre-Classification
                                 </h2>
                                 <p className="text-sm text-gray-400 mt-1">
-                                    Classify files BEFORE Triage to optimize analysis: <strong className="text-cyan-400">CORE</strong> = deep migration, <strong className="text-purple-400">SUPPORT</strong> = read-only context, <strong className="text-gray-500">IGNORED</strong> = skip.
+                                    Classify files before Triage so the promoted set stays focused: <strong className="text-cyan-400">CORE</strong> for migration work, <strong className="text-purple-400">SUPPORT</strong> for read-only context, <strong className="text-gray-500">IGNORED</strong> to skip.
                                 </p>
                             </div>
                             {fileInventory.length > 0 && (
@@ -714,6 +992,60 @@ export default function DiscoveryView({
                                 </div>
                             )}
                         </div>
+
+                            {evidenceItems.length > 0 && (
+                                <div className="rounded-2xl border border-white/5 bg-black/40 p-5 space-y-4">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <h3 className="text-sm font-black uppercase tracking-widest text-white">Evidence Review</h3>
+                                                <p className="text-xs text-gray-500 mt-1">Review the strongest detected signals and mark which ones should influence Triage.</p>
+                                        </div>
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1.5 rounded-full border border-cyan-500/20">
+                                            {evidenceItems.filter(item => item.review_status === 'pinned').length} Pinned
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[320px] overflow-auto custom-scrollbar pr-1">
+                                        {evidenceItems.slice(0, 9).map((item) => (
+                                            <div key={item.review_key} className={`rounded-xl border p-4 bg-white/5 ${item.review_status === 'pinned' ? 'border-cyan-500/30' : item.review_status === 'dismissed' ? 'border-white/5 opacity-50' : 'border-white/10'}`}>
+                                                <div className="flex items-start justify-between gap-3 mb-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400">{item.parser_name || 'Evidence'}</p>
+                                                        <p className="text-xs text-gray-300 truncate mt-1" title={item.source_path}>{item.source_path}</p>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10 text-gray-400">
+                                                        {item.review_status}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-400 leading-relaxed line-clamp-4 whitespace-pre-wrap">{item.snippet || 'No snippet available.'}</p>
+                                                <div className="mt-4 flex flex-wrap gap-2">
+                                                    <button
+                                                        onClick={() => handleEvidenceReview(item.review_key, 'pinned')}
+                                                        disabled={savingEvidenceKey === item.review_key}
+                                                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-cyan-600/20 text-cyan-300 border border-cyan-500/20 disabled:opacity-50"
+                                                    >
+                                                        Pin
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEvidenceReview(item.review_key, 'reviewed')}
+                                                        disabled={savingEvidenceKey === item.review_key}
+                                                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-emerald-600/20 text-emerald-300 border border-emerald-500/20 disabled:opacity-50"
+                                                    >
+                                                        Reviewed
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEvidenceReview(item.review_key, 'dismissed')}
+                                                        disabled={savingEvidenceKey === item.review_key}
+                                                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10 disabled:opacity-50"
+                                                    >
+                                                        Dismiss
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                         {showClassification && fileInventory.length > 0 ? (
                             <div className="bg-black/40 border border-white/5 rounded-2xl overflow-hidden flex flex-col h-[600px]">
@@ -801,6 +1133,11 @@ export default function DiscoveryView({
                                                             <option value="SUPPORT">SUPPORT</option>
                                                             <option value="IGNORED">IGNORED</option>
                                                         </select>
+                                                        {file.has_override && (
+                                                            <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                                                                Manual Override
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="px-6 py-3 text-center">
                                                         <input
@@ -819,12 +1156,12 @@ export default function DiscoveryView({
                         ) : (
                             <div className="h-[400px] flex flex-col items-center justify-center text-center opacity-50 border border-dashed border-white/10 rounded-3xl">
                                 <SearchCode size={48} className="mb-4 text-gray-500" />
-                                <p className="text-sm font-bold text-gray-400 max-w-md">No file inventory available. Run the Forensic Scan first to analyze the repository contents.</p>
+                                <p className="text-sm font-bold text-gray-400 max-w-md">No file inventory available yet. Run the Discovery Audit first to analyze the repository contents.</p>
                                 <button
                                     onClick={() => onSectionChange?.('run-scan')}
                                     className="mt-6 px-6 py-2 bg-white/5 rounded-xl text-xs font-bold hover:bg-white/10 transition-colors uppercase tracking-widest text-white"
                                 >
-                                    Go to Scan
+                                    Go to Discovery Audit
                                 </button>
                             </div>
                         )}

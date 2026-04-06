@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { fetchWithAuth } from "@/app/lib/auth-client";
 import {
     AlertTriangle,
@@ -314,10 +314,12 @@ export default function GapWorkspace({ projectId, className = "" }: Props) {
     const [gaps, setGaps] = useState<GapItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
+    const [importSummary, setImportSummary] = useState<{ imported: number; skipped: number; total: number } | null>(null);
     const [showCreate, setShowCreate] = useState(false);
     const [selectedGap, setSelectedGap] = useState<GapItem | null>(null);
     const [statusFilter, setStatusFilter] = useState<string>("OPEN");
     const [severityFilter, setSeverityFilter] = useState<string>("");
+    const autoImportAttemptedRef = useRef(false);
 
     const loadGaps = useCallback(async () => {
         if (!projectId) return;
@@ -327,7 +329,10 @@ export default function GapWorkspace({ projectId, className = "" }: Props) {
             if (statusFilter) params.set("status", statusFilter);
             if (severityFilter) params.set("severity", severityFilter);
             const res = await fetchWithAuth(`projects/${projectId}/gaps?${params}`);
-            if (res.ok) setGaps(await res.json());
+            if (res.ok) {
+                const rows = await res.json();
+                setGaps(rows);
+            }
         } finally {
             setLoading(false);
         }
@@ -335,15 +340,40 @@ export default function GapWorkspace({ projectId, className = "" }: Props) {
 
     useEffect(() => { loadGaps(); }, [loadGaps]);
 
+    useEffect(() => {
+        autoImportAttemptedRef.current = false;
+        setImportSummary(null);
+    }, [projectId]);
+
     const handleImport = async () => {
         setImporting(true);
         try {
-            await fetchWithAuth(`projects/${projectId}/gaps/import`, { method: "POST" });
+            const res = await fetchWithAuth(`projects/${projectId}/gaps/import`, { method: "POST" });
+            if (res.ok) {
+                const summary = await res.json();
+                setImportSummary(summary);
+            }
             await loadGaps();
         } finally {
             setImporting(false);
         }
     };
+
+    useEffect(() => {
+        if (
+            loading ||
+            importing ||
+            gaps.length > 0 ||
+            statusFilter !== "OPEN" ||
+            severityFilter ||
+            autoImportAttemptedRef.current
+        ) {
+            return;
+        }
+
+        autoImportAttemptedRef.current = true;
+        void handleImport();
+    }, [gaps.length, loading, importing, statusFilter, severityFilter]);
 
     const handleCreated = (gap: GapItem) => {
         setGaps(prev => [gap, ...prev]);
@@ -428,6 +458,12 @@ export default function GapWorkspace({ projectId, className = "" }: Props) {
                     </select>
                 </div>
             </div>
+
+            {importSummary && (
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
+                    Synced project signals: {importSummary.imported} new gap(s), {importSummary.skipped} already present.
+                </div>
+            )}
 
             {/* Create form */}
             {showCreate && (

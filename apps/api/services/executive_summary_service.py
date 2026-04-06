@@ -52,6 +52,52 @@ GAP_CATEGORIES = [
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
 
 
+def _build_decision_queue(gaps: List[Dict]) -> Dict[str, Any]:
+    """Summarize the highest-value decisions that still need attention."""
+    if not gaps:
+        return {
+            "items": [],
+            "focus": "No pending decision queue detected.",
+            "open_count": 0,
+        }
+
+    sorted_gaps = sorted(
+        gaps,
+        key=lambda gap: _SEVERITY_RANK.get(gap.get("severity", "LOW"), 0),
+        reverse=True,
+    )
+
+    items = []
+    category_counts: Dict[str, int] = {}
+    for gap in sorted_gaps:
+        category = gap.get("category", "other")
+        category_counts[category] = category_counts.get(category, 0) + 1
+        items.append({
+            "title": gap.get("title", "Untitled gap"),
+            "severity": gap.get("severity", "LOW"),
+            "category": category,
+            "why_it_matters": gap.get("why_it_matters") or gap.get("description") or "",
+            "source_stage": gap.get("source_stage", "unknown"),
+            "asset_name": gap.get("asset_name"),
+        })
+
+    focus_categories = sorted(
+        category_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )[:2]
+    if focus_categories:
+        focus_labels = [cat.replace("_", " ").title() for cat, _count in focus_categories]
+        focus = f"Resolve {', '.join(focus_labels)} items before the next handoff."
+    else:
+        focus = "Review open decision items before advancing the project."
+
+    return {
+        "items": items[:4],
+        "focus": focus,
+        "open_count": len(gaps),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Gap extraction helpers
 # ---------------------------------------------------------------------------
@@ -234,6 +280,8 @@ def build_executive_summary(
     status          = readiness.get("status", STATUS_REQUIRES_CONTEXT)
     confidence      = readiness.get("confidence_score", 50)
     blockers        = readiness.get("blockers") or []
+    warnings        = readiness.get("warnings") or []
+    next_steps      = readiness.get("next_steps") or []
     next_action     = readiness.get("recommended_next_action", "")
 
     # Asset statistics
@@ -246,18 +294,20 @@ def build_executive_summary(
     qa_score        = qa.get("score", 0)
     detected_techs  = qa.get("detected_techs") or [source_tech]
 
-    # Top risks
-    top_risks: List[str] = []
-    if pii_assets > 0:
-        top_risks.append(f"{pii_assets} asset(s) contain PII — compliance action required before go-live")
+    # Top risks — ordered by criticality: blockers first, then status signals, then warnings
+    blockers_risks: List[str] = list(blockers[:3])
+    signal_risks: List[str] = []
     if status == STATUS_NOT_RECOMMENDED:
-        top_risks.append("Viability assessment indicates high automation risk")
+        signal_risks.append("Viability assessment indicates high automation risk")
     elif status == STATUS_REQUIRES_CONTEXT:
-        top_risks.append("Open context gaps may reduce automation coverage")
+        signal_risks.append("Open context gaps may reduce automation coverage")
+    if pii_assets > 0:
+        signal_risks.append(f"{pii_assets} asset(s) contain PII — compliance action required before go-live")
     if qa_score < 50 and qa_score > 0:
-        top_risks.append(f"Low viability score ({qa_score}%) — validate source completeness")
-    for blocker in blockers[:2]:
-        top_risks.append(blocker)
+        signal_risks.append(f"Low viability score ({qa_score}%) — validate source completeness")
+    warning_risks: List[str] = list(warnings[:2])
+
+    top_risks: List[str] = list(dict.fromkeys(blockers_risks + signal_risks + warning_risks))
 
     # Gaps from assets and quick assessment
     asset_gaps = _extract_gaps_from_assets(assets or [])
@@ -265,6 +315,7 @@ def build_executive_summary(
     all_gaps   = qa_gaps + asset_gaps
 
     manual_areas = _derive_manual_effort_areas(all_gaps)
+    decision_queue = _build_decision_queue(all_gaps)
 
     return {
         "migration_posture":       _POSTURE_MAP.get(status, "Unknown"),
@@ -278,9 +329,14 @@ def build_executive_summary(
         "top_risks":               top_risks[:5],
         "manual_effort_areas":     manual_areas,
         "open_blockers":           blockers,
-        "recommended_next_action": next_action,
+        "readiness_warnings":      warnings,
+        "readiness_next_steps":    next_steps,
+        "recommended_next_action": next_action or (next_steps[0] if next_steps else ""),
         "readiness_status":        status,
         "total_gaps":              len(all_gaps),
+        "decision_queue":          decision_queue.get("items", []),
+        "decision_focus":          decision_queue.get("focus", ""),
+        "decision_open_count":     decision_queue.get("open_count", 0),
         "computed_at":             datetime.utcnow().isoformat(),
     }
 

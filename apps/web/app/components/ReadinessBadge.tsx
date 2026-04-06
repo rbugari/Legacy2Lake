@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { fetchWithAuth } from "@/app/lib/auth-client";
+import ConfidenceBreakdownPanel, { type ConfidenceBreakdown } from "./ConfidenceBreakdownPanel";
 import {
     AlertTriangle,
     CheckCircle,
@@ -26,8 +27,11 @@ type ReadinessStatus =
 interface ReadinessSummary {
     status: ReadinessStatus;
     confidence_score: number;
+    confidence_breakdown?: ConfidenceBreakdown;
     top_reasons: string[];
     blockers: string[];
+    warnings?: string[];
+    next_steps?: string[];
     recommended_next_action: string;
     source_signals: {
         quick_assessment_present: boolean;
@@ -115,6 +119,24 @@ function ConfidenceBar({ score }: { score: number }) {
     );
 }
 
+function formatConfidenceTooltip(data: ReadinessSummary) {
+    const parts = [`Confidence ${data.confidence_score}%`];
+
+    if (data.confidence_breakdown) {
+        const breakdownParts = [
+            `Baseline ${data.confidence_breakdown.baseline_score}%`,
+            ...data.confidence_breakdown.adjustments.map(
+                (adjustment) => `${adjustment.label} ${adjustment.delta >= 0 ? "+" : ""}${adjustment.delta}`
+            ),
+        ];
+
+        parts.push(breakdownParts.join(" · "));
+    }
+
+    parts.push(data.recommended_next_action);
+    return parts.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -185,7 +207,7 @@ export default function ReadinessBadge({
             <button
                 onClick={() => setExpanded((v) => !v)}
                 className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] font-semibold uppercase tracking-wider transition-all ${cfg.bg} ${cfg.border} ${cfg.color} hover:opacity-80 ${className}`}
-                title={data.recommended_next_action}
+                title={formatConfidenceTooltip(data)}
             >
                 {cfg.icon}
                 {cfg.label}
@@ -218,6 +240,11 @@ export default function ReadinessBadge({
             {/* Confidence bar */}
             <ConfidenceBar score={data.confidence_score} />
 
+            {/* Confidence breakdown */}
+            {data.confidence_breakdown && (
+                <ConfidenceBreakdownPanel breakdown={data.confidence_breakdown} />
+            )}
+
             {/* Recommended next action */}
             <p className="text-xs text-white/70 leading-relaxed">
                 {data.recommended_next_action}
@@ -230,6 +257,31 @@ export default function ReadinessBadge({
                         <div key={i} className="flex items-start gap-1.5">
                             <XCircle size={11} className="text-red-400 mt-0.5 flex-shrink-0" />
                             <span className="text-[11px] text-red-300">{b}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Warnings */}
+            {(data.warnings ?? []).length > 0 && (
+                <div className="space-y-1">
+                    {(data.warnings ?? []).map((w, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                            <AlertTriangle size={11} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-[11px] text-amber-200">{w}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Next steps */}
+            {(data.next_steps ?? []).length > 0 && (
+                <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest text-white/40">Next steps</p>
+                    {(data.next_steps ?? []).map((step, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                            <CheckCircle size={11} className="text-emerald-300 mt-0.5 flex-shrink-0" />
+                            <span className="text-[11px] text-white/70">{step}</span>
                         </div>
                     ))}
                 </div>

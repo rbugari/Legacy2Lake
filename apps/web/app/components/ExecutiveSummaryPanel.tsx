@@ -32,9 +32,21 @@ interface ExecutiveSummary {
     top_risks: string[];
     manual_effort_areas: string[];
     open_blockers: string[];
+    readiness_warnings?: string[];
+    readiness_next_steps?: string[];
     recommended_next_action: string;
     readiness_status: string;
     total_gaps: number;
+    decision_queue?: {
+        title: string;
+        severity: string;
+        category: string;
+        why_it_matters: string;
+        source_stage: string;
+        asset_name?: string;
+    }[];
+    decision_focus?: string;
+    decision_open_count?: number;
     computed_at: string;
 }
 
@@ -60,6 +72,7 @@ interface Props {
     projectId: string;
     /** "full" = complete panel, "compact" = key stats + posture only */
     variant?: "full" | "compact";
+    onOpenGaps?: () => void;
     className?: string;
 }
 
@@ -106,7 +119,12 @@ function SeverityBadge({ severity }: { severity: string }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function ExecutiveSummaryPanel({ projectId, variant = "full", className = "" }: Props) {
+export default function ExecutiveSummaryPanel({
+    projectId,
+    variant = "full",
+    onOpenGaps,
+    className = "",
+}: Props) {
     const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
     const [gaps, setGaps] = useState<GapsSummary | null>(null);
     const [loading, setLoading] = useState(true);
@@ -276,6 +294,19 @@ export default function ExecutiveSummaryPanel({ projectId, variant = "full", cla
                 </div>
             )}
 
+            {/* Readiness warnings */}
+            {(summary.readiness_warnings?.length ?? 0) > 0 && (
+                <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-300/80">Readiness Warnings</p>
+                    {summary.readiness_warnings?.map((warning, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                            <ShieldAlert size={12} className="text-amber-300 mt-0.5 flex-shrink-0" />
+                            <span className="text-[11px] text-amber-100/80">{warning}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Recommended next action */}
             <div className="rounded-lg border border-white/10 bg-white/5 p-3 flex items-start gap-3">
                 <TrendingUp size={16} className="text-sky-400 mt-0.5 flex-shrink-0" />
@@ -285,12 +316,35 @@ export default function ExecutiveSummaryPanel({ projectId, variant = "full", cla
                 </div>
             </div>
 
+            {/* Readiness next steps */}
+            {(summary.readiness_next_steps?.length ?? 0) > 0 && (
+                <div className="space-y-2 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-300">Execution Checklist</p>
+                    {summary.readiness_next_steps?.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                            <Clock size={12} className="text-sky-300 mt-0.5 flex-shrink-0" />
+                            <span className="text-[11px] text-white/75">{step}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Gaps breakdown */}
             {gaps && gaps.total > 0 && (
                 <div className="space-y-3">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                        Gaps by Category ({gaps.total} total)
-                    </p>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                            Gaps by Category ({gaps.total} total)
+                        </p>
+                        {onOpenGaps && (
+                            <button
+                                onClick={onOpenGaps}
+                                className="text-[10px] font-black uppercase tracking-widest text-amber-400 hover:text-amber-300"
+                            >
+                                Open Gap Workspace
+                            </button>
+                        )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                         {Object.entries(gaps.by_category).map(([cat, count]) => (
                             <button
@@ -309,6 +363,45 @@ export default function ExecutiveSummaryPanel({ projectId, variant = "full", cla
                             </button>
                         ))}
                     </div>
+
+                    {/* Decision queue */}
+                    {summary.decision_queue && summary.decision_queue.length > 0 && (
+                        <div className="space-y-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-sky-300">
+                                    Decision Queue ({summary.decision_open_count ?? summary.decision_queue.length})
+                                </p>
+                                {onOpenGaps && (
+                                    <button
+                                        onClick={onOpenGaps}
+                                        className="text-[10px] font-black uppercase tracking-widest text-sky-300 hover:text-sky-200"
+                                    >
+                                        Review in Gap Workspace
+                                    </button>
+                                )}
+                            </div>
+                            {summary.decision_focus && (
+                                <p className="text-xs text-white/65">{summary.decision_focus}</p>
+                            )}
+                            <div className="space-y-2">
+                                {summary.decision_queue.map((item, index) => (
+                                    <div key={`${item.title}-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[11px] font-bold text-white">{item.title}</span>
+                                            <SeverityBadge severity={item.severity} />
+                                        </div>
+                                        <p className="text-[10px] text-white/35 uppercase tracking-wider">
+                                            {CATEGORY_LABELS[item.category] ?? item.category} · {item.source_stage}
+                                        </p>
+                                        <p className="text-[11px] text-white/60">{item.why_it_matters}</p>
+                                        {item.asset_name && (
+                                            <p className="text-[10px] font-mono text-white/30">Asset: {item.asset_name}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Expanded gap detail */}
                     {activeGapCategory && gaps.grouped[activeGapCategory] && (

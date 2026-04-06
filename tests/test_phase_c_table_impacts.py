@@ -24,6 +24,8 @@ Author: Legacy2Lake Engineering
 Date: 2026-02-15 (Phase C - Sprint 14)
 """
 
+import asyncio
+
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from typing import Dict, Any, List
@@ -235,6 +237,41 @@ def test_classify_operation_unknown(impact_service):
     }
     operation = impact_service._classify_operation(comp)
     assert operation == "UNKNOWN"
+
+
+def test_save_impact_uses_natural_conflict_target(impact_service):
+    """Reruns should upsert table impacts using the project/asset/table/operation key."""
+    mock_execute = Mock()
+    mock_upsert = Mock()
+    mock_upsert.execute = mock_execute
+    mock_table = Mock()
+    mock_table.upsert.return_value = mock_upsert
+    impact_service.db.client = Mock()
+    impact_service.db.client.table.return_value = mock_table
+
+    impact = {
+        "tenant_id": "tenant-1",
+        "project_id": "project-1",
+        "schema_name": "dbo",
+        "table_name": "DimProduct",
+        "full_name": "dbo.DimProduct",
+        "asset_id": "asset-1",
+        "asset_name": "DimProduct.dtsx",
+        "operation": "UPDATE",
+        "access_pattern": "SCD",
+        "is_source": False,
+        "is_target": True,
+        "sql_statement": "UPDATE dbo.DimProduct SET Flag = 1",
+        "columns_affected": ["Flag"],
+    }
+
+    asyncio.run(impact_service._save_impact(impact))
+
+    mock_table.upsert.assert_called_once()
+    args, kwargs = mock_table.upsert.call_args
+    assert kwargs["on_conflict"] == "project_id,asset_id,full_name,operation"
+    assert args[0]["table_name"] == "DimProduct"
+    assert "full_name" not in args[0]
 
 
 # ================================================================

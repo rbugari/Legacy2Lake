@@ -28,6 +28,10 @@ Dejar una base documental suficientemente detallada para que otro agente o equip
    Plan de evolucion por sprints con entregables y criterios de cierre.
 10. `10-workstreams-and-build-sequence.md`
    Workstreams de construccion, orden recomendado y dependencias entre frentes.
+11. `11-master-plan-knowledge-first.md`
+   Plan maestro ejecutable por fases y sprints para llevar el producto al objetivo de comprension profunda, documentacion y downstreams multiples.
+12. `12-block-3-functional-operational-maps.md`
+   Documento de continuidad y plan ejecutable para el bloque 3: functional map, operational map, recommendation set y rule candidate summary.
 
 ## Regla de uso
 

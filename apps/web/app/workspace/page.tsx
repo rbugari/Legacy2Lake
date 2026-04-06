@@ -484,6 +484,7 @@ function WorkspaceContent() {
                         {activeView === 1 && (
                             <TriageView
                                 projectId={id}
+                                projectName={projectName || undefined}
                                 activeTenantId={ghostTenantId || undefined}
                                 projectStage={projectStage}
                                 onStageChange={handleLocalStageChange}

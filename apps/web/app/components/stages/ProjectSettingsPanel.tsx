@@ -7,9 +7,10 @@ import VariableEditor from '../VariableEditor';
 interface ProjectSettingsPanelProps {
     projectId: string;
     onSettingsChange?: (settings: any) => void;
+    onSaved?: () => void;
 }
 
-export default function ProjectSettingsPanel({ projectId, onSettingsChange }: ProjectSettingsPanelProps) {
+export default function ProjectSettingsPanel({ projectId, onSettingsChange, onSaved }: ProjectSettingsPanelProps) {
     const [settings, setSettings] = useState<any>({
         migration_limit: 0
     });
@@ -41,9 +42,10 @@ export default function ProjectSettingsPanel({ projectId, onSettingsChange }: Pr
         try {
             await fetchWithAuth(`projects/${projectId}/settings`, {
                 method: 'PATCH',
-                body: JSON.stringify({ settings })
+                body: JSON.stringify(settings)
             });
             if (onSettingsChange) onSettingsChange(settings);
+            if (onSaved) onSaved();
         } catch (e) {
             console.error("Failed to save settings", e);
             alert("Error saving settings");

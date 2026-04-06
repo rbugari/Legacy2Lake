@@ -320,12 +320,19 @@ export default function GovernanceView({
                                     <StatCard label="Silver + Gold" value={`${(stats.silver_count ?? 0) + (stats.gold_count ?? 0)} files`} icon={<ShieldCheck className="text-emerald-400" />} />
                                 </div>
 
-                                {/* Sprint 2: Executive Summary */}
-                                <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
-                                    <ExecutiveSummaryPanel projectId={projectId} variant="full" />
-                                </div>
                             </div>
                         )}
+
+                        {/* Sprint 2: Executive Summary - available in Governance overview even before certification report */}
+                        <div className="max-w-7xl mx-auto mt-6">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+                                <ExecutiveSummaryPanel
+                                    projectId={projectId}
+                                    variant="full"
+                                    onOpenGaps={() => onSectionChange?.('gaps')}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 

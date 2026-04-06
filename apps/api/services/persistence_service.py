@@ -285,6 +285,8 @@ class PersistenceService:
         return cls.get_storage().generate_signed_url(full_key, expiration)
 
 class SupabasePersistence:
+    _supports_understanding_columns: Optional[bool] = None
+
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None, role: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -566,11 +568,33 @@ class SupabasePersistence:
             if not resolved_id:
                 return None
 
-            query = self.client.table("utm_projects").select("project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary").eq("project_id", resolved_id)
-            if self.tenant_id and self.role != "ADMIN":
-                query = query.eq("tenant_id", self.tenant_id)
-                
-            res = query.execute()
+            select_extended = "project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary, understanding_generated_at, understanding_version, understanding_payload"
+            select_legacy = "project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary"
+
+            res = None
+            if self._supports_understanding_columns is not False:
+                try:
+                    query = self.client.table("utm_projects").select(select_extended).eq("project_id", resolved_id)
+                    if self.tenant_id and self.role != "ADMIN":
+                        query = query.eq("tenant_id", self.tenant_id)
+                    res = query.execute()
+                    type(self)._supports_understanding_columns = True
+                except Exception as exc:
+                    message = str(exc).lower()
+                    if (
+                        "understanding_generated_at" in message
+                        or "understanding_version" in message
+                        or "understanding_payload" in message
+                    ):
+                        type(self)._supports_understanding_columns = False
+                    else:
+                        raise
+
+            if res is None:
+                query = self.client.table("utm_projects").select(select_legacy).eq("project_id", resolved_id)
+                if self.tenant_id and self.role != "ADMIN":
+                    query = query.eq("tenant_id", self.tenant_id)
+                res = query.execute()
             if res.data:
                 item = res.data[0]
                 item["id"] = item["project_id"]
@@ -579,6 +603,12 @@ class SupabasePersistence:
                 settings = item.get("settings") or {}
                 item["source_tech"] = settings.get("source_tech")
                 item["target_tech"] = settings.get("target_tech")
+
+                # Backward-compat: expose understanding fields from settings when
+                # dedicated columns are not available in the current schema.
+                item.setdefault("understanding_generated_at", settings.get("understanding_generated_at"))
+                item.setdefault("understanding_version", settings.get("understanding_version"))
+                item.setdefault("understanding_payload", settings.get("understanding_payload"))
                 
                 return item
         except Exception:

@@ -101,6 +101,7 @@ class QuickAssessmentService:
         
         # 1. Resolve project UUID to name (R2 folders use project names, not UUIDs)
         project_name = project_id
+        project_meta: Dict[str, Any] = {}
         if "-" in project_id:  # UUID format
             project_meta = await self.db.get_project_metadata(project_id)
             if project_meta:
@@ -109,12 +110,22 @@ class QuickAssessmentService:
                     f"[QuickAssessment] Resolved UUID to project name: {project_name}",
                     "QuickAssessment"
                 )
+
+        project_settings = await self.db.get_project_settings(project_id) or {}
+        source_hint = (
+            project_settings.get("source_tech")
+            or project_meta.get("source_tech")
+            or project_meta.get("settings", {}).get("source_tech")
+            or project_meta.get("config", {}).get("source_tech")
+            or ""
+        )
         
         # 2. Reuse generate_manifest() for deterministic file analysis
         manifest = DiscoveryService.generate_manifest(
             project_name,  # Use resolved name, not UUID
             tenant_id=self.tenant_id,
-            source_folder=PersistenceService.STAGE_SOURCE
+            source_folder=PersistenceService.STAGE_SOURCE,
+            project_settings=project_settings
         )
         
         file_inventory = manifest.get("file_inventory", [])
@@ -133,7 +144,7 @@ class QuickAssessmentService:
         total_lines = 0
         
         for item in file_inventory:
-            category, tech = self._classify_file(item)
+            category, tech = self._classify_file(item, source_hint=source_hint)
             breakdown[category] += 1
             if tech:
                 detected_techs.add(tech)
@@ -189,7 +200,7 @@ class QuickAssessmentService:
         
         return result
     
-    def _classify_file(self, item: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    def _classify_file(self, item: Dict[str, Any], source_hint: str = "") -> Tuple[str, Optional[str]]:
         """
         Classifies a file into one of 4 categories.
         
@@ -234,7 +245,7 @@ class QuickAssessmentService:
         if ext in ['sql', 'csv', 'xlsx', 'xls', 'json', 'yaml', 'yml']:
             tech = None
             if ext == 'sql':
-                tech = 'SQL'
+                tech = self._resolve_sql_tech_from_source_hint(source_hint)
             elif ext in ['xlsx', 'xls']:
                 tech = 'Excel'
             return ("soporte", tech)
@@ -245,6 +256,17 @@ class QuickAssessmentService:
         
         # NO_RECONOCIDO - Unrecognized
         return ("no_reconocido", None)
+
+    def _resolve_sql_tech_from_source_hint(self, source_hint: str) -> str:
+        """Return a concrete SQL tech label when project settings already define the SQL family."""
+        hint = (source_hint or "").upper()
+        if "MYSQL" in hint or "MARIADB" in hint:
+            return "MySQL"
+        if "ORACLE" in hint:
+            return "Oracle"
+        if "SQLSERVER" in hint or "SQL SERVER" in hint or "TSQL" in hint or "T-SQL" in hint:
+            return "SQL Server"
+        return "SQL"
     
     def _estimate_complexity(self, item: Dict[str, Any]) -> str:
         """

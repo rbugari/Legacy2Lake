@@ -22,6 +22,7 @@ from apps.api.services.table_impact_service import TableImpactService
 from apps.api.services.lock_service import LockService, ProcessLockError
 from apps.api.services.quick_assessment_service import QuickAssessmentService
 from apps.api.services.column_profiling_service import ColumnProfilingService
+from apps.api.services.understanding_service import UnderstandingService
 
 router = APIRouter(tags=["Triage & Discovery"])
 logger = logging.getLogger(__name__)
@@ -97,6 +98,73 @@ async def _persist_column_mappings(
     """
     try:
         from apps.api.services.column_mapping_service import ColumnMapping, ColumnMappingService
+
+        def _pick_value(mapping: Dict[str, Any], keys: List[str]) -> str:
+            for key in keys:
+                value = mapping.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return ""
+
+        def _clean_col(raw: str) -> str:
+            if not raw:
+                return ""
+            token = raw.split("::")[-1]
+            token = token.split(".")[-1]
+            token = token.strip().strip("[]\"")
+            return token
+
+        def _extract_mapping_expression(mapping: Dict[str, Any]) -> str:
+            for key in [
+                "expression", "expr", "formula", "transformation_expr", "transformation",
+                "transformation_rule", "logic", "condition", "derived_expression",
+                "calculated_value", "value_expression", "sql_expression",
+            ]:
+                value = mapping.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return ""
+
+        def _extract_component_expression(raw_props: Dict[str, Any]) -> str:
+            if not isinstance(raw_props, dict):
+                return ""
+            for key in ["FriendlyExpression", "Expression", "Condition", "DerivedColumnExpression"]:
+                value = raw_props.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return ""
+
+        def _classify_transformation(
+            source_col: str,
+            target_col: str,
+            raw_expr: str,
+            comp_type_upper: str,
+        ) -> Optional[str]:
+            expr = (raw_expr or "").strip()
+            expr_upper = expr.upper()
+
+            if expr and "CASE" in expr_upper and "WHEN" in expr_upper:
+                return f"CASE_WHEN({source_col} -> {target_col})"
+            if expr and any(token in expr_upper for token in ("COALESCE(", "ISNULL(", "IFNULL(", "NVL(")):
+                return f"COALESCE({source_col} -> {target_col})"
+            if expr and any(token in expr_upper for token in ("CAST(", "CONVERT(")):
+                return f"CAST({source_col} -> {target_col})"
+            if expr and (
+                "CONCAT(" in expr_upper
+                or "||" in expr
+                or ("+" in expr and "'" in expr)
+            ):
+                return f"CONCAT({source_col} -> {target_col})"
+
+            if comp_type_upper == "DERIVED_COLUMN":
+                return "DERIVED"
+            if comp_type_upper == "LOOKUP":
+                return "LOOKUP"
+            if "AGGREGATE" in comp_type_upper:
+                return "AGGREGATE"
+            if source_col and target_col and source_col != target_col:
+                return "RENAME"
+            return None
         
         mappings_to_insert = []
         seen_pairs = set()  # Dedup (source, target) pairs
@@ -110,13 +178,13 @@ async def _persist_column_mappings(
             # Process INPUT mappings (source → target)
             for mapping in comp_mappings:
                 if mapping.get("usage") == "INPUT":
-                    # Clean column names (remove XML prefixes like "output_123.")
-                    source_raw = mapping.get("target", "")  # SSIS uses 'target' for column name
-                    target_raw = mapping.get("target", source_raw)
+                    # Prefer explicit source/target fields when available; fallback to legacy keys.
+                    source_raw = _pick_value(mapping, ["source", "input", "from", "name", "target"])
+                    target_raw = _pick_value(mapping, ["target", "output", "to", "name", "source"])
                     
                     # Extract clean column name
-                    source_col = source_raw.split(".")[-1].strip() if source_raw else ""
-                    target_col = target_raw.split(".")[-1].strip() if target_raw else source_col
+                    source_col = _clean_col(source_raw)
+                    target_col = _clean_col(target_raw) or source_col
                     
                     if not source_col:
                         continue  # Skip empty column names
@@ -127,16 +195,11 @@ async def _persist_column_mappings(
                         continue
                     seen_pairs.add(pair_key)
                     
-                    # Detect transformation rule
-                    trans_rule = None
-                    if comp_type == "DERIVED_COLUMN":
-                        trans_rule = "DERIVED"
-                    elif comp_type == "LOOKUP":
-                        trans_rule = "LOOKUP"
-                    elif "AGGREGATE" in comp_type:
-                        trans_rule = "AGGREGATE"
-                    elif source_col != target_col:
-                        trans_rule = "RENAME"
+                    comp_type_upper = str(comp_type or "").upper()
+                    raw_expr = _extract_mapping_expression(mapping)
+                    if not raw_expr and comp_type_upper in {"DERIVED_COLUMN", "CONDITIONAL_SPLIT"}:
+                        raw_expr = _extract_component_expression(raw_props)
+                    trans_rule = _classify_transformation(source_col, target_col, raw_expr, comp_type_upper)
                     
                     mappings_to_insert.append(ColumnMapping(
                         asset_id=asset_id,
@@ -148,7 +211,7 @@ async def _persist_column_mappings(
             # Also process OUTPUT columns (derived/calculated fields)
             for mapping in comp_mappings:
                 if mapping.get("usage") == "OUTPUT":
-                    col_name = mapping.get("name", "").strip()
+                    col_name = _clean_col(_pick_value(mapping, ["name", "target", "output", "source"]))
                     
                     if not col_name:
                         continue
@@ -157,13 +220,19 @@ async def _persist_column_mappings(
                     if pair_key in seen_pairs:
                         continue
                     seen_pairs.add(pair_key)
+
+                    comp_type_upper = str(comp_type or "").upper()
+                    raw_expr = _extract_mapping_expression(mapping)
+                    if not raw_expr and comp_type_upper in {"DERIVED_COLUMN", "CONDITIONAL_SPLIT"}:
+                        raw_expr = _extract_component_expression(raw_props)
+                    trans_rule = _classify_transformation(col_name, col_name, raw_expr, comp_type_upper)
                     
                     # OUTPUT columns are typically derived/calculated
                     mappings_to_insert.append(ColumnMapping(
                         asset_id=asset_id,
                         source_column=col_name,
                         target_column=col_name,
-                        transformation_rule="DERIVED" if comp_type == "DERIVED_COLUMN" else "OUTPUT"
+                        transformation_rule=trans_rule or (comp_type_upper or "OUTPUT")
                     ))
         
         # Bulk insert if we have mappings
@@ -213,6 +282,318 @@ async def _extract_queries_from_medulla(medulla: Dict[str, Any]) -> List[Dict[st
             })
     
     return queries
+
+
+def _split_top_level_csv(value: str) -> List[str]:
+    """Split comma-separated SQL fragments preserving nested expressions."""
+    if not value:
+        return []
+
+    parts: List[str] = []
+    current: List[str] = []
+    depth = 0
+    in_single = False
+    in_double = False
+    i = 0
+
+    while i < len(value):
+        ch = value[i]
+
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            current.append(ch)
+            i += 1
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            current.append(ch)
+            i += 1
+            continue
+
+        if not in_single and not in_double:
+            if ch == '(':
+                depth += 1
+            elif ch == ')' and depth > 0:
+                depth -= 1
+            elif ch == ',' and depth == 0:
+                token = ''.join(current).strip()
+                if token:
+                    parts.append(token)
+                current = []
+                i += 1
+                continue
+
+        current.append(ch)
+        i += 1
+
+    tail = ''.join(current).strip()
+    if tail:
+        parts.append(tail)
+
+    return parts
+
+
+def _clean_sql_identifier(raw: str) -> str:
+    if not raw:
+        return ""
+    token = raw.strip().rstrip(',;')
+    token = token.split("::")[-1]
+    token = token.split('.')[-1]
+    token = token.strip().strip('[]`"')
+    return token
+
+
+def _remove_sql_comments(sql: str) -> str:
+    if not sql:
+        return ""
+    no_block = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    no_line = re.sub(r"--[^\n\r]*", " ", no_block)
+    return no_line
+
+
+def _split_sql_statements_for_mappings(sql: str) -> List[str]:
+    if not sql:
+        return []
+
+    normalized = _remove_sql_comments(sql)
+    normalized = re.sub(r"(?im)^\s*DELIMITER\s+\S+\s*$", "", normalized)
+    normalized = normalized.replace("$$", ";")
+
+    statements: List[str] = []
+    current: List[str] = []
+    in_single = False
+    in_double = False
+
+    for ch in normalized:
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+
+        if ch == ';' and not in_single and not in_double:
+            statement = ''.join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+            continue
+
+        current.append(ch)
+
+    tail = ''.join(current).strip()
+    if tail:
+        statements.append(tail)
+
+    return statements
+
+
+def _extract_select_list(select_sql: str) -> str:
+    """Extract SELECT list until top-level FROM."""
+    if not select_sql:
+        return ""
+
+    upper = select_sql.upper()
+    select_idx = upper.find("SELECT")
+    if select_idx == -1:
+        return ""
+
+    i = select_idx + len("SELECT")
+    depth = 0
+    in_single = False
+    in_double = False
+
+    while i < len(select_sql):
+        ch = select_sql[i]
+
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            i += 1
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            i += 1
+            continue
+
+        if not in_single and not in_double:
+            if ch == '(':
+                depth += 1
+            elif ch == ')' and depth > 0:
+                depth -= 1
+            elif depth == 0 and select_sql[i:i + 4].upper() == "FROM":
+                return select_sql[select_idx + len("SELECT"):i].strip()
+
+        i += 1
+
+    return select_sql[select_idx + len("SELECT"):].strip()
+
+
+def _infer_source_column_from_expr(expr: str) -> str:
+    if not expr:
+        return ""
+
+    cleaned = expr.strip()
+    if re.match(r"^'.*'$", cleaned) or re.match(r'^".*"$', cleaned) or re.match(r"^[0-9]+(\.[0-9]+)?$", cleaned):
+        return ""
+    cleaned = re.sub(r"\s+AS\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", cleaned)
+
+    matches = re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?", cleaned)
+    if not matches:
+        return ""
+
+    sql_keywords = {
+        "SELECT", "FROM", "WHERE", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "CONVERT",
+        "CONCAT", "COALESCE", "IFNULL", "NULL", "NOW", "CURDATE", "DATE_ADD", "DATE_SUB",
+        "ROUND", "SUM", "COUNT", "MAX", "MIN", "AVG", "DISTINCT", "AND", "OR", "NOT", "IN",
+    }
+
+    for token in reversed(matches):
+        candidate = token.split('.')[-1]
+        if candidate.upper() not in sql_keywords:
+            return _clean_sql_identifier(candidate)
+
+    return ""
+
+
+def _infer_transformation_rule(expr: str, source_col: str, target_col: str) -> Optional[str]:
+    raw = (expr or "").strip()
+    upper = raw.upper()
+    simple_source = source_col and raw in {source_col, f"{source_col}", f"`{source_col}`", f"[{source_col}]"}
+
+    if simple_source and source_col == target_col:
+        return None
+    if simple_source and source_col != target_col:
+        return "RENAME"
+    if raw and ("(" in raw or "CASE" in upper or "+" in raw or "-" in raw or "*" in raw or "/" in raw):
+        return "DERIVED"
+    if raw and re.match(r"^'.*'$", raw):
+        return "DERIVED"
+    if raw and re.match(r"^[0-9]+(\.[0-9]+)?$", raw):
+        return "DERIVED"
+    return "DERIVED" if raw else None
+
+
+def _infer_sql_column_mappings(sql: str) -> List[Dict[str, Optional[str]]]:
+    """Infer source→target mappings from SQL scripts (INSERT..SELECT and UPDATE..SET)."""
+    if not sql:
+        return []
+
+    mappings: List[Dict[str, Optional[str]]] = []
+    seen = set()
+
+    for statement in _split_sql_statements_for_mappings(sql):
+        upper = statement.upper().strip()
+
+        insert_match = re.search(
+            r"INSERT\s+(?:IGNORE\s+)?INTO\s+[A-Za-z0-9_\.\[\]`\"]+\s*\((?P<cols>[^)]*)\)\s*(?P<body>.+)$",
+            statement,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if insert_match and "SELECT" in insert_match.group("body").upper():
+            target_cols = [_clean_sql_identifier(c) for c in _split_top_level_csv(insert_match.group("cols"))]
+            select_list = _extract_select_list(insert_match.group("body"))
+            select_exprs = _split_top_level_csv(select_list)
+
+            for idx, target_col in enumerate(target_cols):
+                if not target_col or idx >= len(select_exprs):
+                    continue
+                expr = select_exprs[idx].strip()
+                source_col = _infer_source_column_from_expr(expr) or target_col
+                rule = _infer_transformation_rule(expr, source_col, target_col)
+                key = (source_col.lower(), target_col.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                mappings.append({
+                    "source_column": source_col,
+                    "target_column": target_col,
+                    "transformation_rule": rule,
+                })
+            continue
+
+        update_match = re.search(
+            r"UPDATE\s+[A-Za-z0-9_\.\[\]`\"]+\s+SET\s+(?P<set>.+?)(?:\bWHERE\b|\bFROM\b|$)",
+            statement,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if update_match:
+            assignments = _split_top_level_csv(update_match.group("set"))
+            for assignment in assignments:
+                if '=' not in assignment:
+                    continue
+                left, right = assignment.split('=', 1)
+                target_col = _clean_sql_identifier(left)
+                expr = right.strip()
+                if not target_col:
+                    continue
+                source_col = _infer_source_column_from_expr(expr) or target_col
+                rule = _infer_transformation_rule(expr, source_col, target_col)
+                key = (source_col.lower(), target_col.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                mappings.append({
+                    "source_column": source_col,
+                    "target_column": target_col,
+                    "transformation_rule": rule,
+                })
+
+    return mappings
+
+
+async def _persist_inferred_column_mappings(
+    asset_id: str,
+    source_path: str,
+    raw_content: str,
+    metadata: Dict[str, Any],
+    db: SupabasePersistence,
+) -> int:
+    """
+    Infer and persist column mappings for assets without SSIS medulla.
+    Current adapters: SQL scripts; generic passthrough metadata columns.
+    """
+    try:
+        from apps.api.services.column_mapping_service import ColumnMapping, ColumnMappingService
+
+        mappings: List[Dict[str, Optional[str]]] = []
+        path_lower = (source_path or "").lower()
+        source_tech = str((metadata or {}).get("source_tech") or "").lower()
+
+        # SQL-like adapters (extensible for future formats)
+        if path_lower.endswith((".sql", ".ddl")) or source_tech in {"sql", "mysql", "mariadb", "postgres", "postgresql"}:
+            mappings = _infer_sql_column_mappings(raw_content or "")
+
+        # Generic structural fallback for non-SQL assets carrying explicit columns metadata
+        if not mappings and isinstance((metadata or {}).get("columns"), list):
+            for col in metadata.get("columns", []):
+                name = _clean_sql_identifier(str(col.get("name") or col.get("column_name") or ""))
+                if not name:
+                    continue
+                mappings.append({
+                    "source_column": name,
+                    "target_column": name,
+                    "transformation_rule": None,
+                })
+
+        if not mappings:
+            return 0
+
+        mapping_service = ColumnMappingService(supabase_client=db.client)
+        objects = [
+            ColumnMapping(
+                asset_id=asset_id,
+                source_column=m["source_column"],
+                target_column=m.get("target_column"),
+                transformation_rule=m.get("transformation_rule"),
+            )
+            for m in mappings
+            if m.get("source_column")
+        ]
+        if not objects:
+            return 0
+        return await mapping_service.bulk_upsert(objects)
+    except Exception as e:
+        logger.warning(f"Failed inferred mapping persistence for asset {asset_id}: {e}")
+        return 0
 
 def _calculate_complexity(transformations: List[Dict[str, Any]]) -> int:
     """Calculate complexity score based on transformations"""
@@ -414,8 +795,24 @@ async def _run_triage_background(
         user_context = await db.get_project_context(project_uuid)
         if user_context:
             await _log(f"Found {len(user_context)} human context overrides. Injecting into scanner...", agent="SCANNER")
+
+        project_settings = await db.get_project_settings(project_uuid) or {}
+        discovery_intake = project_settings.get("discovery_intake") if isinstance(project_settings, dict) else None
+        combined_context = list(user_context or [])
+        if isinstance(discovery_intake, dict) and discovery_intake:
+            combined_context = [{
+                "context_type": "discovery_intake",
+                "source_path": "project_settings",
+                "user_context": discovery_intake,
+                "notes": "Structured Discovery intake captured at project level"
+            }] + combined_context
         
-        manifest = DiscoveryService.generate_manifest(project_folder, tenant_id=db.tenant_id, user_context=user_context)
+        manifest = DiscoveryService.generate_manifest(
+            project_folder,
+            tenant_id=db.tenant_id,
+            user_context=combined_context,
+            project_settings=project_settings
+        )
         manifest["project_id"] = project_uuid
     
         file_count = len(manifest["file_inventory"])
@@ -585,6 +982,7 @@ async def _run_triage_background(
             
             db_assets.append({
                 "filename": item["name"],
+                "content": item.get("content"),
                 "type": category,  # CORE/SUPPORT/IGNORED
                 "category": file_category,  # migrable, soporte, documentacion
                 "source_path": item["path"],
@@ -615,6 +1013,11 @@ async def _run_triage_background(
     
         saved_assets = await db.batch_save_assets(project_uuid, db_assets)
         asset_map = {a["source_path"]: (a.get("id") or a.get("object_id")) for a in saved_assets}
+        content_by_path = {
+            item.get("path"): item.get("content")
+            for item in manifest.get("file_inventory", [])
+            if item.get("path")
+        }
 
         # SPRINT 8.5: Extract Origin Analysis during Triage (not during code generation)
         await _log("Extracting origin analysis from SSIS assets...", agent="TRIAGE")
@@ -625,11 +1028,29 @@ async def _run_triage_background(
                 metadata = asset.get("metadata", {})
                 medulla = metadata.get("logical_medulla")
                 connections = metadata.get("connections", [])
-                
-                if not medulla:
-                    continue  # Skip assets without medulla (non-SSIS files)
+                source_path = asset.get("source_path") or asset.get("filename") or ""
+                raw_content = asset.get("raw_content") or asset.get("content") or content_by_path.get(source_path)
                 
                 object_id = asset.get("object_id") or asset.get("id")
+
+                if not object_id:
+                    continue
+
+                if not medulla:
+                    inferred_count = await _persist_inferred_column_mappings(
+                        asset_id=object_id,
+                        source_path=source_path,
+                        raw_content=raw_content or "",
+                        metadata=metadata,
+                        db=db,
+                    )
+                    total_mappings += inferred_count
+                    if inferred_count > 0:
+                        await _log(
+                            f"  └─ Inferred {inferred_count} column mapping(s) for {asset.get('filename', 'asset')} (non-SSIS)",
+                            agent="TRIAGE",
+                        )
+                    continue  # Non-SSIS path finished
                 
                 # Extract origin analysis from medulla
                 origin_analysis = await _extract_origin_from_medulla(medulla, connections)
@@ -789,6 +1210,21 @@ async def _run_triage_background(
         await db.update_project_settings(project_uuid, settings_update)
     
         await _log(f"Graph and Assets saved to database. Total Lines: {total_lines}", agent="DATABASE")
+
+        # Refresh project understanding snapshot after triage materializes impacts/mappings.
+        try:
+            understanding_service = UnderstandingService(
+                project_id=project_uuid,
+                tenant_id=db.tenant_id,
+                client_id=db.client_id,
+            )
+            understanding_payload = await understanding_service.rebuild()
+            await _log(
+                f"Understanding snapshot refreshed ({understanding_payload.get('generated_at', 'n/a')})",
+                agent="UNDERSTANDING"
+            )
+        except Exception as e:
+            await _log(f"Warning: Understanding refresh failed (non-critical): {e}", agent="UNDERSTANDING")
         
         # Phase E: Sync File Inventory (Cloud Native)
         await _log("Synchronizing file inventory...", agent="DATABASE")

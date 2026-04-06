@@ -137,7 +137,22 @@ def compute_readiness(
 
     reasons: List[str] = []
     blockers: List[str] = []
+    warnings: List[str] = []
     confidence = 50  # baseline
+    confidence_breakdown = {
+        "baseline_score": 50,
+        "adjustments": [],
+    }
+
+    def add_adjustment(label: str, delta: int, reason: str) -> None:
+        nonlocal confidence
+
+        confidence += delta
+        confidence_breakdown["adjustments"].append({
+            "label": label,
+            "delta": delta,
+            "reason": reason,
+        })
 
     # ── Signal: quick assessment ────────────────────────────────────────────
     if qa_sig["present"]:
@@ -145,53 +160,85 @@ def compute_readiness(
         semaforo = qa_sig["semaforo"]
 
         if semaforo == "green":
-            confidence += 20
+            add_adjustment(
+                "Quick Assessment",
+                20,
+                f"Viability assessment is GREEN ({qa_score}% score)",
+            )
             reasons.append(f"Viability assessment is GREEN ({qa_score}% score)")
         elif semaforo == "yellow":
-            confidence += 5
+            add_adjustment(
+                "Quick Assessment",
+                5,
+                f"Viability assessment is YELLOW ({qa_score}% score) — review warnings",
+            )
             reasons.append(f"Viability assessment is YELLOW ({qa_score}% score) — review warnings")
+            warnings.append("Quick assessment is YELLOW — proceed with guarded review")
         else:
-            confidence -= 20
+            add_adjustment(
+                "Quick Assessment",
+                -20,
+                f"Viability assessment is RED ({qa_score}% score) — high risk",
+            )
             reasons.append(f"Viability assessment is RED ({qa_score}% score) — high risk")
 
         blockers.extend(qa_sig.get("blockers") or [])
 
         if qa_sig["migrable_count"] == 0:
             blockers.append("No migrable ETL packages detected")
-            confidence -= 15
+            add_adjustment(
+                "Quick Assessment",
+                -15,
+                "No migrable ETL packages detected",
+            )
 
         if qa_sig["detected_techs"]:
             reasons.append(f"Detected technology: {', '.join(qa_sig['detected_techs'])}")
     else:
         reasons.append("Viability assessment not yet run")
-        confidence -= 10
+        add_adjustment("Quick Assessment", -10, "Viability assessment not yet run")
 
     # ── Signal: triage ──────────────────────────────────────────────────────
     if tri_sig["present"] and tri_sig["triaged"] > 0:
-        confidence += 10
+        add_adjustment(
+            "Triage",
+            10,
+            f"Triage complete — {tri_sig['triaged']} assets inventoried, {tri_sig['core_count']} CORE",
+        )
         reasons.append(f"Triage complete — {tri_sig['triaged']} assets inventoried, {tri_sig['core_count']} CORE")
 
         if tri_sig["pii_count"] > 0:
             reasons.append(f"{tri_sig['pii_count']} PII-flagged asset(s) require compliance review")
-            confidence -= 5
+            add_adjustment(
+                "Triage",
+                -5,
+                f"{tri_sig['pii_count']} PII-flagged asset(s) require compliance review",
+            )
+            warnings.append(f"{tri_sig['pii_count']} PII-flagged asset(s) need masking/tokenization controls")
 
         if tri_sig["high_complex"] > 0:
             reasons.append(f"{tri_sig['high_complex']} HIGH complexity asset(s) identified")
-            confidence -= 5
+            add_adjustment(
+                "Triage",
+                -5,
+                f"{tri_sig['high_complex']} HIGH complexity asset(s) identified",
+            )
+            warnings.append(f"{tri_sig['high_complex']} HIGH complexity asset(s) should be manually reviewed")
     else:
         reasons.append("Triage not yet complete — asset inventory pending")
-        confidence -= 5
+        add_adjustment("Triage", -5, "Triage not yet complete — asset inventory pending")
 
     # ── Signal: project configuration ───────────────────────────────────────
     if not prj_sig["source_tech"]:
         blockers.append("Source technology not configured")
-        confidence -= 10
+        add_adjustment("Configuration", -10, "Source technology not configured")
     if not prj_sig["target_tech"]:
         blockers.append("Target technology not configured")
-        confidence -= 10
+        add_adjustment("Configuration", -10, "Target technology not configured")
     if not prj_sig["has_prompt"]:
-        confidence -= 5
+        add_adjustment("Prompt", -5, "No custom migration prompt configured — using defaults")
         reasons.append("No custom migration prompt configured — using defaults")
+        warnings.append("Using default migration prompt — add project-specific prompt for better precision")
 
     # ── Clamp confidence ─────────────────────────────────────────────────────
     confidence = max(0, min(100, confidence))
@@ -211,13 +258,21 @@ def compute_readiness(
 
     # ── Recommended next action ───────────────────────────────────────────────
     next_action = _recommend_next_action(status, blockers, prj_sig, qa_sig, tri_sig)
+    next_steps = _recommend_next_steps(status, blockers, warnings, prj_sig, qa_sig, tri_sig)
 
     return {
         "status":                  status,
         "confidence_score":        confidence,
         "top_reasons":             reasons[:5],  # cap to top 5
-        "blockers":                blockers,
+        "blockers":                list(dict.fromkeys(blockers))[:10],
+        "warnings":                list(dict.fromkeys(warnings))[:10],
+        "next_steps":              next_steps[:6],
         "recommended_next_action": next_action,
+        "confidence_breakdown":    {
+            "baseline_score": confidence_breakdown["baseline_score"],
+            "adjustments": confidence_breakdown["adjustments"],
+            "final_score": confidence,
+        },
         "source_signals": {
             "quick_assessment_present": qa_sig["present"],
             "triage_complete":          tri_sig.get("triaged", 0) > 0,
@@ -258,6 +313,45 @@ def _recommend_next_action(
         return "Project is ready for automated migration. Proceed to Drafting or Refinement."
 
     return "Review project configuration and re-run the assessment."
+
+
+def _recommend_next_steps(
+    status: str,
+    blockers: List[str],
+    warnings: List[str],
+    prj_sig: Dict,
+    qa_sig: Dict,
+    tri_sig: Dict,
+) -> List[str]:
+    """Build a short actionable checklist aligned with readiness status."""
+    steps: List[str] = []
+
+    if not prj_sig.get("source_tech"):
+        steps.append("Configure source technology in project settings.")
+    if not prj_sig.get("target_tech"):
+        steps.append("Configure target technology in project settings.")
+
+    if not qa_sig.get("present"):
+        steps.append("Run Quick Assessment from Discovery to produce baseline viability signals.")
+    elif qa_sig.get("semaforo") == "red":
+        steps.append("Resolve RED quick-assessment blockers before advancing stages.")
+
+    if not tri_sig.get("present") or tri_sig.get("triaged", 0) == 0:
+        steps.append("Run Triage to inventory assets, impacts, and dependencies.")
+
+    if tri_sig.get("pii_count", 0) > 0:
+        steps.append("Plan masking/tokenization for PII-flagged assets before drafting.")
+
+    if tri_sig.get("high_complex", 0) > 0:
+        steps.append("Schedule human review for HIGH complexity assets before final handoff.")
+
+    if status in {STATUS_BASELINE_READY, STATUS_READY} and not steps:
+        steps.append("Proceed to Drafting and monitor governance findings during refinement.")
+
+    if status == STATUS_REQUIRES_CONTEXT and warnings:
+        steps.append("Address the top warnings and recompute readiness.")
+
+    return steps
 
 
 # ---------------------------------------------------------------------------

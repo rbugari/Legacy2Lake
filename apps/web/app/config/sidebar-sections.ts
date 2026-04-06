@@ -114,7 +114,11 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
                 { id: 'queries', label: 'Source Queries', icon: FileCode, badge: 'queryCount', variant: 'view' },
                 { id: 'quality', label: 'Code Quality', icon: Shield, badge: 'avgQuality', variant: 'view' },
                 { id: 'pii', label: 'PII Detection', icon: Lock, badge: 'piiCount', variant: 'view' },
-                { id: 'tables', label: 'Table Registry', icon: Database, badge: 'tableCount', variant: 'view' }
+                { id: 'tables', label: 'Table Registry', icon: Database, badge: 'tableCount', variant: 'view' },
+                { id: 'understanding', label: 'Understanding', icon: BookOpen, variant: 'view' },
+                { id: 'export', label: 'Export', icon: Download, variant: 'view' },
+                { id: 'refinement', label: 'Refinement', icon: RefreshCw, variant: 'view' },
+                { id: 'governance', label: 'Governance', icon: ShieldCheck, variant: 'view' }
             ]
         },
         {
