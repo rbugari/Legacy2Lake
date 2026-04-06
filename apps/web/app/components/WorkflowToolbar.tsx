@@ -15,7 +15,7 @@ const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
 }) => {
     const stageGroups = [
         {
-            name: "Orígenes",
+            name: "Origins",
             color: "bg-cyan-500/5 dark:bg-cyan-500/10",
             shadow: "shadow-[0_0_30_px_rgba(6,182,212,0.1)]",
             activeColor: "bg-cyan-600 shadow-[0_4px_20px_rgba(6,182,212,0.3)]",

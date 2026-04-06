@@ -22,41 +22,45 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
 
     const news = [
         {
-            sprint: "v3.7 Release",
-            title: "Executive Reports & Parity",
-            description: "Major updates to governance, reporting, and environmental stability.",
+            sprint: "Since v4.0",
+            title: "Dual Product Reporting Catalog",
+            description: "A single reports surface now clearly separates Source Intelligence from Migration Factory outputs.",
             features: [
-                "New PDF Reports: Export blueprints and conversion manifests.",
-                "Verified 1:1 Parity Matrix: Total infra synchronization.",
-                "Agent G Governance: Advanced policy compliance engine.",
-                "Multi-Target Transpilation: Convert to Snowflake and Fabric simultaneously.",
-                "Delta Lineage Visualization: Real-time tracking of data flow."
+                "Reports Access panel integrated into workspace.",
+                "Catalog APIs: list, metadata, and summary endpoints.",
+                "Product-line grouping with clear user-facing narratives.",
+                "Schema Intelligence and Forensic Assessment endpoints exposed.",
+                "Handover-focused presentation without polluting Discovery view."
             ],
             icon: <Zap className="text-yellow-400" />,
             color: "from-yellow-500/10 to-transparent"
         },
         {
-            sprint: "Sprint 2",
-            title: "Estructura Global y Wizard",
-            description: "Mejoramos la base del workspace para una navegación coherente y centralizada.",
+            sprint: "Since v4.0",
+            title: "Flexible Report Formats",
+            description: "Reports now support default and optional formats per artifact with cleaner download behavior.",
             features: [
-                "Project Creation Wizard: Inicialización en 4 pasos.",
-                "Contextual Workspace Sidebar: Resumen del proyecto siempre a la vista.",
-                "Solution Config Drawer: Ajustes centralizados en un solo lugar."
+                "Per-report format selector (PDF, Markdown, HTML, JSON).",
+                "Knowledge Export consolidated into one entry with dynamic format routing.",
+                "HTTP method handling fixed (GET for read endpoints, POST only for triage/final PDFs).",
+                "Catalog metadata now includes available_formats.",
+                "Project-level validation tested on real tenant/project data."
             ],
-            icon: <Layers className="text-cyan-400" />,
+            icon: <Cpu className="text-cyan-400" />,
             color: "from-cyan-500/10 to-transparent"
         },
         {
-            sprint: "Sprint 1",
-            title: "Identidad Visual Blue-Green",
-            description: "El primer paso hacia una experiencia premium y profesional.",
+            sprint: "Since v4.0",
+            title: "Trust-First Discovery Validation",
+            description: "Discovery cross-check now behaves as recommendation, while preserving user intent and known project context.",
             features: [
-                "Nueva paleta de colores Cyan/Emerald de alta fidelidad.",
-                "Global Logs Sidepanel para diagnóstico en tiempo real.",
-                "Rediseño completo de Triage y Administración."
+                "Detected technology ranking now prioritizes dominant evidence (frequency-based).",
+                "Manual source-tech selection is explicitly preserved as a valid decision.",
+                "Conflict messaging reframed from hard override to guided recommendation.",
+                "Category taxonomy standardized to English across UI and API.",
+                "Hydration and UX noise reduced during reset/re-run workflows."
             ],
-            icon: <LayoutTemplate className="text-emerald-400" />,
+            icon: <MessagesSquare className="text-emerald-400" />,
             color: "from-emerald-500/10 to-transparent"
         }
     ];
@@ -85,7 +89,7 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
                         </button>
                     </div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                        Check out the latest features and usability improvements.
+                        Top updates delivered from v4.0 to now.
                     </p>
                 </div>
 

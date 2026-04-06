@@ -11,9 +11,70 @@ from apps.api.services.report_service import report_service
 from apps.api.services.persistence_service import SupabasePersistence
 from apps.api.routers.dependencies import get_db
 from fastapi.concurrency import run_in_threadpool
+from apps.api.services.reports_catalog_service import ReportsCatalogService
+from datetime import datetime
 
 router = APIRouter(prefix="/projects", tags=["Reports"])
 logger = logging.getLogger("ReportsRouter")
+
+@router.get("/reports/catalog")
+async def list_reports_catalog(
+    stage: int | None = None,
+    category: str | None = None,
+    product_line: str | None = None,
+    audience: str | None = None,
+    report_type: str | None = None,
+):
+    """List all available reports with optional filtering."""
+    try:
+        reports = ReportsCatalogService.get_all_reports(
+            stage=stage,
+            category=category,
+            product_line=product_line,
+            audience=audience,
+            report_type=report_type
+        )
+        return {
+            "reports": reports,
+            "count": len(reports),
+            "filters_applied": {
+                "stage": stage,
+                "category": category,
+                "product_line": product_line,
+                "audience": audience,
+                "report_type": report_type,
+            }
+        }
+    except Exception as e:
+        logger.exception(f"Error listing reports catalog: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reports/catalog/{report_id}")
+async def get_report_metadata(report_id: str):
+    """Get metadata for a specific report."""
+    try:
+        report = ReportsCatalogService.get_report(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found in catalog")
+        return {"report": report}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error retrieving report metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reports/catalog-summary")
+async def get_catalog_summary():
+    """Get overall catalog statistics and schema."""
+    try:
+        summary = ReportsCatalogService.get_catalog_summary()
+        return {"summary": summary}
+    except Exception as e:
+        logger.exception(f"Error getting catalog summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/{project_id}/reports/triage")
 async def generate_triage_report(
@@ -160,3 +221,84 @@ def _get_generated_outputs(project_id: str, tenant_id: str) -> list:
     except Exception as e:
         logger.error(f"Error collecting outputs: {e}", exc_info=True)
         return []
+
+
+@router.get("/{project_id}/reports/schema-intelligence")
+async def get_schema_intelligence_report(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Returns schema intelligence data (PK/FK detection, column profiling, PII flags)."""
+    try:
+        assets = await db.get_project_assets(project_id)
+        if not assets:
+            return {
+                "project_id": project_id,
+                "generated_at": str(datetime.now()),
+                "asset_count": 0,
+                "schema_stats": {
+                    "pk_count": 0, "fk_count": 0, "detection_rate": 0,
+                    "total_columns": 0, "assets_with_schema": 0, "column_profiles": []
+                }
+            }
+        schema_stats = await run_in_threadpool(report_service._calculate_schema_stats, assets)
+        return {
+            "project_id": project_id,
+            "generated_at": str(datetime.now()),
+            "asset_count": len(assets),
+            "schema_stats": schema_stats,
+        }
+    except Exception as e:
+        logger.exception(f"Error fetching schema intelligence: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/reports/forensic-assessment")
+async def get_forensic_assessment_report(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Returns forensic assessment from quick_assessment or scout_assessment."""
+    try:
+        project = await db.get_project_metadata(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        settings = project.get('settings') or {}
+        scout_data = settings.get('scout_assessment') or {}
+        if scout_data and (scout_data.get('completeness_score') or scout_data.get('assessment_summary')):
+            return {"project_id": project_id, "source": "scout_assessment",
+                    "generated_at": str(datetime.now()), "assessment": scout_data}
+
+        qa = project.get('quick_assessment') or {}
+        if not qa:
+            return {"project_id": project_id, "generated_at": str(datetime.now()),
+                    "assessment": None,
+                    "message": "No forensic assessment yet. Run Discovery Forensic Scan first."}
+
+        blockers = qa.get('blockers') or []
+        gaps = [{"category": "Blocker", "gap_description": b, "impact": "HIGH", "suggested_file": None}
+                for b in blockers if isinstance(b, str) and b.strip()]
+        techs = qa.get('detected_techs') or []
+        return {
+            "project_id": project_id,
+            "generated_at": str(datetime.now()),
+            "source": "quick_assessment",
+            "assessment": {
+                "completeness_score": qa.get('score', 0),
+                "detected_technology": ', '.join(techs) if techs else None,
+                "assessment_summary": (
+                    qa.get('llm_opinion') or
+                    f"Quick Assessment: viability {qa.get('score', 0)}/100 ({qa.get('semaforo', 'yellow')}). "
+                    f"{len(qa.get('file_details') or [])} files analyzed."
+                ),
+                "detected_gaps": gaps,
+                "blockers_count": len(blockers),
+                "file_breakdown": qa.get('file_breakdown') or {},
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching forensic assessment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

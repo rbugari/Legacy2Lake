@@ -8,20 +8,20 @@ try:
     from apps.api.services.persistence_service import SupabasePersistence
     from apps.api.services.knowledge_service import KnowledgeService
     from apps.api.services.prompts.prompt_service import PromptService
-    from apps.api.prompts.catalog import build_cartridge_prompt_id
+    from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
 except ImportError:
     try:
         from utils.logger import logger
         from services.persistence_service import SupabasePersistence
         from services.knowledge_service import KnowledgeService
         from services.prompts.prompt_service import PromptService
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
     except ImportError:
         from ..utils.logger import logger
         from .persistence_service import SupabasePersistence
         from .knowledge_service import KnowledgeService
         from .prompts.prompt_service import PromptService
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
 
 
 class AgentFService:
@@ -90,6 +90,7 @@ class AgentFService:
         # Consistent with Agent C: Use tech_id if available, fallback to target_tech
         target_tech_raw = task_info.get("tech_id", task_info.get("target_tech", "pyspark"))
         target_tech = str(target_tech_raw).lower().replace(" ", "_")
+        target_tech = normalize_tech_stack(target_tech) or target_tech
 
         cartridge_rules = ""
         cartridge_prompt_id = build_cartridge_prompt_id(layer, target_tech) or f"agent_c_{layer.lower()}_{target_tech}"

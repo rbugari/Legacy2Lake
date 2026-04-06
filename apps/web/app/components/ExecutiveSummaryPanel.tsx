@@ -243,7 +243,7 @@ export default function ExecutiveSummaryPanel({
                     <p className="text-xl font-black text-white">{summary.total_assets}</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-center">
-                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Migrable</p>
+                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Migratable</p>
                     <p className="text-xl font-black text-emerald-400">{summary.migrable_assets}</p>
                     <p className="text-[10px] text-white/30">{coveragePct}% coverage</p>
                 </div>

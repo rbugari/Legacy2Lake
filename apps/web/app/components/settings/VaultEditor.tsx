@@ -66,7 +66,7 @@ export default function VaultEditor() {
     }, []);
 
     const handleDeleteProvider = async (providerId: string) => {
-        if (!confirm(`¿Eliminar el provider "${providerId}" del vault? Esta acción no puede deshacerse.`)) return;
+        if (!confirm(`Delete provider "${providerId}" from the vault? This action cannot be undone.`)) return;
         try {
             const res = await fetchWithAuth("system/vault/delete", {
                 method: "POST",

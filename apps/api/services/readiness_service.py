@@ -49,6 +49,11 @@ def _signal_from_quick_assessment(qa: Optional[Dict]) -> Dict[str, Any]:
     blockers = qa.get("blockers") or []
     techs    = qa.get("detected_techs") or []
     breakdown = qa.get("file_breakdown") or {}
+    # Backward compatibility: existing projects may still have legacy Spanish keys
+    # in persisted quick_assessment payloads.
+    migratable_count = breakdown.get("migratable")
+    if migratable_count is None:
+        migratable_count = breakdown.get("migrable", 0)
     total_files = qa.get("total_files", 0)
 
     return {
@@ -57,7 +62,7 @@ def _signal_from_quick_assessment(qa: Optional[Dict]) -> Dict[str, Any]:
         "semaforo":     semaforo,
         "blockers":     blockers,
         "detected_techs": techs,
-        "migrable_count": breakdown.get("migrable", 0),
+        "migratable_count": migratable_count,
         "total_files":  total_files,
     }
 
@@ -184,12 +189,12 @@ def compute_readiness(
 
         blockers.extend(qa_sig.get("blockers") or [])
 
-        if qa_sig["migrable_count"] == 0:
-            blockers.append("No migrable ETL packages detected")
+        if qa_sig["migratable_count"] == 0:
+            blockers.append("No migratable ETL packages detected")
             add_adjustment(
                 "Quick Assessment",
                 -15,
-                "No migrable ETL packages detected",
+                "No migratable ETL packages detected",
             )
 
         if qa_sig["detected_techs"]:

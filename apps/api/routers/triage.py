@@ -984,7 +984,7 @@ async def _run_triage_background(
                 "filename": item["name"],
                 "content": item.get("content"),
                 "type": category,  # CORE/SUPPORT/IGNORED
-                "category": file_category,  # migrable, soporte, documentacion
+                "category": file_category,  # migratable, support, documentation
                 "source_path": item["path"],
                 "metadata": {
                     **item.get("metadata", {}), 

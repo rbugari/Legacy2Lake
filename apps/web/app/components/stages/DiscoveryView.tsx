@@ -461,10 +461,10 @@ export default function DiscoveryView({
     };
 
     const bulkClassifyByCategory = () => {
-        // Auto-classify: migrable → CORE, soporte → SUPPORT, docs/unknown → IGNORED
+        // Auto-classify: migratable → CORE, support → SUPPORT, docs/unknown → IGNORED
         setFileInventory(prev => prev.map(file => {
-            if (file.category === 'migrable') return { ...file, classification: 'CORE', include: true };
-            if (file.category === 'soporte') return { ...file, classification: 'SUPPORT', include: true };
+            if (file.category === 'migratable') return { ...file, classification: 'CORE', include: true };
+            if (file.category === 'support') return { ...file, classification: 'SUPPORT', include: true };
             return { ...file, classification: 'IGNORED', include: false };
         }));
     };
@@ -761,14 +761,14 @@ export default function DiscoveryView({
                                     <div className="flex items-start gap-4 p-5 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
                                         <ShieldCheck className="text-cyan-500 shrink-0" size={20} />
                                         <p className="text-xs text-cyan-200/90 font-bold leading-relaxed">
-                                            You selected <span className="text-white bg-black/30 px-2 py-0.5 rounded">{sourceTech}</span>, but the forensic analysis concludes that <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is a better match. Do you want to update the project configuration?
+                                            You selected <span className="text-white bg-black/30 px-2 py-0.5 rounded">{sourceTech}</span>. The forensic scan suggests <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> as an alternative. You can keep your manual selection or update the project configuration.
                                         </p>
                                     </div>
                                     {!isSupportedSourceTech(assessment.detectedTech || "") && (
                                         <div className="flex items-start gap-4 p-5 bg-red-500/10 rounded-2xl border border-red-500/20">
                                             <AlertCircle className="text-red-400 shrink-0" size={20} />
                                             <p className="text-xs text-red-200/90 font-bold leading-relaxed">
-                                                The detected origin <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is not supported by the configured source cartridges. Please report this origin to the admin team.
+                                                The suggested origin <span className="text-white bg-black/30 px-2 py-0.5 rounded">{assessment.detectedTech}</span> is not supported by the configured source cartridges. Your current selection can still be used.
                                             </p>
                                         </div>
                                     )}
@@ -785,7 +785,7 @@ export default function DiscoveryView({
                                             onClick={() => setShowConflict(false)}
                                             className="px-6 py-3 bg-white/5 border border-white/10 text-gray-400 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-white/10 hover:text-white transition-all"
                                         >
-                                            {isSupportedSourceTech(assessment.detectedTech || "") ? `Keep ${sourceTech}` : "Report to Admin"}
+                                            Keep My Selection
                                         </button>
                                     </div>
                                 </div>
@@ -1109,9 +1109,9 @@ export default function DiscoveryView({
                                                         {file.name}
                                                     </td>
                                                     <td className="px-6 py-3">
-                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${file.category === 'migrable' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/20' :
-                                                            file.category === 'soporte' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20' :
-                                                                file.category === 'documentacion' ? 'bg-gray-500/20 text-gray-400 border border-gray-500/20' :
+                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${file.category === 'migratable' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/20' :
+                                                            file.category === 'support' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20' :
+                                                                file.category === 'documentation' ? 'bg-gray-500/20 text-gray-400 border border-gray-500/20' :
                                                                     'bg-red-500/20 text-red-400 border border-red-500/20'
                                                             }`}>
                                                             {file.category || 'unknown'}

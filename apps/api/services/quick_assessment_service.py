@@ -33,7 +33,7 @@ except ImportError:
 class FileClassification(BaseModel):
     """Classification details for a single file."""
     filename: str
-    category: str  # MIGRABLE, SOPORTE, DOCUMENTACION, NO_RECONOCIDO
+    category: str  # MIGRATABLE, SUPPORT, DOCUMENTATION, UNRECOGNIZED
     detected_tech: Optional[str] = None  # SSIS, DataStage, Pentaho, SQL, etc.
     complexity_hint: str  # LOW, MEDIUM, HIGH
     size_bytes: int
@@ -134,13 +134,14 @@ class QuickAssessmentService:
         
         # 2. Classify each file into 4 categories
         breakdown = {
-            "migrable": 0,
-            "soporte": 0,
-            "documentacion": 0,
-            "no_reconocido": 0
+            "migratable": 0,
+            "support": 0,
+            "documentation": 0,
+            "unrecognized": 0
         }
         file_details = []
         detected_techs = set()
+        detected_tech_counts: Dict[str, int] = {}
         total_lines = 0
         
         for item in file_inventory:
@@ -148,6 +149,7 @@ class QuickAssessmentService:
             breakdown[category] += 1
             if tech:
                 detected_techs.add(tech)
+                detected_tech_counts[tech] = detected_tech_counts.get(tech, 0) + 1
             
             file_details.append(FileClassification(
                 filename=item["name"],
@@ -180,11 +182,19 @@ class QuickAssessmentService:
                 "QuickAssessment"
             )
         
+        # Order detected technologies by frequency first (desc), then name.
+        # This prevents support techs (e.g., SQL) from outranking dominant ETL techs (e.g., SSIS)
+        # just because of alphabetical sorting.
+        ordered_detected_techs = sorted(
+            list(detected_techs),
+            key=lambda tech_name: (-detected_tech_counts.get(tech_name, 0), tech_name)
+        )
+
         result = QuickAssessmentResult(
             score=score,
             semaforo=semaforo,
             file_breakdown=breakdown,
-            detected_techs=sorted(list(detected_techs)),
+            detected_techs=ordered_detected_techs,
             blockers=blockers,
             file_details=file_details,
             total_files=total_files,
@@ -205,10 +215,10 @@ class QuickAssessmentService:
         Classifies a file into one of 4 categories.
         
         Categories:
-        - migrable: ETL packages (SSIS, DataStage, Pentaho, Informatica)
-        - soporte: Support files (SQL, CSV, schemas)
-        - documentacion: Documentation (MD, TXT, PDF)
-        - no_reconocido: Unrecognized files
+        - migratable: ETL packages (SSIS, DataStage, Pentaho, Informatica)
+        - support: Support files (SQL, CSV, schemas)
+        - documentation: Documentation (MD, TXT, PDF)
+        - unrecognized: Unrecognized files
         
         Returns:
             Tuple of (category, detected_tech)
@@ -222,9 +232,9 @@ class QuickAssessmentService:
             filename.endswith(".dtproj.user")
             or ext in ["dtproj", "params", "conmgr", "sln", "database"]
         ):
-            return ("soporte", "SSIS")
+            return ("support", "SSIS")
         
-        # MIGRABLE - ETL packages
+        # MIGRATABLE - ETL packages
         if ext in ['dtsx', 'dsx', 'kjb', 'ktr', 'pmx']:
             tech = None
             if ext == 'dtsx':
@@ -235,27 +245,27 @@ class QuickAssessmentService:
                 tech = 'Pentaho'
             elif ext == 'pmx':
                 tech = 'Informatica'
-            return ("migrable", tech)
+            return ("migratable", tech)
         
         # Informatica XML (requires signature detection)
         if ext == 'xml' and 'informatica' in item.get('signatures', []):
-            return ("migrable", "Informatica")
+            return ("migratable", "Informatica")
         
-        # SOPORTE - Support files
+        # SUPPORT - Support files
         if ext in ['sql', 'csv', 'xlsx', 'xls', 'json', 'yaml', 'yml']:
             tech = None
             if ext == 'sql':
                 tech = self._resolve_sql_tech_from_source_hint(source_hint)
             elif ext in ['xlsx', 'xls']:
                 tech = 'Excel'
-            return ("soporte", tech)
+            return ("support", tech)
         
-        # DOCUMENTACION - Documentation
+        # DOCUMENTATION - Documentation
         if ext in ['md', 'txt', 'pdf', 'docx', 'doc', 'rtf']:
-            return ("documentacion", None)
+            return ("documentation", None)
         
-        # NO_RECONOCIDO - Unrecognized
-        return ("no_reconocido", None)
+        # UNRECOGNIZED - Unrecognized
+        return ("unrecognized", None)
 
     def _resolve_sql_tech_from_source_hint(self, source_hint: str) -> str:
         """Return a concrete SQL tech label when project settings already define the SQL family."""
@@ -293,7 +303,7 @@ class QuickAssessmentService:
         """
         Calculates viability score based on weighted file categories.
         
-        Formula: (migrable*4 + soporte*2 + doc*1 + no_rec*0) / (total*4) * 100
+        Formula: (migratable*4 + support*2 + documentation*1 + unrecognized*0) / (total*4) * 100
         
         Returns:
             Score from 0 to 100
@@ -302,10 +312,10 @@ class QuickAssessmentService:
             return 0
         
         weighted_sum = (
-            breakdown["migrable"] * 4 +
-            breakdown["soporte"] * 2 +
-            breakdown["documentacion"] * 1 +
-            breakdown["no_reconocido"] * 0
+            breakdown["migratable"] * 4 +
+            breakdown["support"] * 2 +
+            breakdown["documentation"] * 1 +
+            breakdown["unrecognized"] * 0
         )
         
         max_possible = total * 4
@@ -335,17 +345,17 @@ class QuickAssessmentService:
         """
         blockers = []
         
-        # No migrable files detected
-        if breakdown["migrable"] == 0:
-            blockers.append("No migrable files detected (SSIS, DataStage, Pentaho, Informatica)")
+        # No migratable files detected
+        if breakdown["migratable"] == 0:
+            blockers.append("No migratable files detected (SSIS, DataStage, Pentaho, Informatica)")
         
         # Too many unrecognized files
-        no_rec_pct = (breakdown["no_reconocido"] / total * 100) if total > 0 else 0
+        no_rec_pct = (breakdown["unrecognized"] / total * 100) if total > 0 else 0
         if no_rec_pct > 70:
             blockers.append(f"{no_rec_pct:.0f}% of files are unrecognized")
         
         # Missing support files
-        if breakdown["soporte"] == 0 and breakdown["migrable"] > 0:
+        if breakdown["support"] == 0 and breakdown["migratable"] > 0:
             blockers.append("Missing support files (DDL, schemas, reference data)")
         
         return blockers
@@ -365,10 +375,10 @@ class QuickAssessmentService:
         """
         tech_list = ", ".join(techs) if techs else "None detected"
         return f"""Migration project analysis. Files uploaded: {total} ({lines:,} lines)
-- {breakdown['migrable']} migrable packages
-- {breakdown['soporte']} support files
-- {breakdown['documentacion']} documentation
-- {breakdown['no_reconocido']} unrecognized
+- {breakdown['migratable']} migratable packages
+- {breakdown['support']} support files
+- {breakdown['documentation']} documentation
+- {breakdown['unrecognized']} unrecognized
 Technologies detected: {tech_list}
 Is this migration viable? What are the main risks? Respond in 3-4 lines."""
     
