@@ -172,8 +172,8 @@ class TestProcessLocking:
         assert exc_info.value.locked_by == "User 1"
     
     @pytest.mark.asyncio
-    async def test_same_user_different_session_blocked(self):
-        """Test that same user with different session is blocked."""
+    async def test_same_user_different_session_extends_lock(self):
+        """Test that same user with different session extends the lock."""
         service = LockService(tenant_id="test-tenant-1")
         
         # User 1, Session 1 acquires lock
@@ -185,15 +185,16 @@ class TestProcessLocking:
             session_id="session-1"
         )
         
-        # Same user, different session - should be blocked
-        with pytest.raises(ProcessLockError):
-            await service.acquire_lock(
-                project_id="project-123",
-                process_type="triage",
-                user_id="user-1",
-                username="User 1",
-                session_id="session-2"  # Different session
-            )
+        # Same user, different session - should extend the existing lock
+        lock2 = await service.acquire_lock(
+            project_id="project-123",
+            process_type="triage",
+            user_id="user-1",
+            username="User 1",
+            session_id="session-2"  # Different session
+        )
+
+        assert lock2['lock_id'] == lock1['lock_id']
     
     @pytest.mark.asyncio
     async def test_same_user_same_session_extends_lock(self):

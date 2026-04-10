@@ -117,6 +117,9 @@ class ProfilerService:
             "shared_connections": shared_connections,
             "table_metadata": bronze_candidates,
             "primary_keys": {k: v["pk"] for k, v in bronze_candidates.items()},
+            "refinement_units": self._build_refinement_units(candidate_files, shared_connections, bronze_candidates),
+            "file_to_unit": self._build_file_to_unit_map(candidate_files),
+            "unit_primary_keys": self._build_unit_primary_keys(candidate_files, bronze_candidates),
             "total_files": len(candidate_files)
         }
 
@@ -126,6 +129,87 @@ class ProfilerService:
         log.append(f"[Profiler] Profile metadata saved to {profile_output_key}")
 
         return profile_data
+
+    def _build_refinement_units(self, candidate_files: List[str], shared_connections: Dict[str, List[str]], table_metadata: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        grouped_units: Dict[str, Dict[str, Any]] = {}
+
+        for source_file in candidate_files:
+            unit_name = self._normalize_refinement_unit_name(source_file)
+            unit = grouped_units.setdefault(
+                unit_name,
+                {
+                    "unit_name": unit_name,
+                    "output_table_name": unit_name,
+                    "source_files": [],
+                    "pk_columns": [],
+                    "table_type": "DIMENSION",
+                    "shared_connections": [],
+                    "reuse_strategy": "single_source",
+                },
+            )
+
+            unit["source_files"].append(source_file)
+            if table_metadata.get(source_file, {}).get("type") == "FACT":
+                unit["table_type"] = "FACT"
+
+            for pk_column in table_metadata.get(source_file, {}).get("pk", []):
+                if pk_column not in unit["pk_columns"]:
+                    unit["pk_columns"].append(pk_column)
+
+        for jdbc_url, source_files in shared_connections.items():
+            for source_file in source_files:
+                unit_name = self._normalize_refinement_unit_name(source_file)
+                unit = grouped_units.get(unit_name)
+                if unit and jdbc_url not in unit["shared_connections"]:
+                    unit["shared_connections"].append(jdbc_url)
+
+        units: List[Dict[str, Any]] = []
+        for unit_name in sorted(grouped_units.keys()):
+            unit = grouped_units[unit_name]
+            if len(unit["source_files"]) > 1:
+                unit["reuse_strategy"] = "multi_source_consolidation"
+            elif unit["shared_connections"]:
+                unit["reuse_strategy"] = "knowledge_guided_reuse"
+            unit["source_count"] = len(unit["source_files"])
+            units.append(unit)
+
+        return units
+
+    def _build_file_to_unit_map(self, candidate_files: List[str]) -> Dict[str, str]:
+        return {
+            source_file: self._normalize_refinement_unit_name(source_file)
+            for source_file in candidate_files
+        }
+
+    def _build_unit_primary_keys(self, candidate_files: List[str], table_metadata: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]]:
+        unit_primary_keys: Dict[str, List[str]] = {}
+
+        for source_file in candidate_files:
+            unit_name = self._normalize_refinement_unit_name(source_file)
+            pk_columns = table_metadata.get(source_file, {}).get("pk", [])
+            unit_primary_keys.setdefault(unit_name, [])
+            for pk_column in pk_columns:
+                if pk_column not in unit_primary_keys[unit_name]:
+                    unit_primary_keys[unit_name].append(pk_column)
+
+        for unit_name, pk_columns in unit_primary_keys.items():
+            if not pk_columns:
+                unit_primary_keys[unit_name] = ["id"]
+
+        return unit_primary_keys
+
+    def _normalize_refinement_unit_name(self, filename: str) -> str:
+        stem = filename.rsplit(".", 1)[0].lower()
+        tokens = [token for token in re.split(r"[^a-z0-9]+", stem) if token]
+        stop_words = {
+            "bronze", "silver", "gold", "raw", "curated", "stage", "stg", "tmp", "temp",
+            "pkg", "package", "ssis", "sql", "sp", "proc", "procedure", "job", "task",
+            "etl", "elt", "load", "sync", "pipeline", "flow", "data", "dbo", "fact", "dim"
+        }
+        filtered = [token for token in tokens if token not in stop_words]
+        if not filtered:
+            filtered = tokens or ["refined_asset"]
+        return "_".join(filtered[:4])
 
     def _detect_primary_keys(self, content: str, log: List[str] = None) -> List[str]:
         """

@@ -65,6 +65,15 @@ class AgentFService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         await db.save_prompt("agent_f_critic", content)
 
+    @staticmethod
+    def _resolve_refinement_strategy(post_drafting_mode: Optional[str]) -> str:
+        """Return mode-aware strategy guidance for Agent F review/optimization."""
+        return {
+            "drafting_delivery": "Terminal delivery path. Prioritize faithful equivalence and avoid imposing modernization-only patterns.",
+            "structured_refinement": "Bounded refinement path. Enforce medallion consistency and governance quality without aggressive redesign.",
+            "intelligent_reengineering": "Advanced path. Allow architectural improvements while preserving traceability and safety controls.",
+        }.get(post_drafting_mode, "Default review path. Enforce layer-aware constraints from the task metadata.")
+
     @logger.llm_debug("Agent-F-Compliance-Review")
     async def review_code(self, task_info: Dict[str, Any], generated_code: str, project_id: Optional[str] = None) -> Dict[str, Any]:
         """Audits generated code against layer-specific standards."""
@@ -80,6 +89,9 @@ class AgentFService:
         
         # --- CARTRIDGE RULES SYNC (v4.0 Zero-Hardcode Database-Driven) ---
         project_id = project_id or task_info.get("project_id")
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        post_drafting_mode = await db.get_post_drafting_mode(project_id) if project_id else None
+        refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
         
         # --- LAYER EXTRACTION (v4.0 Two-Phase Architecture) ---
         layer = task_info.get("layer", "direct")  # "direct", "bronze", "silver", "gold"
@@ -130,6 +142,8 @@ class AgentFService:
         LAYER MODE: {layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if layer == "direct" else f"Architectural Enhancement - {layer.upper()} Layer"})
         SOURCE TECHNOLOGY: {source_tech}
         TARGET TECHNOLOGY: {target_tech_raw}
+        POST-DRAFTING MODE: {post_drafting_mode or "not_selected"}
+        STRATEGY GUIDANCE: {refinement_strategy}
         
         CODING STANDARDS TO FOLLOW ({target_tech_raw} SPECIFIC):
         {standards}
@@ -154,6 +168,9 @@ class AgentFService:
         REMEMBER: Apply validation criteria based on LAYER MODE above.
         - If layer=="direct": Validate functional equivalence, zero-hardcode, metadata usage. DO NOT require MERGE, audit columns, or Medallion structure.
         - If layer in ["bronze","silver","gold"]: Enforce full architectural compliance (MERGE, audit columns, Medallion structure).
+        - If post_drafting_mode=="drafting_delivery": Prefer strict equivalence checks and do not over-penalize for missing modernization patterns.
+        - If post_drafting_mode=="structured_refinement": Prioritize bounded medallion consistency and deterministic governance controls.
+        - If post_drafting_mode=="intelligent_reengineering": Accept higher-order improvements only if traceability and safety are preserved.
         """
  
         messages = [
@@ -185,12 +202,18 @@ class AgentFService:
         
         # Detect code language
         task_info = task_info or {}
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        post_drafting_mode = await db.get_post_drafting_mode(project_id) if project_id else None
+        refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
         target_tech = task_info.get("tech_id", task_info.get("target_tech", "pyspark")).lower()
         code_lang = "sql" if any(x in target_tech for x in ["sql", "snowflake", "dbt", "bigquery", "redshift"]) else "python"
         
         human_content = f"""
         Please apply the following SPECIFIC optimizations to the code below:
         {json.dumps(optimizations)}
+
+        POST-DRAFTING MODE: {post_drafting_mode or "not_selected"}
+        STRATEGY GUIDANCE: {refinement_strategy}
  
         ORIGINAL CODE:
         ```{code_lang}

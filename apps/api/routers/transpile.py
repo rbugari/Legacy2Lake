@@ -232,6 +232,7 @@ async def _run_orchestration_background(
     lock_ids: Dict[str, str],
     lock_service: LockService,
     tenant_id: str,
+    owner_user_id: str,
     username: str,
     db_config: Dict[str, Any]
 ):
@@ -282,12 +283,13 @@ async def _run_orchestration_background(
     except Exception as e:
         await db.log_execution(project_uuid, "MIGRATION", f"ERROR: {str(e)}", step="SYSTEM")
         await db.update_project_status(project_uuid, "DRAFTING")  # Revert on error
-        raise
+        # Do not re-raise from background task; keep API stable and rely on persisted logs/status.
+        return
     finally:
         # Release all locks
         for process_type, lock_id in lock_ids.items():
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
                 print(f"[ORCHESTRATION] Lock {lock_id} released for {process_type}")
             except Exception as e:
                 print(f"WARNING: Failed to release {process_type} lock {lock_id}: {e}")
@@ -314,6 +316,7 @@ async def trigger_orchestration(
     
     # Get username for lock
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     username = identity.get("username", "Unknown User")
     if not username or username == "Unknown User":
         try:
@@ -325,7 +328,7 @@ async def trigger_orchestration(
     # Generate or get session ID
     session_id = request.headers.get("X-Session-ID")
     if not session_id:
-        session_id = str(uuid.uuid4())
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_OID, request.headers.get("user-agent", "")))
     
     # Try to acquire lock for all 3 processes (drafting, certification, governance)
     lock_ids = {}
@@ -334,7 +337,7 @@ async def trigger_orchestration(
             lock = await lock_service.acquire_lock(
                 project_id=project_id,
                 process_type=process_type,
-                user_id=tenant_id,
+                user_id=owner_user_id,
                 username=username,
                 session_id=session_id,
                 user_agent=request.headers.get("user-agent"),
@@ -346,7 +349,7 @@ async def trigger_orchestration(
         # Release any acquired locks before failing
         for lock_id in lock_ids.values():
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
             except:
                 pass
         
@@ -360,6 +363,9 @@ async def trigger_orchestration(
         )
     
     # === MAIN ORCHESTRATION LOGIC ===
+    # A fresh Drafting run invalidates the previous post-Drafting decision.
+    await db.clear_post_drafting_mode(project_id)
+
     # Set status to DRAFTING here synchronously so run_full_migration's status check passes
     await db.update_project_status(project_id, "DRAFTING")
 
@@ -378,6 +384,7 @@ async def trigger_orchestration(
             lock_ids,
             lock_service,
             tenant_id,
+            owner_user_id,
             username,
             db_config
         )
@@ -392,7 +399,7 @@ async def trigger_orchestration(
         # === ERROR: Release all locks before re-raising ===
         for lock_id in lock_ids.values():
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
             except:
                 pass
         raise e

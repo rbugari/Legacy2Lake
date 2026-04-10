@@ -100,6 +100,8 @@ export default function RefinementView({
     const [isRefinementRunning, setIsRefinementRunning] = useState(false); // Active refinement process
     const isRefinementRunningRef = useRef(false); // Ref to read in callbacks without adding to deps
     const [isFetchingLogs, setIsFetchingLogs] = useState(false); // True while fetching logs
+    const isFetchingLogsRef = useRef(false); // Prevent overlapping poll requests
+    const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
@@ -116,6 +118,14 @@ export default function RefinementView({
     useEffect(() => {
         const fetchState = async () => {
             try {
+                try {
+                    const modeRes = await fetchWithAuth(`projects/${projectId}/get-post-drafting-mode`);
+                    const modeData = await modeRes.json();
+                    setPostDraftingMode(modeData.post_drafting_mode || null);
+                } catch (err) {
+                    console.warn('[RefinementView] Could not load post-drafting mode:', err);
+                }
+
                 // Check project status first to decide whether to load old logs
                 const REFINED_OR_BEYOND = ['REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
                 let currentStatus = '';
@@ -174,8 +184,13 @@ export default function RefinementView({
 
     // Keep ref in sync with state
     useEffect(() => { isRefinementRunningRef.current = isRefinementRunning; }, [isRefinementRunning]);
+    useEffect(() => { isFetchingLogsRef.current = isFetchingLogs; }, [isFetchingLogs]);
 
     const fetchRefinementLogs = useCallback(async () => {
+        if (isFetchingLogsRef.current) {
+            return;
+        }
+
         setIsFetchingLogs(true);
         try {
             // Fetch execution logs from backend
@@ -206,6 +221,7 @@ export default function RefinementView({
                     console.log("[RefinementView] Refinement complete, stopping polling");
                     setIsRefinementRunning(false);
                 }
+                return;
             }
         } catch (e) {
             console.error("[RefinementView] Failed to load refinement logs", e);
@@ -265,6 +281,15 @@ export default function RefinementView({
 
 
     const handleRunRefinement = async () => {
+        if (postDraftingMode === 'drafting_delivery') {
+            setLogs([
+                '[SYSTEM] Refinement unavailable for this project.',
+                '[SYSTEM] The selected post-Drafting mode is Drafting Delivery (terminal path).',
+                '[SYSTEM] Choose a different mode from Drafting if you want to run refinement.'
+            ]);
+            return;
+        }
+
         // Check if re-executing a previous stage (rollback warning)
         const CURRENT_STAGE = 3; // Refinement is stage 3
         if (projectStage !== undefined && projectStage > CURRENT_STAGE) {
@@ -493,6 +518,50 @@ export default function RefinementView({
         l.toUpperCase().includes("SUCCESS")
     );
 
+    // Mode-aware configuration
+    const modeConfig = {
+        'drafting_delivery': {
+            summary: 'Stage Skipped (Drafting Delivery)',
+            strategy: 'Terminal Path',
+            explanation: 'Project proceeds directly to Governance. No refinement will be applied.',
+            nextStage: 'Governance (audit & certification)',
+            actionLabel: 'Skip to Governance',
+            allowRefinement: false,
+            headerTitle: 'Refinement Skipped',
+            headerSubtitle: 'Drafting Delivery Selected',
+        },
+        'structured_refinement': {
+            summary: 'Structured Refinement Ready',
+            strategy: 'Bounded Medallion Optimization',
+            explanation: 'Multi-layer optimization with quality rules and governance compliance.',
+            details: 'Refinement will apply medallion patterns (Bronze → Silver → Gold) with focus on consistency and best practices.',
+            nextStage: 'Run Refinement or Skip to Governance',
+            actionLabel: 'Run Refinement',
+            allowRefinement: true,
+            headerTitle: 'Structured Refinement',
+            headerSubtitle: 'Medallion Optimization',
+        },
+        'intelligent_reengineering': {
+            summary: 'Intelligent Reengineering Ready',
+            strategy: 'Advanced Architectural Optimization',
+            explanation: 'Advanced optimizations including potential schema redesigns and architectural improvements.',
+            details: 'Reengineering may propose higher-order transformations and design improvements.',
+            nextStage: 'Run Reengineering or Skip to Governance',
+            actionLabel: 'Run Reengineering',
+            allowRefinement: true,
+            headerTitle: 'Intelligent Reengineering',
+            headerSubtitle: 'Advanced Optimization',
+        },
+    };
+
+    const activeConfig = modeConfig[postDraftingMode as keyof typeof modeConfig] || modeConfig['structured_refinement'];
+
+    const modeLabel = `Mode: ${postDraftingMode ? activeConfig.headerTitle : 'Not Selected'}`;
+
+    const refinementSummary = activeConfig.explanation;
+
+    const canAdvanceWithoutRefinement = postDraftingMode === 'drafting_delivery';
+
     useEffect(() => {
         if (!isFinished && logs.some(l => l.toUpperCase().includes("PIPELINE COMPLETE") || l.toUpperCase().includes("COMPLETED"))) {
             setIsFinished(true);
@@ -513,13 +582,13 @@ export default function RefinementView({
         <>
             <div className="flex flex-col h-full bg-[var(--background)]">
                 <StageHeader
-                    title="Stage 3: Intelligent Refinement"
-                    subtitle="Improve generated output, validate structure, and prepare the solution for governance"
+                    title={`Stage 3: ${activeConfig.headerTitle}`}
+                    subtitle={`${activeConfig.headerSubtitle} — ${activeConfig.explanation}`}
                     icon={<Layers className="text-purple-500" />}
-                    helpText="Use Refinement to compare outputs, improve quality, validate schema alignment, and reduce obvious technical debt before Governance."
+                    helpText={`Strategy: ${activeConfig.strategy}. ${activeConfig.details || activeConfig.explanation}`}
                     onApprove={handleApprove}
-                    approveLabel="Next Phase: Governance"
-                    isApproveDisabled={isRefinementRunning || !isComplete}
+                    approveLabel={activeConfig.allowRefinement ? "Next Phase: Governance" : "Skip To Governance"}
+                    isApproveDisabled={isRefinementRunning || (!isComplete && !canAdvanceWithoutRefinement)}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={onToggleFullscreen}
                     onReset={onReset}
@@ -533,8 +602,10 @@ export default function RefinementView({
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                     <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Refinement Status</p>
-                                    <p className="mt-3 text-2xl font-black text-white">{isRefinementRunning ? 'Running' : isComplete ? 'Complete' : 'Ready'}</p>
-                                    <p className="mt-2 text-sm text-gray-400">Pattern optimization, validation and modernization.</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{isRefinementRunning ? 'Running' : isComplete ? 'Complete' : activeConfig.allowRefinement ? 'Ready' : 'Blocked'}</p>
+                                    <p className="mt-2 text-sm text-gray-400">{activeConfig.summary}</p>
+                                    <p className="mt-3 text-xs font-black uppercase tracking-wider text-gray-500">{modeLabel}</p>
+                                    <p className="mt-2 text-xs text-gray-500">Strategy: <span className="text-gray-300 font-semibold">{activeConfig.strategy}</span></p>
                                 </div>
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                     <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Execution Logs</p>
@@ -556,10 +627,10 @@ export default function RefinementView({
                                 <div className="mt-6 flex flex-wrap gap-3">
                                     <button
                                         onClick={() => onSectionChange('run-refinement')}
-                                        disabled={isRefinementRunning}
+                                        disabled={isRefinementRunning || !activeConfig.allowRefinement}
                                         className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-500 disabled:opacity-50"
                                     >
-                                        {isRefinementRunning ? 'Refining...' : 'Run Refinement'}
+                                        {!activeConfig.allowRefinement ? 'Refinement Disabled' : isRefinementRunning ? 'Refining...' : activeConfig.actionLabel}
                                     </button>
                                     <button
                                         onClick={() => onSectionChange('summary')}
@@ -592,16 +663,20 @@ export default function RefinementView({
                                         <div className="mx-auto w-16 h-16 bg-purple-100 dark:bg-purple-900/20 rounded-full flex items-center justify-center">
                                             <RefreshCw size={32} className="text-purple-600 dark:text-purple-400" />
                                         </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Ready to Refine</h3>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{!activeConfig.allowRefinement ? activeConfig.summary : 'Ready to Refine'}</h3>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                                            Click "Refine & Modernize" to apply architectural patterns and optimize the generated code.
+                                            {!activeConfig.allowRefinement
+                                                ? 'This project was explicitly sent through Drafting Delivery. Re-run Drafting and choose another mode if you want refinement.'
+                                                : activeConfig.details || 'Click "' + activeConfig.actionLabel + '" to apply architectural patterns and optimize the generated code.'}
                                         </p>
-                                        <div className="text-xs text-gray-400 space-y-1 mt-4">
-                                            <div>🔍 Profiler: Analyze code patterns</div>
-                                            <div>🏗️ Architect: Apply Medallion design</div>
-                                            <div>⚡ Refactor: Optimize performance</div>
-                                            <div>🚀 Ops: Package for deployment</div>
-                                        </div>
+                                        {activeConfig.allowRefinement && (
+                                            <div className="text-xs text-gray-400 space-y-1 mt-4">
+                                                <div>🔍 Profiler: Analyze code patterns</div>
+                                                <div>{activeConfig.strategy === 'Bounded Medallion Optimization' ? '🏗️ Architect: Apply Medallion design' : '🏗️ Architect: Apply advanced optimizations'}</div>
+                                                <div>⚡ Refactor: Optimize performance</div>
+                                                <div>🚀 Ops: Package for deployment</div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ) : (

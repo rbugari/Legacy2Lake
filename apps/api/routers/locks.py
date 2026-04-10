@@ -94,6 +94,7 @@ async def acquire_lock(
     Raises 423 Locked if the process is already locked by another user/session.
     """
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     
@@ -115,7 +116,7 @@ async def acquire_lock(
         lock = await lock_service.acquire_lock(
             project_id=lock_request.project_id,
             process_type=lock_request.process_type,
-            user_id=tenant_id,
+            user_id=owner_user_id,
             username=username,
             session_id=session_id,
             user_agent=user_agent,
@@ -154,6 +155,7 @@ async def release_lock(
     Can release by lock_id or by project_id + process_type.
     """
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     
@@ -163,7 +165,7 @@ async def release_lock(
         lock_id=lock_request.lock_id,
         project_id=lock_request.project_id,
         process_type=lock_request.process_type,
-        user_id=tenant_id
+        user_id=owner_user_id
     )
     
     if success:

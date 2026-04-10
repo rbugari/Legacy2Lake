@@ -53,3 +53,4 @@ This index points to the documents that describe the current operating model of 
 Planning is intentionally kept small. If you need the current product thinking, use:
 
 - [`docs/planning`](C:\proyectos_dev\UTM\docs\planning)
+- [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](C:\proyectos_dev\UTM\docs\planning\V4_3_POST_DRAFTING_EXECUTION_MODES.md)

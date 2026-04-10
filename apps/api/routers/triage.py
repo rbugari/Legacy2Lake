@@ -693,6 +693,7 @@ async def _run_triage_background(
     lock_id: Optional[str],
     lock_service: LockService,
     tenant_id: str,
+    owner_user_id: str,
     username: str,
     db_config: dict  # Pass DB connection params instead of instance
 ):
@@ -1249,7 +1250,7 @@ async def _run_triage_background(
         # === ALWAYS: Release lock ===
         if lock_id:
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
                 print(f"[TRIAGE] Lock {lock_id} released")
             except Exception as e:
                 print(f"WARNING: Failed to release lock {lock_id}: {e}")
@@ -1276,12 +1277,36 @@ async def run_triage(
             status_code=403,
             detail="VIEWER users have read-only access. Only COLLABORATOR, MANAGER, and ADMIN can execute project phases."
         )
+
+    # Resolve project UUID early so we can fail fast if the project is already past triage.
+    project_uuid = project_id
+    if "-" not in project_id:
+        project_uuid = await db.get_project_id_by_name(project_id) or project_id
+
+    current_status = await db.get_project_status(project_uuid)
+    locked_statuses = {
+        "TRIAGE_APPROVED", "DRAFTING", "ORCHESTRATING", "DRAFTED",
+        "REFINEMENT", "REFINING", "REFINED",
+        "GOVERNANCE", "DOCUMENTING", "GOVERNED", "CERTIFYING",
+        "CERTIFIED", "COMPLETED", "DELIVERED"
+    }
+    if current_status in locked_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "triage_locked",
+                "message": f"Project is in {current_status} mode. Triage is locked until the project is reset or moved back to TRIAGE.",
+                "status": current_status,
+                "project_id": project_uuid,
+            }
+        )
     
     # === PROCESS LOCKING ===
     lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
     
     # Get username for lock
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     username = identity.get("username", "Unknown User")
     if not username or username == "Unknown User":
         # Fetch from database if not in identity
@@ -1294,7 +1319,7 @@ async def run_triage(
     # Generate or get session ID
     session_id = request.headers.get("X-Session-ID")
     if not session_id:
-        session_id = str(uuid.uuid4())
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_OID, request.headers.get("user-agent", "")))
     
     # Try to acquire lock
     lock_id = None
@@ -1302,7 +1327,7 @@ async def run_triage(
         lock = await lock_service.acquire_lock(
             project_id=project_id,
             process_type="triage",
-            user_id=tenant_id,
+            user_id=owner_user_id,
             username=username,
             session_id=session_id,
             user_agent=request.headers.get("user-agent"),
@@ -1323,10 +1348,6 @@ async def run_triage(
     
     # === UPDATE STATUS TO PROCESSING ===
     try:
-        project_uuid = project_id
-        if "-" not in project_id:  # If name, get UUID
-            project_uuid = await db.get_project_id_by_name(project_id) or project_id
-        
         await db.update_project_status(project_uuid, "PROCESSING")
     except Exception as e:
         print(f"WARNING: Could not update status to PROCESSING: {e}")
@@ -1344,6 +1365,7 @@ async def run_triage(
         lock_id=lock_id,
         lock_service=lock_service,
         tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
         username=username,
         db_config=db_config
     )

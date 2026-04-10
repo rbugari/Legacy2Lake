@@ -29,6 +29,7 @@
 - NO example credentials: `<JDBC_URL>`, `<USER>`, `<PASSWORD>`  
 - NO sample configs in `main()` functions
 - NO static connection strings
+- NO business-default substitutes for required runtime parameters (for example, do not replace a missing SSIS parameter with `0` or another sentinel value)
 
 **✅ REQUIRED: All paths and configs from orchestrator context**
 ```python
@@ -43,7 +44,7 @@ def execute_task(spark, config):
     - schema_name: Target schema/database
     - table_name: Target table name
     - jdbc_url, jdbc_user, jdbc_password: Source credentials
-    - load_mode: 'append' or 'overwrite' (default: 'append')
+    - load_mode: 'append' or 'overwrite' (derive from load_strategy if absent)
     - All source-specific parameters from metadata extraction
     """
     # Extract ALL values from config dictionary
@@ -51,7 +52,10 @@ def execute_task(spark, config):
     catalog = config.get('catalog_name')
     schema = config.get('schema_name')
     table_name = config['table_name']
-    load_mode = config.get('load_mode', 'append')
+    load_mode = config.get('load_mode')
+    if not load_mode:
+        load_strategy = str(config.get('load_strategy', '')).upper()
+        load_mode = 'overwrite' if load_strategy == 'FULL_OVERWRITE' else 'append'
 ```
 
 ### 3. METADATA-DRIVEN EXTRACTION (Use ALL Triage Data)
@@ -75,13 +79,9 @@ if source_query:
         }
     )
 else:
-    # Fallback: Full table with optional WHERE clause
+    # Use only the explicit source table supplied by metadata; do not invent a discovery fallback
     source_table = config['source_table']
-    where_clause = config.get('where_clause', '1=1')
-    query = f"(SELECT * FROM {source_table} WHERE {where_clause}) AS source"
-    df = spark.read.jdbc(url=config['jdbc_url'], table=query, 
-                         properties={"user": config['jdbc_user'], 
-                                   "password": config['jdbc_password']})
+    df = spark.table(source_table)
 ```
 
 ### 4. EXPLICIT TYPE CASTING (Required - Use Triage Column Metadata)

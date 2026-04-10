@@ -88,10 +88,11 @@ class PromptAssembler:
         - JSON serialization: {{schema | json}}
         """
         result = template
+        missing_variables = set()
         
         # Find both {{variable}} and {variable} patterns
         # We use a pattern that matches 1 or 2 braces, but captures the content inside
-        pattern = r'\{{1,2}([^{}]+)\}{1,2}'
+        pattern = r'\{{1,2}\s*([a-zA-Z_][a-zA-Z0-9_\.\|\s]*)\s*\}{1,2}'
         matches = re.finditer(pattern, template)
         
         for match in matches:
@@ -116,11 +117,15 @@ class PromptAssembler:
             if value is not None:
                 result = result.replace(placeholder, str(value))
             else:
-                # Keep placeholder if value not found
-                logger.warning(
-                    f"[PromptAssembler] Variable not found in context: {variable_path}",
-                    "PromptAssembler"
-                )
+                # Keep placeholder if value not found and report once per variable
+                missing_variables.add(variable_path)
+
+        if missing_variables:
+            preview = ", ".join(sorted(list(missing_variables))[:10])
+            logger.warning(
+                f"[PromptAssembler] Variables not found in context ({len(missing_variables)}): {preview}",
+                "PromptAssembler"
+            )
         
         return result
     
@@ -178,6 +183,29 @@ class PromptAssembler:
                 return None
         
         return current
+
+    def _to_mapping(self, value: Any) -> Any:
+        """
+        Convert dataclass-like objects into dictionaries recursively.
+
+        Prompt assembly receives a mix of plain dictionaries and typed
+        metadata objects (for example TableSchema/ColumnMetadata). Normalizing
+        here keeps the assembler resilient across callers.
+        """
+        if isinstance(value, dict):
+            return {key: self._to_mapping(item) for key, item in value.items()}
+
+        if isinstance(value, list):
+            return [self._to_mapping(item) for item in value]
+
+        if hasattr(value, "__dict__"):
+            return {
+                key: self._to_mapping(item)
+                for key, item in vars(value).items()
+                if not key.startswith("_")
+            }
+
+        return value
     
     def _apply_filter(self, value: Any, filter_name: str) -> Any:
         """
@@ -222,7 +250,7 @@ class PromptAssembler:
         Build formatted column context for prompts
         
         Args:
-            columns: List of column dictionaries
+            columns: List of column dictionaries or dataclass-like objects
             include_types: Include data types
             include_constraints: Include constraints (nullable, unique, etc.)
             
@@ -230,36 +258,36 @@ class PromptAssembler:
             Formatted column context string
         """
         lines = []
-        
+
         for col in columns:
-            col_name = col.get("name", "unknown")
-            col_type = col.get("type", "unknown")
-            nullable = col.get("nullable", True)
-            
+            col_data = self._to_mapping(col)
+            col_name = col_data.get("name", "unknown")
+            col_type = col_data.get("type", col_data.get("data_type", "unknown"))
+            nullable = col_data.get("nullable", True)
+
             line = f"- {col_name}"
-            
+
             if include_types:
                 line += f" ({col_type})"
-            
+
             if include_constraints:
                 constraints = []
                 if not nullable:
                     constraints.append("NOT NULL")
-                if col.get("primary_key"):
+                if col_data.get("primary_key") or col_data.get("is_primary_key"):
                     constraints.append("PK")
-                if col.get("unique"):
+                if col_data.get("unique"):
                     constraints.append("UNIQUE")
-                
+
                 if constraints:
                     line += f" [{', '.join(constraints)}]"
-            
-            # Add description if available
-            description = col.get("description")
+
+            description = col_data.get("description")
             if description:
                 line += f" - {description}"
-            
+
             lines.append(line)
-        
+
         return "\n".join(lines)
     
     def build_schema_context(
@@ -278,16 +306,17 @@ class PromptAssembler:
             Formatted schema context string
         """
         if format == "json":
-            return json.dumps(schema, indent=2)
+            return json.dumps(self._to_mapping(schema), indent=2)
         
         elif format == "markdown":
             lines = ["### Schema"]
             
-            table_name = schema.get("table_name", "unknown")
+            schema_data = self._to_mapping(schema)
+            table_name = schema_data.get("table_name", "unknown")
             lines.append(f"**Table:** `{table_name}`")
             lines.append("")
             
-            columns = schema.get("columns", [])
+            columns = schema_data.get("columns", [])
             if columns:
                 lines.append("**Columns:**")
                 lines.append(self.build_column_context(columns))
@@ -295,14 +324,16 @@ class PromptAssembler:
             return "\n".join(lines)
         
         elif format == "sql":
-            table_name = schema.get("table_name", "unknown")
-            columns = schema.get("columns", [])
+            schema_data = self._to_mapping(schema)
+            table_name = schema_data.get("table_name", "unknown")
+            columns = schema_data.get("columns", [])
             
             col_defs = []
             for col in columns:
-                col_name = col.get("name", "unknown")
-                col_type = col.get("type", "VARCHAR(255)")
-                nullable = col.get("nullable", True)
+                col_data = self._to_mapping(col)
+                col_name = col_data.get("name", "unknown")
+                col_type = col_data.get("type", col_data.get("data_type", "VARCHAR(255)"))
+                nullable = col_data.get("nullable", True)
                 
                 col_def = f"    {col_name} {col_type}"
                 if not nullable:
@@ -338,10 +369,11 @@ class PromptAssembler:
         lines = ["### Transformations"]
         
         for i, trans in enumerate(transformations, 1):
-            trans_type = trans.get("type", "unknown")
-            source_col = trans.get("source_column", "")
-            target_col = trans.get("target_column", "")
-            expression = trans.get("expression", "")
+            trans_data = self._to_mapping(trans)
+            trans_type = trans_data.get("type", "unknown")
+            source_col = trans_data.get("source_column", "")
+            target_col = trans_data.get("target_column", "")
+            expression = trans_data.get("expression", "")
             
             lines.append(f"{i}. **{trans_type}**")
             if source_col:
@@ -370,6 +402,8 @@ class PromptAssembler:
             Enriched context dictionary
         """
         enriched = context.copy()
+        schema_context = self._to_mapping(enriched.get("schema")) if "schema" in enriched else None
+        columns_context = self._to_mapping(enriched.get("columns")) if "columns" in enriched else None
         
         # Add timestamp
         from datetime import datetime
@@ -377,11 +411,12 @@ class PromptAssembler:
         
         # Add asset summary if provided
         if asset:
+            asset_data = self._to_mapping(asset)
             enriched["asset_summary"] = {
-                "name": asset.get("name", "unknown"),
-                "type": asset.get("type", "unknown"),
-                "tech": asset.get("source_tech", "unknown"),
-                "columns_count": len(asset.get("columns", []))
+                "name": asset_data.get("name", "unknown"),
+                "type": asset_data.get("type", "unknown"),
+                "tech": asset_data.get("source_tech", "unknown"),
+                "columns_count": len(asset_data.get("columns", []))
             }
         
         # Multi-Target Aliases (e.g., Fabric Spark vs SQL)
@@ -395,13 +430,25 @@ class PromptAssembler:
         
         if "silver_schema" in enriched:
             enriched["lakehouse_silver"] = enriched["silver_schema"]
+            enriched.setdefault("silver_dataset", enriched["silver_schema"])
+            enriched.setdefault("schema_name", enriched["silver_schema"])
             
         if "bronze_schema" in enriched:
             enriched["lakehouse_bronze"] = enriched["bronze_schema"]
+            enriched.setdefault("bronze_dataset", enriched["bronze_schema"])
+
+        if "gold_schema" in enriched:
+            enriched.setdefault("gold_dataset", enriched["gold_schema"])
             
         # Path Aliases
         if "bronze_path" in enriched:
             enriched["adls_path"] = enriched["bronze_path"]
+
+        if "silver_path" in enriched:
+            enriched.setdefault("output_path", enriched["silver_path"])
+
+        if "gold_path" in enriched:
+            enriched.setdefault("gold_output_path", enriched["gold_path"])
             
         # Primary Key Aliases
         if "primary_key" in enriched:
@@ -419,13 +466,26 @@ class PromptAssembler:
             enriched["source_system"] = enriched["source_tech"]
             enriched["source_system_name"] = enriched["source_tech"]
 
+        # Common prompt defaults to avoid unresolved placeholders in mixed cartridges
+        if "table_name" in enriched:
+            enriched.setdefault("target_table", enriched["table_name"])
+            enriched.setdefault("source_table", enriched["table_name"])
+            enriched.setdefault("target_table_name", enriched["table_name"])
+            enriched.setdefault("source_table_name", enriched["table_name"])
+
+        if "catalog_name" in enriched:
+            enriched.setdefault("catalog", enriched["catalog_name"])
+            enriched.setdefault("project", enriched["catalog_name"])
+
         # Add formatted columns if present
-        if "columns" in context:
-            enriched["columns_formatted"] = self.build_column_context(context["columns"])
+        if columns_context is not None:
+            enriched["columns"] = columns_context
+            enriched["columns_formatted"] = self.build_column_context(columns_context)
         
         # Add formatted schema if present
-        if "schema" in context:
-            enriched["schema_formatted"] = self.build_schema_context(context["schema"])
+        if schema_context is not None:
+            enriched["schema"] = schema_context
+            enriched["schema_formatted"] = self.build_schema_context(schema_context)
         
         # Add formatted transformations if present
         if "transformations" in context:

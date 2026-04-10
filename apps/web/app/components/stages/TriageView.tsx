@@ -746,6 +746,14 @@ export default function TriageView({
             const data = await res.json();
             console.log("DEBUG: Triage API response received:", data);
 
+            if (!res.ok) {
+                const message = data?.detail?.message || data?.detail?.error || data?.message || data?.error || 'Unable to start triage.';
+                console.error("Triage API rejected the request:", data);
+                alert(message);
+                setIsTriageRunning(false);
+                return;
+            }
+
             if (data.error) {
                 console.error("Triage error from API:", data.error);
                 alert(`Analysis error: ${data.error}`);

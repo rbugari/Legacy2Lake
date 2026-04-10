@@ -1,5 +1,66 @@
 # Release Notes
 
+## Version 4.3.0 - Sprint 3: Post-Drafting Execution Modes Vocabulary & Semantics Clarification - 2026-04-10
+
+### Vocabulary & Semantics Clarification
+
+- **Refined Mode Terminology:** Clarified semantic differences between three post-Drafting execution paths:
+  - **Drafting Delivery (Terminal Path):** No refinement; direct to Governance for audit and certification
+  - **Structured Refinement (Bounded Path):** Multi-layer medallion optimization (Bronze → Silver → Gold) with quality rules and governance compliance
+  - **Intelligent Reengineering (Advanced Path):** Architectural improvements and schema redesigns; higher-order transformations acceptable
+
+### Backend Updates
+
+- **Governance Router:** Mode-specific error messages explaining why refinement is blocked (if drafting_delivery) and clarifying next actions
+- **Error Responses:** Now include mode context, options, and recommended next steps
+- **Mode Validation:** Enhanced error messages distinguish between all three modes and provide clear guidance
+- **Agent C Prompt Context:** Added post-drafting mode and strategy guidance directly into transpilation prompt context
+- **PromptAssembler Hardening:** Improved placeholder parser and consolidated "missing variable" warnings to reduce log noise while preserving unresolved placeholders safely
+- **Context Defaults:** Added resilient aliases (`target_table`, `source_table`, `schema_name`, `output_path`) to reduce false warnings from mixed cartridge templates
+
+### Frontend Updates
+
+- **PostDraftingDecisionGate Component:**
+  - All three modes now visible with risk level badges (low/medium)
+  - Detailed descriptions, recommendations, and use-case guidance for each mode
+  - Cards display: title, description, detailed explanation, recommendation, and risk level
+  
+- **RefinementView Component:**
+  - Mode-aware status summaries (shows "Stage Skipped," "Ready," etc. based on selection)
+  - StageHeader reflects selected mode with appropriate subtitle and help text
+  - Mode-specific action labels ("Run Refinement" vs "Run Reengineering" vs "Skip to Governance")
+  - Refinement status card shows strategy and explanation specific to chosen mode
+  - Disabled button with clear messaging when refinement not allowed
+
+### Documentation
+
+- **New Reference:** `docs/VOCABULARY_REFERENCE.md` — Quick reference guide for all three modes with code examples
+- **Updated:** `docs/PLANNING/V4_3_SPRINT_3_VOCABULARY_SPECIFICATION.md` — Complete semantic definitions and implementation mapping
+- **Updated:** `docs/PLANNING/V4_3_SPRINT_3_IMPLEMENTATION_PLAN.md` — Detailed change log and checklist
+
+### User Impact
+
+- **Clarity:** UI now explicitly shows consequences of each mode choice within the decision gate interface
+- **Guidance:** Better understanding of bounded (structured_refinement) vs unrestricted (intelligent_reengineering) optimization strategies
+- **Control:** Users see mode-aware status throughout Refinement stage; understand why refinement is blocked or available
+- **Handover:** Artifacts now document which execution mode was selected for traceability
+
+### Data Schema
+
+No schema changes. Existing `post_drafting_mode` VARCHAR(50) column with CHECK constraint supports all modes.
+
+### Backward Compatibility
+
+✅ Fully compatible. Existing projects retain their mode selection; new decision gate displays all three options clearly.
+
+### Testing
+
+- **Backend:** Enhanced tests verify mode-specific error messages and governance logic
+- **Frontend:** Component tests verify mode-aware rendering and UI state
+- **PromptAssembler:** Added focused unit tests for substitution behavior and context default aliases
+
+---
+
 ## Version 4.2.0 - Drafting Stability And Prompt/Cache Hardening - 2026-04-06
 
 ### Drafting Topology Stability

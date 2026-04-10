@@ -305,8 +305,8 @@ class MigrationOrchestrator:
                 set_context = package_metadatas if len(package_metadatas) < 50 else [] # Limit size for tokens
                 code_result = await self.agent_c.transpile_task(task_def, set_context=set_context)
                 
-                notebook_content = code_result.get("pyspark_code", "")
-                sql_content = code_result.get("sql_code", "")
+                notebook_content = code_result.get("pyspark_code", "") or code_result.get("code", "")
+                sql_content = code_result.get("sql_code", "") or code_result.get("code", "")
                 
                 # Determine which content Agent C produced and use that for Agent F
                 # Agent C returns pyspark_code for PySpark targets and sql_code for SQL targets

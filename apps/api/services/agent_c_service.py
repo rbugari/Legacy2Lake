@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from langchain_openai import AzureChatOpenAI
@@ -227,6 +228,15 @@ class AgentCService:
         except Exception as e:
             logger.error(f"[AgentC v4.0] Failed to load custom instructions: {e}", "AgentC")
             return ""
+
+    @staticmethod
+    def _resolve_refinement_strategy(post_drafting_mode: Optional[str]) -> str:
+        """Return mode-aware strategy guidance used by prompt assembly and human prompt."""
+        return {
+            "drafting_delivery": "Terminal path selected. Keep output faithful and avoid additional refinement assumptions.",
+            "structured_refinement": "Apply bounded medallion optimization (Bronze/Silver/Gold) with quality and governance consistency.",
+            "intelligent_reengineering": "Allow advanced optimization opportunities and structural improvements when they clearly improve target architecture.",
+        }.get(post_drafting_mode, "Use standard direct modernization guidance for the selected layer.")
     
     def _extract_schema_from_code(self, code: str, table_name: str) -> Dict[str, Any]:
         """
@@ -438,6 +448,8 @@ class AgentCService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         registry_raw = await db.get_design_registry(project_id) if project_id else []
         registry = KnowledgeService.flatten_knowledge(registry_raw)
+        post_drafting_mode = await db.get_post_drafting_mode(project_id) if project_id else None
+        refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
 
         # 1. Resolve Target Engine & Cartridge Instance
         try:
@@ -965,7 +977,9 @@ class AgentCService:
                 # Build resolution context (flat for alias matching)
                 res_context = {
                     'layer': layer,
-                    'target_engine': target_engine
+                    'target_engine': target_engine,
+                    'post_drafting_mode': post_drafting_mode,
+                    'refinement_strategy': refinement_strategy,
                 }
                 res_context.update(node_data)
                 if parameters_context:
@@ -1017,6 +1031,10 @@ class AgentCService:
 {dialect_instruction}
 Project Context: {json.dumps(context or {}, indent=2, default=_json_serialize)}
 Architectural Registry: {json.dumps(registry, indent=2, default=_json_serialize)}
+
+    ### POST-DRAFTING EXECUTION MODE ###
+    Mode: {post_drafting_mode or "not_selected"}
+    Strategy Guidance: {refinement_strategy}
 
 ### SPRINT 9: ZERO-HARDCODE SCHEMA & PARAMETERS (USE THESE FOR ALL CODE GENERATION) ###
 Schema Metadata:
@@ -1080,8 +1098,38 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
             attempt += 1
             logger.info(f"[AgentC] Code generation attempt {attempt}/{max_attempts}", "AgentC")
             
-            # Generate code
-            response = await llm.ainvoke(messages)
+            # Generate code (with transient network retry)
+            llm_retry_attempts = 3
+            response = None
+            last_invoke_error = None
+            for llm_attempt in range(1, llm_retry_attempts + 1):
+                try:
+                    response = await llm.ainvoke(messages)
+                    break
+                except Exception as invoke_error:
+                    last_invoke_error = invoke_error
+                    error_name = type(invoke_error).__name__
+                    error_text = str(invoke_error).lower()
+                    is_transient = (
+                        "connection error" in error_text
+                        or "timeout" in error_text
+                        or "readerror" in error_text
+                        or "apiconnectionerror" in error_name.lower()
+                        or "apitimeouterror" in error_name.lower()
+                    )
+
+                    if not is_transient or llm_attempt >= llm_retry_attempts:
+                        raise
+
+                    backoff_seconds = 2 ** (llm_attempt - 1)
+                    logger.warning(
+                        f"[AgentC] Transient LLM error on attempt {llm_attempt}/{llm_retry_attempts}: {error_name}. Retrying in {backoff_seconds}s",
+                        "AgentC"
+                    )
+                    await asyncio.sleep(backoff_seconds)
+
+            if response is None:
+                raise last_invoke_error or RuntimeError("LLM returned no response")
             
             # DEBUG: Log raw LLM response
             logger.info(f"[AgentC DEBUG] Raw LLM response type: {type(response)}", "AgentC")
@@ -1396,6 +1444,12 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
                 
             except Exception as e:
                 logger.error(f"[AgentC Sprint13] Failed to persist visualization data: {e}", "AgentC")
+        
+        # Normalize output fields so downstream consumers always get a stable contract.
+        if final_result.get("code") and not final_result.get("pyspark_code") and target_engine in ["pyspark", "spark"]:
+            final_result["pyspark_code"] = final_result["code"]
+        if final_result.get("code") and not final_result.get("sql_code") and target_engine in ["sql", "tsql", "snowflake"]:
+            final_result["sql_code"] = final_result["code"]
         
         return final_result
     # ================================================================

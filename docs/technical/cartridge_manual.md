@@ -65,6 +65,8 @@ These layers can express modernization intent such as:
 - lineage-aware structure
 - platform-appropriate optimization
 - governance and quality expectations
+- consolidation of repeated legacy logic into reusable target assets
+- redesign from legacy ETL package choreography into target-native ELT patterns when supported by the evidence
 
 ### Direct
 
@@ -138,3 +140,5 @@ Some gaps detected by governance in real validation are not cartridge failures b
 - partitioning strategy
 
 Those may be intentionally absent in `direct` mode and should be handled by selecting a richer modernization layer or by explicitly asking for those behaviors.
+
+For avoidance of doubt: medallion modernization does not mean blindly turning each migrated package into one Bronze, one Silver, and one Gold artifact. The intended use is solution-level redesign guided by shared entities, common business rules, and reusable target assets.

@@ -93,10 +93,11 @@ class OpsAuditorService:
         for sf_key in silver_files:
             try:
                 filename_only = sf_key.split("/")[-1]
+                unit_name = filename_only.replace("_silver.py", "").replace("_silver.sql", "").replace("_silver.dtsx", "")
                 # Guess original name
                 source_guess = filename_only.replace("_silver.py", ".py").replace("_silver.dtsx", ".dtsx")
                 
-                pk_expected = meta.get("primary_keys", {}).get(source_guess, ["id"])
+                pk_expected = meta.get("unit_primary_keys", {}).get(unit_name) or meta.get("primary_keys", {}).get(source_guess, ["id"])
                 if isinstance(pk_expected, str): pk_expected = [pk_expected]
 
                 content = storage.read_file(sf_key)

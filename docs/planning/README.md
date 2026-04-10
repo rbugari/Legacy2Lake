@@ -13,6 +13,10 @@ This folder keeps only planning material that is still useful for the current pr
 | [COMPETITIVE_ANALYSIS.md](COMPETITIVE_ANALYSIS.md) | market and positioning reference |
 | [VISION_v10.x.md](VISION_v10.x.md) | long-term product vision |
 | [SPRINT_PLAN_READINESS_GAPS_SUMMARY.md](SPRINT_PLAN_READINESS_GAPS_SUMMARY.md) | proposed sprint sequence for readiness, executive summary, and gap workspace |
+| [V4_3_POST_DRAFTING_EXECUTION_MODES.md](V4_3_POST_DRAFTING_EXECUTION_MODES.md) | v4.3 post-Drafting release plan and execution modes |
+| [V4_3_SPRINT_1_PRODUCT_CONTRACT_FREEZE.md](V4_3_SPRINT_1_PRODUCT_CONTRACT_FREEZE.md) | sprint 1 contract freeze and launch packet |
+| [V4_3_SPRINT_2_DRAFTING_BRANCHING_AND_TERMINAL_PATH.md](V4_3_SPRINT_2_DRAFTING_BRANCHING_AND_TERMINAL_PATH.md) | sprint 2 branching path and terminal Drafting implementation |
+| [V4_3_SPRINT_3_STRUCTURED_REFINEMENT_CLARIFICATION.md](V4_3_SPRINT_3_STRUCTURED_REFINEMENT_CLARIFICATION.md) | sprint 3 refinement language, prompts, and governance alignment |
 
 ## Cleanup Policy
 
