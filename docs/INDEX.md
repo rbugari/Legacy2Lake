@@ -54,3 +54,4 @@ Planning is intentionally kept small. If you need the current product thinking, 
 
 - [`docs/planning`](C:\proyectos_dev\UTM\docs\planning)
 - [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](C:\proyectos_dev\UTM\docs\planning\V4_3_POST_DRAFTING_EXECUTION_MODES.md)
+- [`docs/planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md`](C:\proyectos_dev\UTM\docs\planning\V4_4_INTELLIGENT_REENGINEERING_MVP.md)
