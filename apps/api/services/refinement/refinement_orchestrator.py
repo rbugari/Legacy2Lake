@@ -207,7 +207,7 @@ class RefinementOrchestrator:
             print(f"[ORCHESTRATOR DEBUG] Starting Phase 2: ARCHITECT")
             print(f"[ORCHESTRATOR DEBUG] Calling architect.refine_project() with profile_meta")
             if execution_mode == "intelligent_reengineering":
-                msg = await _log("[PHASE PROGRESS: 2/4] Running Intelligent Reengineering (Shared/Core/Publish)...", "Architect")
+                msg = await _log("[PHASE PROGRESS: 2/4] Running Intelligent Reengineering on Medallion layers (multi-package shared-object consolidation)...", "Architect")
             else:
                 msg = await _log("[PHASE PROGRESS: 2/4] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)

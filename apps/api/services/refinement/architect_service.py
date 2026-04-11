@@ -29,7 +29,12 @@ class ArchitectService:
         if execution_mode == "intelligent_reengineering":
             reengineering_units = profile_metadata.get("reengineering_units") or []
             if reengineering_units:
-                return reengineering_units
+                consolidation_units = [
+                    unit for unit in reengineering_units
+                    if unit.get("is_consolidation_candidate")
+                ]
+                if consolidation_units:
+                    return consolidation_units
 
         refinement_units = profile_metadata.get("refinement_units") or []
         if refinement_units:
@@ -90,29 +95,9 @@ class ArchitectService:
             "target_asset_name": processing_unit.get("target_asset_name") or table_metadata.get("output_table_name"),
             "contributing_sources": table_metadata.get("source_files", []),
             "reuse_strategy": processing_unit.get("reuse_strategy", "bounded_enhancement"),
-            "consolidation_rationale": "Project-scoped consolidation driven by shared entities and repeated source patterns.",
+            "consolidation_rationale": "Consolidation applied only because multiple drafted packages/files share the same logical source object.",
             "generated_assets": output_assets,
             "traceability_notes": "Each generated asset includes explicit source references in metadata and manifest.",
-        }
-
-    def _generate_reengineering_assets(self, processing_unit: dict, table_metadata: dict, cartridge, ext: str, core_prefix: str, publish_prefix: str, shared_prefix: str):
-        base_filename = processing_unit.get("target_asset_name") or processing_unit.get("output_table_name") or processing_unit.get("unit_name") or "reengineered_asset"
-        trace_comment = "\n".join([
-            "# --- REENGINEERING TRACEABILITY ---",
-            f"# Unit: {processing_unit.get('unit_name', base_filename)}",
-            f"# Sources: {', '.join(table_metadata.get('source_files', []))}",
-            "# -----------------------------------",
-            "",
-        ])
-
-        core_code = cartridge.generate_silver(table_metadata)
-        publish_code = cartridge.generate_gold(table_metadata)
-        shared_code = cartridge.generate_bronze(table_metadata)
-
-        return {
-            "core": (f"{core_prefix}/{base_filename}_core{ext}", trace_comment + (core_code or "")),
-            "publish": (f"{publish_prefix}/{base_filename}_publish{ext}", trace_comment + (publish_code or "")),
-            "shared": (f"{shared_prefix}/{base_filename}_shared{ext}", trace_comment + (shared_code or "")),
         }
 
     async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None, target_tech: str = None, execution_mode: str = "structured_refinement") -> dict:
@@ -171,9 +156,6 @@ class ArchitectService:
         bronze_prefix = f"{output_dir.rstrip('/')}/bronze"
         silver_prefix = f"{output_dir.rstrip('/')}/silver"
         gold_prefix = f"{output_dir.rstrip('/')}/gold"
-        reengineered_core_prefix = f"{output_dir.rstrip('/')}/reengineered/core"
-        reengineered_publish_prefix = f"{output_dir.rstrip('/')}/reengineered/publish"
-        reengineered_shared_prefix = f"{output_dir.rstrip('/')}/reengineered/shared"
         
         self._log(log, "Ensuring Medallion folder structure (bronze/silver/gold)...")
         # In R2 we don't need to physically create folders.
@@ -184,9 +166,6 @@ class ArchitectService:
             "gold": [],
             "config": [],
             "utils": [],
-            "reengineered_core": [],
-            "reengineered_publish": [],
-            "reengineered_shared": [],
         }
 
         # 1. Generate Shared Scaffolding
@@ -224,46 +203,19 @@ class ArchitectService:
             table_metadata = unit_payload["table_metadata"]
             base_filename = unit_payload["base_filename"]
             ext = cartridge.get_file_extension()
-
+            trace_header = ""
             if execution_mode == "intelligent_reengineering":
-                generated_assets = self._generate_reengineering_assets(
-                    processing_unit,
-                    table_metadata,
-                    cartridge,
-                    ext,
-                    reengineered_core_prefix,
-                    reengineered_publish_prefix,
-                    reengineered_shared_prefix,
-                )
-                for asset_key, asset_content in generated_assets.values():
-                    storage.save_file(asset_key, asset_content)
-
-                refined_files["reengineered_core"].append(generated_assets["core"][0])
-                refined_files["reengineered_publish"].append(generated_assets["publish"][0])
-                refined_files["reengineered_shared"].append(generated_assets["shared"][0])
-
-                # Compatibility bridge for downstream services that still scan bronze/silver/gold.
-                refined_files["bronze"].append(generated_assets["shared"][0])
-                refined_files["silver"].append(generated_assets["core"][0])
-                refined_files["gold"].append(generated_assets["publish"][0])
-
-                reengineering_manifest.append(
-                    self._build_reengineering_manifest_entry(
-                        processing_unit,
-                        table_metadata,
-                        {
-                            "core": generated_assets["core"][0],
-                            "publish": generated_assets["publish"][0],
-                            "shared": generated_assets["shared"][0],
-                        },
-                    )
-                )
-                self._log(log, f"Reengineered unit {unit_name} into consolidated core/publish/shared outputs.")
-                continue
+                trace_header = "\n".join([
+                    "# --- REENGINEERING TRACEABILITY ---",
+                    f"# Unit: {processing_unit.get('unit_name', base_filename)}",
+                    f"# Sources: {', '.join(table_metadata.get('source_files', []))}",
+                    "# -----------------------------------",
+                    "",
+                ])
 
             # 1. Bronze Layer
             print(f"[ARCHITECT DEBUG] Generating bronze for {unit_name}...")
-            bronze_code = cartridge.generate_bronze(table_metadata)
+            bronze_code = (trace_header + (cartridge.generate_bronze(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_bronze(table_metadata)
             print(f"[ARCHITECT DEBUG] Bronze code length: {len(bronze_code) if bronze_code else 0}")
             bronze_key = f"{bronze_prefix}/{base_filename}_bronze{ext}"
             print(f"[ARCHITECT DEBUG] Saving bronze to: {bronze_key}")
@@ -279,7 +231,7 @@ class ArchitectService:
             
             # 2. Silver Layer
             print(f"[ARCHITECT DEBUG] Generating silver for {unit_name}...")
-            silver_code = cartridge.generate_silver(table_metadata)
+            silver_code = (trace_header + (cartridge.generate_silver(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_silver(table_metadata)
             print(f"[ARCHITECT DEBUG] Silver code length: {len(silver_code) if silver_code else 0}")
             silver_key = f"{silver_prefix}/{base_filename}_silver{ext}"
             print(f"[ARCHITECT DEBUG] Saving silver to: {silver_key}")
@@ -295,7 +247,7 @@ class ArchitectService:
             
             # 3. Gold Layer
             print(f"[ARCHITECT DEBUG] Generating gold for {unit_name}...")
-            gold_code = cartridge.generate_gold(table_metadata)
+            gold_code = (trace_header + (cartridge.generate_gold(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_gold(table_metadata)
             print(f"[ARCHITECT DEBUG] Gold code length: {len(gold_code) if gold_code else 0}")
             gold_key = f"{gold_prefix}/{base_filename}_gold{ext}"
             print(f"[ARCHITECT DEBUG] Saving gold to: {gold_key}")
@@ -311,6 +263,19 @@ class ArchitectService:
 
             print(f"[ARCHITECT DEBUG] === Completed processing {unit_name} ===")
             self._log(log, f"Refined unit {unit_name} from {len(source_files)} source file(s) into reusable Bronze, Silver, and Gold layers.")
+
+            if execution_mode == "intelligent_reengineering":
+                reengineering_manifest.append(
+                    self._build_reengineering_manifest_entry(
+                        processing_unit,
+                        table_metadata,
+                        {
+                            "bronze": bronze_key,
+                            "silver": silver_key,
+                            "gold": gold_key,
+                        },
+                    )
+                )
             
 
         # 3. Generate Orchestration (Release 3.5)
@@ -328,7 +293,7 @@ class ArchitectService:
         manifest_name = "reengineering_manifest.json" if execution_mode == "intelligent_reengineering" else "refinement_manifest.json"
         manifest_key = f"{output_dir.rstrip('/')}/{manifest_name}"
         manifest_objective = (
-            "Consolidate Drafting outputs into reusable, project-scoped ELT assets with traceable reengineering decisions."
+            "Consolidate Drafting outputs into project-scoped medallion layers only when multiple drafted packages/files share the same logical source object."
             if execution_mode == "intelligent_reengineering"
             else "Consolidate Drafting outputs into reusable ELT-oriented refinement units instead of naively splitting each package into three layers."
         )

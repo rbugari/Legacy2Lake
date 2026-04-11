@@ -34,7 +34,8 @@ class ProfilerService:
             source_files = unit.get("source_files", [])
             shared_connections = unit.get("shared_connections", [])
             source_count = int(unit.get("source_count", len(source_files) or 0))
-            needs_consolidation = source_count > 1 or bool(shared_connections)
+            # Consolidation rule: only when multiple packages/files map to the same logical source object.
+            needs_consolidation = source_count > 1
 
             units.append(
                 {
@@ -44,8 +45,9 @@ class ProfilerService:
                     "pk_columns": unit.get("pk_columns", ["id"]),
                     "table_type": unit.get("table_type", "DIMENSION"),
                     "reuse_strategy": "project_wide_consolidation" if needs_consolidation else "bounded_enhancement",
+                    "is_consolidation_candidate": needs_consolidation,
                     "shared_connections": shared_connections,
-                    "consolidation_score": source_count + len(shared_connections),
+                    "consolidation_score": source_count,
                 }
             )
 
@@ -54,7 +56,7 @@ class ProfilerService:
     def _build_shared_entities(self, reengineering_units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         entities: List[Dict[str, Any]] = []
         for unit in reengineering_units:
-            if unit.get("consolidation_score", 0) < 2:
+            if not unit.get("is_consolidation_candidate", False):
                 continue
             entities.append(
                 {
@@ -71,13 +73,13 @@ class ProfilerService:
     def _build_consolidation_candidates(self, reengineering_units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         candidates: List[Dict[str, Any]] = []
         for unit in reengineering_units:
-            if unit.get("consolidation_score", 0) < 2:
+            if not unit.get("is_consolidation_candidate", False):
                 continue
             candidates.append(
                 {
                     "candidate": unit.get("target_asset_name") or unit.get("unit_name"),
                     "source_files": unit.get("source_files", []),
-                    "rationale": "Multiple sources and/or shared connections detected; eligible for project-scoped consolidation.",
+                    "rationale": "Multiple drafted packages/files share the same logical source object; eligible for project-scoped consolidation.",
                     "traceability_required": True,
                 }
             )

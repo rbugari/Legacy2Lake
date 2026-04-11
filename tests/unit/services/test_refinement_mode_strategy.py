@@ -47,6 +47,8 @@ def test_architect_prefers_reengineering_units_when_mode_is_intelligent():
                 "unit_name": "customer_360",
                 "source_files": ["customer.sql", "crm_customer.sql"],
                 "target_asset_name": "customer_360",
+                "is_consolidation_candidate": True,
+                "source_count": 2,
             }
         ],
     }
@@ -75,7 +77,7 @@ def test_profiler_builds_reengineering_units_and_candidates_from_refinement_unit
             "source_files": ["fact_sales.py"],
             "pk_columns": ["sale_id"],
             "table_type": "FACT",
-            "shared_connections": [],
+            "shared_connections": ["jdbc://shared-only"],
             "source_count": 1,
         },
     ]
@@ -88,3 +90,4 @@ def test_profiler_builds_reengineering_units_and_candidates_from_refinement_unit
     assert reengineering_units[0]["reuse_strategy"] == "project_wide_consolidation"
     assert any(item["candidate"] == "customer" for item in candidates)
     assert any(item["entity"] == "customer" for item in shared_entities)
+    assert not any(item["candidate"] == "sales" for item in candidates)
