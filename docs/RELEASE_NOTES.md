@@ -1,5 +1,45 @@
 # Release Notes
 
+## Version 4.4.0 - Intelligent Reengineering MVP (Medallion-First) - In Progress - 2026-04-11
+
+### Runtime Strategy
+
+- refinement pipeline now resolves and logs execution mode at runtime
+- intelligent reengineering no longer relies only on prompt wording; runtime now branches with explicit mode-aware behavior
+- medallion-first contract enforced for v4.4: Bronze/Silver/Gold remains the target architecture
+
+### Consolidation Rules
+
+- consolidation is applied only when multiple drafted packages/files map to the same logical source object
+- shared connections alone no longer trigger consolidation
+- reengineering metadata now includes explicit consolidation candidates and traceability requirements
+
+### Profiling & Architecting
+
+- profiler emits reengineering-focused fields:
+  - `reengineering_units`
+  - `shared_entities`
+  - `consolidation_candidates`
+  - `common_ingestion_paths`
+- architect consumes reengineering units but still produces medallion outputs for v4.4 scope
+- reengineering manifest now captures objective, execution mode, processing units, and source traceability summary
+
+### Governance & UI Alignment
+
+- governance responses now include `mode_context` to make evaluation intent explicit per post-drafting mode
+- governance background logs distinguish medallion consolidation lineage when intelligent reengineering is selected
+- refinement state endpoint now exposes `manifest_summary` (manifest name, mode, objective, counts)
+- refinement UI surfaces consolidation and manifest traceability signals in overview and status views
+
+### Validation Coverage
+
+- added/expanded tests for v4.4 mode-aware behavior and resilience:
+  - governance mode context in cached and generated report flows
+  - background governance persistence with mode-aware context
+  - manifest summary extraction and fallback behavior
+  - invalid manifest payload tolerance
+- latest regression block executed successfully with 50 passing tests across refinement, governance, mode strategy, and prompt integration suites
+
 ## Version 4.3.0 - Sprint 3: Post-Drafting Execution Modes Vocabulary & Semantics Clarification - 2026-04-10
 
 ### Vocabulary & Semantics Clarification
