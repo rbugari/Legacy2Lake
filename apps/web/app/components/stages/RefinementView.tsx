@@ -551,9 +551,9 @@ export default function RefinementView({
         },
         'intelligent_reengineering': {
             summary: 'Intelligent Reengineering Ready',
-            strategy: 'Advanced Architectural Optimization',
-            explanation: 'Advanced optimizations including potential schema redesigns and architectural improvements.',
-            details: 'Reengineering may propose higher-order transformations and design improvements.',
+            strategy: 'Medallion Consolidation Optimization',
+            explanation: 'Medallion-first optimization with consolidation only when multiple packages share the same logical source object.',
+            details: 'Reengineering keeps Bronze/Silver/Gold outputs and adds traceable consolidation decisions for multi-package shared-source scenarios.',
             nextStage: 'Run Reengineering or Skip to Governance',
             actionLabel: 'Run Reengineering',
             allowRefinement: true,
