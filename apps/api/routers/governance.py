@@ -24,6 +24,40 @@ from apps.api.services.lock_service import LockService, ProcessLockError
 router = APIRouter(tags=["Refinement & Governance"])
 
 
+def _build_mode_governance_context(mode: Optional[str]) -> Dict[str, Any]:
+    if mode == "intelligent_reengineering":
+        return {
+            "mode": mode,
+            "evaluation_focus": "medallion_consolidation_with_traceability",
+            "notes": "Intelligent reengineering is evaluated as medallion-first consolidation when multiple drafted packages share the same logical source object.",
+        }
+    if mode == "structured_refinement":
+        return {
+            "mode": mode,
+            "evaluation_focus": "bounded_medallion_optimization",
+            "notes": "Structured refinement is evaluated for layer quality, consistency, and governance compliance.",
+        }
+    if mode == "drafting_delivery":
+        return {
+            "mode": mode,
+            "evaluation_focus": "drafting_fidelity_and_controls",
+            "notes": "Drafting Delivery is evaluated for direct-path fidelity and control readiness.",
+        }
+    return {
+        "mode": "not_selected",
+        "evaluation_focus": "default_controls",
+        "notes": "No explicit post-drafting mode found; applying default governance controls.",
+    }
+
+
+def _attach_mode_governance_context(report: Dict[str, Any], mode: Optional[str]) -> Dict[str, Any]:
+    if not isinstance(report, dict):
+        return {"report": report, "mode_context": _build_mode_governance_context(mode)}
+    enriched = dict(report)
+    enriched["mode_context"] = _build_mode_governance_context(mode)
+    return enriched
+
+
 # --- Models ---
 
 class RefinementRequest(BaseModel):
@@ -284,7 +318,8 @@ async def get_refinement_state(project_id: str, db: SupabasePersistence = Depend
 
     state = {
         "log": [],
-        "profile": None
+        "profile": None,
+        "manifest_summary": None,
     }
 
     try:
@@ -302,6 +337,41 @@ async def get_refinement_state(project_id: str, db: SupabasePersistence = Depend
             state["profile"] = json.loads(profile_content)
     except:
         pass
+
+    manifest_payload = None
+    manifest_name = None
+    try:
+        manifest_content = PersistenceService.read_file_content(project_name, "Refined/reengineering_manifest.json")
+        if manifest_content:
+            manifest_payload = json.loads(manifest_content)
+            manifest_name = "reengineering_manifest.json"
+    except:
+        pass
+
+    if manifest_payload is None:
+        try:
+            manifest_content = PersistenceService.read_file_content(project_name, "Refined/refinement_manifest.json")
+            if manifest_content:
+                manifest_payload = json.loads(manifest_content)
+                manifest_name = "refinement_manifest.json"
+        except:
+            pass
+
+    if manifest_payload:
+        processing_units = manifest_payload.get("processing_units") or []
+        reengineering_summary = manifest_payload.get("reengineering_summary") or []
+        state["manifest_summary"] = {
+            "manifest_name": manifest_name,
+            "execution_mode": manifest_payload.get("execution_mode", "structured_refinement"),
+            "objective": manifest_payload.get("objective", ""),
+            "processing_units_count": len(processing_units),
+            "consolidation_units_count": len(reengineering_summary),
+            "consolidated_targets": [
+                item.get("target_asset_name")
+                for item in reengineering_summary
+                if item.get("target_asset_name")
+            ][:10],
+        }
 
     return state
 
@@ -326,9 +396,10 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
     """Returns the certification report. If cached (from background run), returns instantly. Otherwise generates synchronously."""
     # Try cached report first — set by background task
     settings = await db.get_project_settings(project_id) or {}
+    mode = await db.get_post_drafting_mode(project_id)
     cached = settings.get("governance_report")
     if cached:
-        return cached
+        return _attach_mode_governance_context(cached, mode)
 
     project_name = project_id
     if "-" in project_id:
@@ -339,7 +410,7 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
     service = GovernanceService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         report = await service.get_certification_report(project_id)
-        return report
+        return _attach_mode_governance_context(report, mode)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -372,8 +443,14 @@ async def _run_governance_background(
 
         await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Running compliance audit (Critic + Governor)...", step="AGENT_G")
         report = await service.get_certification_report(project_id)
+        mode = await db.get_post_drafting_mode(project_id)
 
-        await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion lineage and COP score...", step="AGENT_G")
+        if mode == "intelligent_reengineering":
+            await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion consolidation lineage and COP score...", step="AGENT_G")
+        else:
+            await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion lineage and COP score...", step="AGENT_G")
+
+        report = _attach_mode_governance_context(report, mode)
 
         # Persist report in project settings for retrieval without re-running Agent G
         settings = await db.get_project_settings(project_id) or {}

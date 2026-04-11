@@ -104,6 +104,7 @@ export default function RefinementView({
     const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
+    const [manifestSummary, setManifestSummary] = useState<any>(null);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
 
     // Workbench State
@@ -154,6 +155,9 @@ export default function RefinementView({
                     }
                     if (data.profile) {
                         setProfile(data.profile);
+                    }
+                    if (data.manifest_summary) {
+                        setManifestSummary(data.manifest_summary);
                     }
                 }
 
@@ -263,6 +267,9 @@ export default function RefinementView({
                 if (stateData.profile) {
                     setProfile(stateData.profile);
                 }
+                if (stateData.manifest_summary) {
+                    setManifestSummary(stateData.manifest_summary);
+                }
             } catch (e) {
                 console.error("Failed to reload profile", e);
             }
@@ -322,6 +329,7 @@ export default function RefinementView({
         setIsFinished(false);
         setLogs([]); // Start with empty logs - will be populated by polling
         setProfile(null); // Clear previous profile
+        setManifestSummary(null);
 
         try {
             const res = await fetchWithAuth(`refine/start`, {
@@ -619,6 +627,29 @@ export default function RefinementView({
                                 </div>
                             </div>
 
+                            {(manifestSummary || profile) && (
+                                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6">
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">Consolidation & Traceability</p>
+                                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                        <div>
+                                            <p className="text-gray-400">Manifest</p>
+                                            <p className="text-white font-semibold">{manifestSummary?.manifest_name || 'pending'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-400">Processing Units</p>
+                                            <p className="text-white font-semibold">{manifestSummary?.processing_units_count ?? profile?.total_files ?? 0}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-400">Consolidation Candidates</p>
+                                            <p className="text-white font-semibold">{(profile?.consolidation_candidates || []).length}</p>
+                                        </div>
+                                    </div>
+                                    {manifestSummary?.objective && (
+                                        <p className="mt-3 text-xs text-gray-300 leading-relaxed">{manifestSummary.objective}</p>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
                                 <h2 className="text-xl font-black text-white">Stage Home</h2>
                                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
@@ -691,7 +722,7 @@ export default function RefinementView({
                                     />
 
                                     {profile && (
-                                        <div className="grid grid-cols-2 gap-4 shrink-0">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
                                             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
                                                 <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Files Analyzed</h3>
                                                 <p className="text-2xl font-bold text-purple-500">{profile.total_files}</p>
@@ -700,6 +731,19 @@ export default function RefinementView({
                                                 <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Shared Connections</h3>
                                                 <p className="text-2xl font-bold text-orange-500">{Object.keys(profile.shared_connections || {}).length}</p>
                                             </div>
+                                            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
+                                                <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Consolidation Candidates</h3>
+                                                <p className="text-2xl font-bold text-amber-500">{(profile.consolidation_candidates || []).length}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {manifestSummary && (
+                                        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm shrink-0">
+                                            <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Manifest Summary</h3>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-semibold">File:</span> {manifestSummary.manifest_name}</p>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-semibold">Mode:</span> {manifestSummary.execution_mode}</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{manifestSummary.objective}</p>
                                         </div>
                                     )}
                                 </>
