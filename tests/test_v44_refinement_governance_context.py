@@ -2,6 +2,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import BackgroundTasks, HTTPException
 
 from apps.api.routers.governance import (
     _attach_mode_governance_context,
@@ -9,7 +10,9 @@ from apps.api.routers.governance import (
     _run_governance_background,
     get_governance,
     get_refinement_state,
+    run_governance_background,
 )
+from apps.api.services.lock_service import ProcessLockError
 
 
 @pytest.mark.asyncio
@@ -198,3 +201,65 @@ async def test_governance_background_logs_standard_lineage_for_structured_refine
 
     logged_messages = [call.args[2] for call in mock_db.log_execution.await_args_list]
     assert any("Computing medallion lineage and COP score" in message for message in logged_messages)
+
+
+@pytest.mark.asyncio
+async def test_run_governance_background_returns_running_and_schedules_task():
+    db = AsyncMock()
+    background_tasks = BackgroundTasks()
+    request = AsyncMock()
+    request.headers = {"user-agent": "pytest-agent", "X-Session-ID": "session-1"}
+    identity = {
+        "tenant_id": "tenant-1",
+        "user_id": "user-1",
+        "username": "pytest-user",
+        "client_id": "client-1",
+    }
+
+    lock_service_instance = AsyncMock()
+    lock_service_instance.acquire_lock.return_value = {"lock_id": "lock-1"}
+
+    with patch("apps.api.routers.governance.LockService", return_value=lock_service_instance):
+        result = await run_governance_background(
+            project_id="project-demo",
+            background_tasks=background_tasks,
+            request=request,
+            identity=identity,
+            db=db,
+        )
+
+    assert result["status"] == "RUNNING"
+    assert len(background_tasks.tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_governance_background_returns_423_when_locked():
+    db = AsyncMock()
+    background_tasks = BackgroundTasks()
+    request = AsyncMock()
+    request.headers = {"user-agent": "pytest-agent", "X-Session-ID": "session-1"}
+    identity = {
+        "tenant_id": "tenant-1",
+        "user_id": "user-1",
+        "username": "pytest-user",
+        "client_id": "client-1",
+    }
+
+    lock_service_instance = AsyncMock()
+    lock_service_instance.acquire_lock.side_effect = ProcessLockError(
+        message="already running",
+        locked_by="other-user",
+    )
+
+    with patch("apps.api.routers.governance.LockService", return_value=lock_service_instance):
+        with pytest.raises(HTTPException) as exc_info:
+            await run_governance_background(
+                project_id="project-demo",
+                background_tasks=background_tasks,
+                request=request,
+                identity=identity,
+                db=db,
+            )
+
+    assert exc_info.value.status_code == 423
+    assert exc_info.value.detail["locked_by"] == "other-user"
