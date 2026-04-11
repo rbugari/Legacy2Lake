@@ -38,14 +38,15 @@ class OpsAuditorService:
         refined_prefix = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}"
 
         # 1. Validation Engine
-        validation_results = await self._perform_validation(refined_files, log, base_path)
+        execution_mode = architect_output.get("execution_mode", "structured_refinement")
+        validation_results = await self._perform_validation(refined_files, log, base_path, execution_mode)
 
         # 2. Artifact Generation
         self._log(log, "Generating Infrastructure-as-Code (IaC) manifests...")
-        iac_path = await self._generate_iac_manifest(project_id, refined_files, refined_prefix)
+        iac_path = await self._generate_iac_manifest(project_id, refined_files, refined_prefix, execution_mode)
         
         self._log(log, "Generating Operational Handbook (README_DEVOPS.md)...")
-        handbook_path = await self._generate_handbook(project_id, refined_files, refined_prefix)
+        handbook_path = await self._generate_handbook(project_id, refined_files, refined_prefix, execution_mode)
 
         self._log(log, "Audit Complete.")
         
@@ -58,9 +59,38 @@ class OpsAuditorService:
             }
         }
 
-    async def _perform_validation(self, refined_files: dict, log: list, base_path: str) -> dict:
+    async def _perform_validation(self, refined_files: dict, log: list, base_path: str, execution_mode: str) -> dict:
         results = {"passed": True, "issues": []}
         storage = PersistenceService.get_storage()
+
+        if execution_mode == "intelligent_reengineering":
+            core_files = refined_files.get("reengineered_core", [])
+            publish_files = refined_files.get("reengineered_publish", [])
+            manifest_files = refined_files.get("manifest", [])
+
+            if not core_files:
+                msg = "MISSING ARTIFACT: reengineered core outputs not found."
+                self._log(log, f"ERROR: {msg}", model="System")
+                results["issues"].append(msg)
+                results["passed"] = False
+            else:
+                self._log(log, f"OK: Reengineered core contains {len(core_files)} files.")
+
+            if not publish_files:
+                msg = "MISSING ARTIFACT: reengineered publish outputs not found."
+                self._log(log, f"ERROR: {msg}", model="System")
+                results["issues"].append(msg)
+                results["passed"] = False
+            else:
+                self._log(log, f"OK: Reengineered publish contains {len(publish_files)} files.")
+
+            if not manifest_files:
+                msg = "MISSING ARTIFACT: reengineering manifest not found."
+                self._log(log, f"ERROR: {msg}", model="System")
+                results["issues"].append(msg)
+                results["passed"] = False
+
+            return results
 
         # Check Medallion Layers
         for layer in ["bronze", "silver", "gold"]:
@@ -121,7 +151,7 @@ class OpsAuditorService:
 
         return results
 
-    async def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+    async def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_prefix: str, execution_mode: str) -> str:
         storage = PersistenceService.get_storage()
         bundle = {
             "bundle": {"name": f"legacy2lake_{project_id}"},
@@ -135,7 +165,11 @@ class OpsAuditorService:
             }
         }
 
-        for layer in ["bronze", "silver", "gold"]:
+        layer_order = ["bronze", "silver", "gold"]
+        if execution_mode == "intelligent_reengineering":
+            layer_order = ["reengineered_shared", "reengineered_core", "reengineered_publish"]
+
+        for layer in layer_order:
             files = refined_files.get(layer, [])
             if not files: continue
             
@@ -147,8 +181,14 @@ class OpsAuditorService:
                     "notebook_path": f"/Repos/Legacy2Lake/{project_id}/Refined/{layer.capitalize()}/Master_{layer.capitalize()}"
                 }
             }
-            if layer == "silver": task["depends_on"] = [{"task_key": "process_bronze"}]
-            if layer == "gold": task["depends_on"] = [{"task_key": "process_silver"}]
+            if execution_mode == "intelligent_reengineering":
+                if layer == "reengineered_core":
+                    task["depends_on"] = [{"task_key": "process_reengineered_shared"}]
+                if layer == "reengineered_publish":
+                    task["depends_on"] = [{"task_key": "process_reengineered_core"}]
+            else:
+                if layer == "silver": task["depends_on"] = [{"task_key": "process_bronze"}]
+                if layer == "gold": task["depends_on"] = [{"task_key": "process_silver"}]
             
             bundle["resources"]["jobs"]["medallion_pipeline"]["tasks"].append(task)
 
@@ -156,25 +196,38 @@ class OpsAuditorService:
         storage.save_file(manifest_key, yaml.dump(bundle, default_flow_style=False))
         return manifest_key
 
-    async def _generate_handbook(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+    async def _generate_handbook(self, project_id: str, refined_files: dict, target_prefix: str, execution_mode: str) -> str:
         storage = PersistenceService.get_storage()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        architecture_overview = "This project follows a **Medallion Architecture** (Bronze, Silver, Gold)."
+        execution_order = """1. **Bronze**: Ingest raw data from source systems.
+    2. **Silver**: Clean, deduplicate, and apply SCD Type 2 logic.
+    3. **Gold**: Final business aggregations and semantic views."""
+        registry_block = f"""- **Bronze Files**: {len(refined_files.get('bronze', []))} files
+    - **Silver Files**: {len(refined_files.get('silver', []))} files
+    - **Gold Files**: {len(refined_files.get('gold', []))} files"""
+
+        if execution_mode == "intelligent_reengineering":
+            architecture_overview = "This project follows an **Intelligent Reengineering Architecture** (Shared, Core, Publish)."
+            execution_order = """1. **Shared**: Build common ingestion and reusable foundations.
+    2. **Core**: Consolidate reusable business entities.
+    3. **Publish**: Expose curated outputs for downstream analytics and consumption."""
+            registry_block = f"""- **Shared Files**: {len(refined_files.get('reengineered_shared', []))} files
+    - **Core Files**: {len(refined_files.get('reengineered_core', []))} files
+    - **Publish Files**: {len(refined_files.get('reengineered_publish', []))} files"""
+
         content = f"""# Operational Handbook: {project_id}
 Generated by Legacy2Lake Ops Auditor - {timestamp}
 
 ## Architecture Overview
-This project follows a **Medallion Architecture** (Bronze, Silver, Gold).
+    {architecture_overview}
 
 ### 1. Execution Order
-1. **Bronze**: Ingest raw data from source systems.
-2. **Silver**: Clean, deduplicate, and apply SCD Type 2 logic.
-3. **Gold**: Final business aggregations and semantic views.
+    {execution_order}
 
 ## Component Registry
-- **Bronze Files**: {len(refined_files.get('bronze', []))} files
-- **Silver Files**: {len(refined_files.get('silver', []))} files
-- **Gold Files**: {len(refined_files.get('gold', []))} files
+    {registry_block}
 
 ## Deployment Notes
 - **Infrastructure**: Use the provided `workflows.yaml` for Databricks Job configuration.

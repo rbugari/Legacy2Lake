@@ -25,7 +25,12 @@ class ArchitectService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
-    def _resolve_processing_units(self, profile_metadata: dict) -> list:
+    def _resolve_processing_units(self, profile_metadata: dict, execution_mode: str = "structured_refinement") -> list:
+        if execution_mode == "intelligent_reengineering":
+            reengineering_units = profile_metadata.get("reengineering_units") or []
+            if reengineering_units:
+                return reengineering_units
+
         refinement_units = profile_metadata.get("refinement_units") or []
         if refinement_units:
             return refinement_units
@@ -79,7 +84,38 @@ class ArchitectService:
             },
         }
 
-    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None, target_tech: str = None) -> dict:
+    def _build_reengineering_manifest_entry(self, processing_unit: dict, table_metadata: dict, output_assets: dict) -> dict:
+        return {
+            "unit_name": processing_unit.get("unit_name") or table_metadata.get("output_table_name"),
+            "target_asset_name": processing_unit.get("target_asset_name") or table_metadata.get("output_table_name"),
+            "contributing_sources": table_metadata.get("source_files", []),
+            "reuse_strategy": processing_unit.get("reuse_strategy", "bounded_enhancement"),
+            "consolidation_rationale": "Project-scoped consolidation driven by shared entities and repeated source patterns.",
+            "generated_assets": output_assets,
+            "traceability_notes": "Each generated asset includes explicit source references in metadata and manifest.",
+        }
+
+    def _generate_reengineering_assets(self, processing_unit: dict, table_metadata: dict, cartridge, ext: str, core_prefix: str, publish_prefix: str, shared_prefix: str):
+        base_filename = processing_unit.get("target_asset_name") or processing_unit.get("output_table_name") or processing_unit.get("unit_name") or "reengineered_asset"
+        trace_comment = "\n".join([
+            "# --- REENGINEERING TRACEABILITY ---",
+            f"# Unit: {processing_unit.get('unit_name', base_filename)}",
+            f"# Sources: {', '.join(table_metadata.get('source_files', []))}",
+            "# -----------------------------------",
+            "",
+        ])
+
+        core_code = cartridge.generate_silver(table_metadata)
+        publish_code = cartridge.generate_gold(table_metadata)
+        shared_code = cartridge.generate_bronze(table_metadata)
+
+        return {
+            "core": (f"{core_prefix}/{base_filename}_core{ext}", trace_comment + (core_code or "")),
+            "publish": (f"{publish_prefix}/{base_filename}_publish{ext}", trace_comment + (publish_code or "")),
+            "shared": (f"{shared_prefix}/{base_filename}_shared{ext}", trace_comment + (shared_code or "")),
+        }
+
+    async def refine_project(self, project_id: str, profile_metadata: dict, log: list = None, project_name: str = None, target_tech: str = None, execution_mode: str = "structured_refinement") -> dict:
         """
         Segments Code into Medallion Architecture (Bronze/Silver/Gold).
         Generates config.py and utils.py.
@@ -135,6 +171,9 @@ class ArchitectService:
         bronze_prefix = f"{output_dir.rstrip('/')}/bronze"
         silver_prefix = f"{output_dir.rstrip('/')}/silver"
         gold_prefix = f"{output_dir.rstrip('/')}/gold"
+        reengineered_core_prefix = f"{output_dir.rstrip('/')}/reengineered/core"
+        reengineered_publish_prefix = f"{output_dir.rstrip('/')}/reengineered/publish"
+        reengineered_shared_prefix = f"{output_dir.rstrip('/')}/reengineered/shared"
         
         self._log(log, "Ensuring Medallion folder structure (bronze/silver/gold)...")
         # In R2 we don't need to physically create folders.
@@ -144,7 +183,10 @@ class ArchitectService:
             "silver": [],
             "gold": [],
             "config": [],
-            "utils": []
+            "utils": [],
+            "reengineered_core": [],
+            "reengineered_publish": [],
+            "reengineered_shared": [],
         }
 
         # 1. Generate Shared Scaffolding
@@ -160,11 +202,13 @@ class ArchitectService:
             
             self._log(log, f"Generated Scaffolding: {filename}")
 
-        # 2. Process refinement units instead of naively splitting each source file.
-        processing_units = self._resolve_processing_units(profile_metadata)
+        # 2. Process units according to execution mode.
+        processing_units = self._resolve_processing_units(profile_metadata, execution_mode=execution_mode)
         print(f"[ARCHITECT DEBUG] processing_units: {processing_units}")
         print(f"[ARCHITECT DEBUG] About to process {len(processing_units)} refinement units")
-        self._log(log, f"Processing {len(processing_units)} refinement units with {cartridge.get_file_extension()} extension...")
+        self._log(log, f"Processing {len(processing_units)} units in mode={execution_mode} with {cartridge.get_file_extension()} extension...")
+
+        reengineering_manifest = []
 
         for processing_unit in processing_units:
             unit_name = processing_unit.get("unit_name") or "refined_asset"
@@ -180,6 +224,42 @@ class ArchitectService:
             table_metadata = unit_payload["table_metadata"]
             base_filename = unit_payload["base_filename"]
             ext = cartridge.get_file_extension()
+
+            if execution_mode == "intelligent_reengineering":
+                generated_assets = self._generate_reengineering_assets(
+                    processing_unit,
+                    table_metadata,
+                    cartridge,
+                    ext,
+                    reengineered_core_prefix,
+                    reengineered_publish_prefix,
+                    reengineered_shared_prefix,
+                )
+                for asset_key, asset_content in generated_assets.values():
+                    storage.save_file(asset_key, asset_content)
+
+                refined_files["reengineered_core"].append(generated_assets["core"][0])
+                refined_files["reengineered_publish"].append(generated_assets["publish"][0])
+                refined_files["reengineered_shared"].append(generated_assets["shared"][0])
+
+                # Compatibility bridge for downstream services that still scan bronze/silver/gold.
+                refined_files["bronze"].append(generated_assets["shared"][0])
+                refined_files["silver"].append(generated_assets["core"][0])
+                refined_files["gold"].append(generated_assets["publish"][0])
+
+                reengineering_manifest.append(
+                    self._build_reengineering_manifest_entry(
+                        processing_unit,
+                        table_metadata,
+                        {
+                            "core": generated_assets["core"][0],
+                            "publish": generated_assets["publish"][0],
+                            "shared": generated_assets["shared"][0],
+                        },
+                    )
+                )
+                self._log(log, f"Reengineered unit {unit_name} into consolidated core/publish/shared outputs.")
+                continue
 
             # 1. Bronze Layer
             print(f"[ARCHITECT DEBUG] Generating bronze for {unit_name}...")
@@ -245,11 +325,19 @@ class ArchitectService:
                  "table_name": unit_name
              })
 
-        manifest_key = f"{output_dir.rstrip('/')}/refinement_manifest.json"
+        manifest_name = "reengineering_manifest.json" if execution_mode == "intelligent_reengineering" else "refinement_manifest.json"
+        manifest_key = f"{output_dir.rstrip('/')}/{manifest_name}"
+        manifest_objective = (
+            "Consolidate Drafting outputs into reusable, project-scoped ELT assets with traceable reengineering decisions."
+            if execution_mode == "intelligent_reengineering"
+            else "Consolidate Drafting outputs into reusable ELT-oriented refinement units instead of naively splitting each package into three layers."
+        )
         storage.save_file(manifest_key, json.dumps({
             "generated_at": datetime.datetime.now().isoformat(),
+            "execution_mode": execution_mode,
             "processing_units": processing_units,
-            "objective": "Consolidate Drafting outputs into reusable ELT-oriented refinement units instead of naively splitting each package into three layers."
+            "reengineering_summary": reengineering_manifest,
+            "objective": manifest_objective,
         }, indent=2))
         refined_files["manifest"] = [manifest_key]
 
@@ -273,5 +361,6 @@ class ArchitectService:
         return {
             "status": "COMPLETED",
             "refined_files": refined_files,
-            "cartridge": cartridge.__class__.__name__
+            "cartridge": cartridge.__class__.__name__,
+            "execution_mode": execution_mode,
         }

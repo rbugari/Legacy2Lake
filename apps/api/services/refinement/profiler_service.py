@@ -27,6 +27,74 @@ class ProfilerService:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.append(f"[{timestamp}] [{level}] [{model}] {msg}")
 
+    def _build_reengineering_units(self, refinement_units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        units: List[Dict[str, Any]] = []
+
+        for unit in refinement_units:
+            source_files = unit.get("source_files", [])
+            shared_connections = unit.get("shared_connections", [])
+            source_count = int(unit.get("source_count", len(source_files) or 0))
+            needs_consolidation = source_count > 1 or bool(shared_connections)
+
+            units.append(
+                {
+                    "unit_name": unit.get("unit_name"),
+                    "target_asset_name": unit.get("output_table_name") or unit.get("unit_name"),
+                    "source_files": source_files,
+                    "pk_columns": unit.get("pk_columns", ["id"]),
+                    "table_type": unit.get("table_type", "DIMENSION"),
+                    "reuse_strategy": "project_wide_consolidation" if needs_consolidation else "bounded_enhancement",
+                    "shared_connections": shared_connections,
+                    "consolidation_score": source_count + len(shared_connections),
+                }
+            )
+
+        return sorted(units, key=lambda item: item.get("consolidation_score", 0), reverse=True)
+
+    def _build_shared_entities(self, reengineering_units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        entities: List[Dict[str, Any]] = []
+        for unit in reengineering_units:
+            if unit.get("consolidation_score", 0) < 2:
+                continue
+            entities.append(
+                {
+                    "entity": unit.get("target_asset_name") or unit.get("unit_name"),
+                    "source_count": len(unit.get("source_files", [])),
+                    "signals": {
+                        "shared_connections": len(unit.get("shared_connections", [])),
+                        "table_type": unit.get("table_type", "DIMENSION"),
+                    },
+                }
+            )
+        return entities
+
+    def _build_consolidation_candidates(self, reengineering_units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        candidates: List[Dict[str, Any]] = []
+        for unit in reengineering_units:
+            if unit.get("consolidation_score", 0) < 2:
+                continue
+            candidates.append(
+                {
+                    "candidate": unit.get("target_asset_name") or unit.get("unit_name"),
+                    "source_files": unit.get("source_files", []),
+                    "rationale": "Multiple sources and/or shared connections detected; eligible for project-scoped consolidation.",
+                    "traceability_required": True,
+                }
+            )
+        return candidates
+
+    def _build_common_ingestion_paths(self, shared_connections: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+        paths: List[Dict[str, Any]] = []
+        for connection, files in shared_connections.items():
+            paths.append(
+                {
+                    "connection": connection,
+                    "source_files": sorted(files),
+                    "source_count": len(files),
+                }
+            )
+        return sorted(paths, key=lambda item: item["source_count"], reverse=True)
+
     async def analyze_codebase(self, project_id: str, log: List[str] = None, project_name: str = None, target_tech: str = None) -> Dict[str, Any]:
         """
         Executes the profiling logic.
@@ -112,12 +180,19 @@ class ProfilerService:
                     "type": table_type
                 }
 
+        refinement_units = self._build_refinement_units(candidate_files, shared_connections, bronze_candidates)
+        reengineering_units = self._build_reengineering_units(refinement_units)
+
         profile_data = {
             "analyzed_files": candidate_files,
             "shared_connections": shared_connections,
             "table_metadata": bronze_candidates,
             "primary_keys": {k: v["pk"] for k, v in bronze_candidates.items()},
-            "refinement_units": self._build_refinement_units(candidate_files, shared_connections, bronze_candidates),
+            "refinement_units": refinement_units,
+            "reengineering_units": reengineering_units,
+            "shared_entities": self._build_shared_entities(reengineering_units),
+            "consolidation_candidates": self._build_consolidation_candidates(reengineering_units),
+            "common_ingestion_paths": self._build_common_ingestion_paths(shared_connections),
             "file_to_unit": self._build_file_to_unit_map(candidate_files),
             "unit_primary_keys": self._build_unit_primary_keys(candidate_files, bronze_candidates),
             "total_files": len(candidate_files)
