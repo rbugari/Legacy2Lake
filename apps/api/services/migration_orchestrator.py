@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 # Import all agents
@@ -61,6 +61,69 @@ class MigrationOrchestrator:
         
         # Log Persistence
         self.log_file = os.path.join(self.base_path, "migration.log")
+
+    def _normalize_layer_value(self, raw_value: Optional[Any]) -> Optional[str]:
+        """Map source metadata into the execution layers supported by prompts/audits."""
+        if raw_value in (None, ""):
+            return None
+
+        value = str(raw_value).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "direct": "direct",
+            "direct_translation": "direct",
+            "raw": "bronze",
+            "landing": "bronze",
+            "staging": "bronze",
+            "bronze": "bronze",
+            "curated": "silver",
+            "refined": "silver",
+            "silver": "silver",
+            "serving": "gold",
+            "presentation": "gold",
+            "gold": "gold"
+        }
+        return aliases.get(value)
+
+    def _resolve_task_layer(self, asset_meta: Dict[str, Any], target_tech: str) -> str:
+        """Prefer explicit medallion intent; only fall back to direct when no modernization signal exists."""
+        metadata = asset_meta.get("metadata") or {}
+        logical_medulla = metadata.get("logical_medulla") or {}
+
+        preferred_candidates = [
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+            metadata.get("layer"),
+        ]
+
+        for candidate in preferred_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized and normalized != "direct":
+                return normalized
+
+        weak_candidates = [
+            asset_meta.get("layer"),
+            metadata.get("layer"),
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+        ]
+
+        for candidate in weak_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized:
+                return normalized
+
+        source_name = str(asset_meta.get("source_name") or "").lower()
+        asset_type = str(asset_meta.get("type") or "").lower()
+        normalized_target = str(target_tech or "").lower()
+
+        if normalized_target in {"pyspark", "databricks", "fabric"} and (
+            source_name.endswith(".dtsx") or "ssis" in asset_type
+        ):
+            return "silver"
+
+        return "direct"
 
     async def _log_persistence(self, message: str, step: str = "SYSTEM"):
         """Persists a message to the database log and cloud storage log."""
@@ -273,7 +336,7 @@ class MigrationOrchestrator:
                 task_def = {
                     "asset_id": asset_meta.get("object_id") or asset_meta.get("id"),  # Sprint 13: Required for persistence
                     "tech_id": tech_id_normalized,  # Sprint 13: For persistence
-                    "layer": "direct",  # v4.0: Direct translation (1:1 transpilation). For architectural patterns (Medallion/Data Vault), apply in Refinement phase.
+                    "layer": self._resolve_task_layer(asset_meta, tech_id_normalized),
                     "project_id": self.project_uuid,
                     "package_name": pkg_name,
                     "name": pkg_name, # Compatibility with Agent C expecting 'name'

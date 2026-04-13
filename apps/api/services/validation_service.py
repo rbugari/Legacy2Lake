@@ -195,6 +195,16 @@ class ValidationService:
     
     def __init__(self):
         self.version = "v1.0"
+
+    def _pattern_exists(self, code: str, pattern: str, tech_type: TechnologyType) -> bool:
+        """Allow modern target-specific equivalents for coarse required patterns."""
+        if pattern in code:
+            return True
+
+        if tech_type == TechnologyType.PYSPARK and pattern == '.write.':
+            return bool(re.search(r'\.write(?:Stream)?\b|saveAsTable\s*\(|insertInto\s*\(|save\s*\(|merge\s*\(', code))
+
+        return False
     
     
     async def validate_code(
@@ -255,8 +265,13 @@ class ValidationService:
         # Step 3: Layer-specific checks
         layer_issues = self._validate_layer_requirements(code, layer, tech_type)
         issues.extend(layer_issues)
+
+        # Step 4: Direct-mode zero-hardcode checks
+        if str(layer).lower() == "direct":
+            direct_issues = self._validate_direct_zero_hardcode(code, tech_type)
+            issues.extend(direct_issues)
         
-        # Step 4: Integrity checks (placeholders)
+        # Step 5: Integrity checks (placeholders)
         integrity_issues = self._validate_placeholders(code)
         issues.extend(integrity_issues)
         
@@ -352,9 +367,14 @@ class ValidationService:
         
         requirements = self.TECH_REQUIREMENTS[tech_type]
         
+        # Layer-aware relaxation: silver/gold code can receive Spark session from runtime entrypoint.
+        relaxed_runtime_spark = tech_type == TechnologyType.PYSPARK and str(layer).lower() != "direct"
+
         # Check required imports
         if 'required_imports' in requirements:
             for required_import in requirements['required_imports']:
+                if relaxed_runtime_spark and required_import == 'SparkSession':
+                    continue
                 if required_import not in code:
                     issues.append(ValidationIssue(
                         level=ValidationLevel.ERROR,
@@ -366,7 +386,9 @@ class ValidationService:
         # Check required patterns
         if 'required_patterns' in requirements:
             for pattern in requirements['required_patterns']:
-                if pattern not in code:
+                if relaxed_runtime_spark and pattern == 'SparkSession.builder':
+                    continue
+                if not self._pattern_exists(code, pattern, tech_type):
                     issues.append(ValidationIssue(
                         level=ValidationLevel.ERROR,
                         check_name="missing_pattern",
@@ -535,6 +557,54 @@ class ValidationService:
         return issues
     
     
+    def _validate_direct_zero_hardcode(
+        self,
+        code: str,
+        tech_type: TechnologyType,
+    ) -> List[ValidationIssue]:
+        """Enforce strict no-hardcode policy in direct transpilation mode."""
+        issues: List[ValidationIssue] = []
+
+        if tech_type not in [TechnologyType.PYSPARK, TechnologyType.FABRIC, TechnologyType.AWS_GLUE]:
+            return issues
+
+        line_checks = [
+            (r'^\s*(CATALOG|SCHEMA_[A-Z0-9_]+|BRONZE_PATH|SILVER_PATH|GOLD_PATH)\s*=\s*["\"][^"\"]+["\"]', "hardcoded_constant"),
+            (r'^\s*[A-Za-z_][A-Za-z0-9_]*(?:catalog|schema|table|table_name|path|object_name|source_name|target_name)\s*=\s*["\"][^"\"]+["\"]', "hardcoded_helper_assignment"),
+            (r'\b(hive_metastore\.|main\.|bronze_raw\.|silver_curated\.|gold_business\.)', "hardcoded_table_reference"),
+            (r'["\"](?:/mnt/|abfss://|s3://|gs://)[^"\"]*["\"]', "hardcoded_storage_path"),
+            (r'\bsaveAsTable\(\s*["\"][^"\"]+["\"]\s*\)', "hardcoded_saveastable"),
+            (r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', "hardcoded_config_default"),
+        ]
+
+        bad_lines: List[str] = []
+        for raw_line in code.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Allow dynamic config-based resolution in direct mode, but not invented literal defaults.
+            if (
+                ("config.get(" in line or "cfg.get(" in line)
+                and not re.search(r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', line)
+            ):
+                continue
+
+            for pattern, _ in line_checks:
+                if re.search(pattern, line):
+                    bad_lines.append(line)
+                    break
+
+        if bad_lines:
+            preview = "; ".join(bad_lines[:3])
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                check_name="direct_no_hardcode",
+                message=f"Hardcoded values detected in direct mode: {preview}",
+                suggestion="Replace literals with config.get(...) and metadata-driven values.",
+            ))
+
+        return issues
+
     def _validate_placeholders(self, code: str) -> List[ValidationIssue]:
         """Detect unresolved placeholders like {variable} or {{variable}} in code"""
         issues = []

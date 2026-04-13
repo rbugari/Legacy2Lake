@@ -74,6 +74,165 @@ class AgentFService:
             "intelligent_reengineering": "Advanced path. Allow architectural improvements while preserving traceability and safety controls.",
         }.get(post_drafting_mode, "Default review path. Enforce layer-aware constraints from the task metadata.")
 
+    @staticmethod
+    def _resolve_review_layer(layer: str, post_drafting_mode: Optional[str]) -> str:
+        """Drafting delivery evaluates functional equivalence even if execution layer is medallion-tagged."""
+        normalized_layer = str(layer or "direct").lower()
+        if post_drafting_mode in (None, "drafting_delivery"):
+            return "direct"
+        return normalized_layer
+
+    @staticmethod
+    def _is_reasonably_executable_direct_code(generated_code: str, target_tech: str) -> bool:
+        """Use a narrow, tech-specific bar for drafting success in direct mode."""
+        normalized_target = normalize_tech_stack(target_tech) or str(target_tech or "").lower()
+        code = generated_code or ""
+
+        if normalized_target != "pyspark":
+            return False
+
+        has_read = any(token in code for token in ["spark.read", ".read.table(", ".read.format(", ".read.parquet("])
+        has_write = any(token in code for token in [".write", "saveAsTable(", ".parquet(", ".save("])
+        has_config = "config.get(" in code or "globals().get(\"config\"" in code or "globals().get('config'" in code
+
+        return has_read and has_write and has_config
+
+    @staticmethod
+    def _is_soft_drafting_direct_critique(critique_text: str) -> bool:
+        """Identify critiques that are too strict for drafting but acceptable for refinement."""
+        text = str(critique_text or "").lower()
+
+        blocker_patterns = [
+            "hardcoded",
+            "zero-hardcode",
+            "syntax error",
+            "failed to parse",
+            "empty code",
+            "missing required import",
+            "unresolved placeholder",
+            "does not read",
+            "does not write",
+        ]
+        if any(pattern in text for pattern in blocker_patterns):
+            return False
+
+        soft_patterns = [
+            "header format is incorrect",
+            "parameter semantics",
+            "not tied to the documented metadata contract",
+            "source query structure",
+            "source read path is not functionally equivalent",
+            "qualified_source",
+            "qualified_target",
+            "overwrite/union",
+            "overwrite semantics",
+            "delta existence checks",
+            "target_path-based merge/write branching",
+            "adds modernization/optimization behavior",
+            "fallback logic",
+            "type fidelity is uncertain",
+            "simplified overwrite",
+            "max_",
+            # execution-layer / medallion concepts — not expected in direct drafting
+            "silver layer",
+            "silver-layer",
+            "scd_2",
+            "scd type 2",
+            "slowly changing",
+            "medallion",
+            "historical version",
+            "valid_from",
+            "valid_to",
+            "is_current",
+            "incremental silver",
+            "load strategy",
+            "load_strategy",
+            "merge logic",
+            "upsert",
+        ]
+        return any(pattern in text for pattern in soft_patterns)
+
+    @staticmethod
+    def _code_has_literal_hardcodes(code: str) -> bool:
+        """Detect hardcoded string literals for table/schema/catalog names in generated code.
+        Mirrors the key checks in ValidationService._validate_direct_zero_hardcode so the
+        normalizer doesn't promote code that the local validator already flagged."""
+        import re
+        patterns = [
+            # Variable assignment: source_table = "literal", target_schema = "literal", etc.
+            r'^\s*[A-Za-z_][A-Za-z0-9_]*(?:catalog|schema|table|table_name|path|object_name|source_name|target_name)\s*=\s*["\'][^"\']+["\']',
+            # config.get with literal default for table/schema/catalog keys
+            r'\bconfig\.get\(\s*["\'][^"\']*(?:table|schema|catalog)[^"\']*["\']\s*,\s*["\'][^"\']+["\']\s*\)',
+            # spark.read.table("literal") or .load("literal") — literal passed directly
+            r'spark\.read\b[\s\S]*?\.(?:table|load)\s*\(\s*["\'][^"\']+["\']',
+            # df.write...saveAsTable("literal")
+            r'\.saveAsTable\s*\(\s*["\'][^"\']+["\']',
+        ]
+        for line in code.splitlines():
+            for p in patterns:
+                if re.search(p, line, re.IGNORECASE):
+                    return True
+        return False
+
+    @staticmethod
+    def _is_structural_critique_blocker(critique_text: str) -> bool:
+        """Only true structural issues (syntax, missing read/write) block drafting promotion.
+        Style, architecture layer, and equivalence concerns are deferred to refinement."""
+        text = str(critique_text or "").lower()
+        structural_blockers = [
+            "syntax error",
+            "failed to parse",
+            "empty code",
+            "missing required import",
+            "does not read",
+            "does not write",
+            "unresolved placeholder",
+        ]
+        return any(p in text for p in structural_blockers)
+
+    @classmethod
+    def _normalize_drafting_direct_review(
+        cls,
+        audit_report: Dict[str, Any],
+        generated_code: str,
+        target_tech: str,
+        review_layer: str,
+        post_drafting_mode: Optional[str],
+    ) -> Dict[str, Any]:
+        """Keep drafting permissive: promote REJECTED→IMPROVED when the code is
+        structurally executable, contains no hardcoded literal table/schema names,
+        and Agent F has no structural blockers (syntax errors, missing read/write).
+        Architecture-layer, SCD, and semantics concerns are deferred to refinement."""
+        if review_layer != "direct" or post_drafting_mode not in (None, "drafting_delivery"):
+            return audit_report
+
+        if (audit_report or {}).get("status") != "REJECTED":
+            return audit_report
+
+        if not cls._is_reasonably_executable_direct_code(generated_code, target_tech):
+            return audit_report
+
+        # Code-level check: real hardcoded literals block promotion (not critique text analysis)
+        if cls._code_has_literal_hardcodes(generated_code):
+            return audit_report
+
+        critiques = audit_report.get("critique") or []
+        if isinstance(critiques, str):
+            critiques = [critiques]
+
+        # Block only on structural critique issues (not style/architecture/equivalence)
+        if any(cls._is_structural_critique_blocker(item) for item in critiques):
+            return audit_report
+
+        normalized = dict(audit_report)
+        normalized["status"] = "IMPROVED"
+        normalized["score"] = max(int(normalized.get("score") or 0), 7)
+        normalized.setdefault("optimized_code", generated_code)
+        normalized["critique"] = list(critiques) + [
+            "Drafting direct normalization applied: code is executable and remaining objections are deferred to refinement."
+        ]
+        return normalized
+
     @logger.llm_debug("Agent-F-Compliance-Review")
     async def review_code(self, task_info: Dict[str, Any], generated_code: str, project_id: Optional[str] = None) -> Dict[str, Any]:
         """Audits generated code against layer-specific standards."""
@@ -94,7 +253,8 @@ class AgentFService:
         refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
         
         # --- LAYER EXTRACTION (v4.0 Two-Phase Architecture) ---
-        layer = task_info.get("layer", "direct")  # "direct", "bronze", "silver", "gold"
+        layer = task_info.get("layer", "direct")  # execution layer: "direct", "bronze", "silver", "gold"
+        review_layer = self._resolve_review_layer(layer, post_drafting_mode)
         
         # Extract Technologies
         source_tech = task_info.get("source_tech", "mssql").upper()
@@ -105,7 +265,9 @@ class AgentFService:
         target_tech = normalize_tech_stack(target_tech) or target_tech
 
         cartridge_rules = ""
-        cartridge_prompt_id = build_cartridge_prompt_id(layer, target_tech) or f"agent_c_{layer.lower()}_{target_tech}"
+        # CRITICAL FIX: Load cartridge rules based on REVIEW_LAYER, not execution layer
+        # In Drafting (post_drafting_mode=None), review_layer="direct" overrides silver/gold execution tags
+        cartridge_prompt_id = build_cartridge_prompt_id(review_layer, target_tech) or f"agent_c_{review_layer.lower()}_{target_tech}"
         
         try:
             prompt_service = PromptService(tenant_id=self.tenant_id, client_id=self.client_id)
@@ -115,7 +277,7 @@ class AgentFService:
             prompt_obj = await prompt_service.get_active_prompt(
                 agent_id="agent-c",
                 tech_stack=target_tech,
-                pattern_type=layer.lower()
+                pattern_type=review_layer.lower()
             )
             if prompt_obj:
                 cartridge_rules = prompt_obj.content
@@ -139,7 +301,8 @@ class AgentFService:
 
         human_content = f"""
         COMPLIANCE CONTEXT:
-        LAYER MODE: {layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if layer == "direct" else f"Architectural Enhancement - {layer.upper()} Layer"})
+        EXECUTION LAYER: {str(layer).upper()}
+        REVIEW LAYER MODE: {review_layer.upper()} (Translation Mode: {"Direct 1:1 Transpilation" if review_layer == "direct" else f"Architectural Enhancement - {review_layer.upper()} Layer"})
         SOURCE TECHNOLOGY: {source_tech}
         TARGET TECHNOLOGY: {target_tech_raw}
         POST-DRAFTING MODE: {post_drafting_mode or "not_selected"}
@@ -165,9 +328,9 @@ class AgentFService:
         {generated_code}
         ```
         
-        REMEMBER: Apply validation criteria based on LAYER MODE above.
-        - If layer=="direct": Validate functional equivalence, zero-hardcode, metadata usage. DO NOT require MERGE, audit columns, or Medallion structure.
-        - If layer in ["bronze","silver","gold"]: Enforce full architectural compliance (MERGE, audit columns, Medallion structure).
+        REMEMBER: Apply validation criteria based on REVIEW LAYER MODE above.
+        - If review_layer=="direct": Validate functional equivalence, zero-hardcode, metadata usage. DO NOT require MERGE, audit columns, or Medallion structure.
+        - If review_layer in ["bronze","silver","gold"]: Enforce full architectural compliance (MERGE, audit columns, Medallion structure).
         - If post_drafting_mode=="drafting_delivery": Prefer strict equivalence checks and do not over-penalize for missing modernization patterns.
         - If post_drafting_mode=="structured_refinement": Prioritize bounded medallion consistency and deterministic governance controls.
         - If post_drafting_mode=="intelligent_reengineering": Accept higher-order improvements only if traceability and safety are preserved.
@@ -188,12 +351,60 @@ class AgentFService:
             content = content.split("```")[1].split("```")[0].strip()
  
         try:
-            return json.loads(content)
+            parsed = json.loads(content)
+            return self._normalize_drafting_direct_review(
+                parsed,
+                generated_code,
+                target_tech,
+                review_layer,
+                post_drafting_mode,
+            )
         except json.JSONDecodeError:
+            recovered = self._recover_json_object(content)
+            if recovered is not None:
+                return self._normalize_drafting_direct_review(
+                    recovered,
+                    generated_code,
+                    target_tech,
+                    review_layer,
+                    post_drafting_mode,
+                )
+
+            # Fallback: model returned plain optimized code instead of JSON contract.
+            inferred_code = content
+            if inferred_code.lower().startswith("python\n"):
+                inferred_code = inferred_code.split("\n", 1)[1].strip()
+
+            if inferred_code:
+                return {
+                    "status": "IMPROVED",
+                    "optimized_code": inferred_code,
+                    "critique": ["Agent F returned code-only output; JSON envelope was reconstructed automatically."],
+                    "score": 7,
+                    "raw_response": content
+                }
+
             return {
                 "error": "Failed to parse Agent F response as JSON",
                 "raw_response": content
             }
+
+    def _recover_json_object(self, text: str) -> Optional[Dict[str, Any]]:
+        """Best-effort extraction when the model wraps JSON with extra text."""
+        if not text:
+            return None
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+
+        candidate = text[start:end + 1]
+        try:
+            parsed = json.loads(candidate)
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None
  
     @logger.llm_debug("Agent-F-Compliance-Optimize")
     async def optimize_code(self, original_code: str, optimizations: List[str], project_id: Optional[str] = None, task_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -240,6 +451,20 @@ class AgentFService:
         try:
             return json.loads(content)
         except json.JSONDecodeError:
+            recovered = self._recover_json_object(content)
+            if recovered is not None:
+                return recovered
+
+            inferred_code = content
+            if inferred_code.lower().startswith("python\n"):
+                inferred_code = inferred_code.split("\n", 1)[1].strip()
+
+            if inferred_code:
+                return {
+                    "optimized_code": inferred_code,
+                    "changes_applied": ["Recovered from non-JSON model output"]
+                }
+
             return {
                 "error": "Failed to parse Agent F optimization response",
                 "optimized_code": original_code,

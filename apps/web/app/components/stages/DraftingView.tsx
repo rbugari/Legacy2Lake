@@ -100,6 +100,7 @@ export default function DraftingView({
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
     const [isApproving, setIsApproving] = useState(false);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
+    const pollInFlightRef = useRef(false);
 
     // Keep ref in sync with state
     useEffect(() => { isOrchestrationRunningRef.current = isOrchestrationRunning; }, [isOrchestrationRunning]);
@@ -123,6 +124,11 @@ export default function DraftingView({
 
     // Helper: Fetch Logs with status detection
     const fetchOrchestrationLogs = useCallback(async () => {
+        if (pollInFlightRef.current) {
+            return;
+        }
+
+        pollInFlightRef.current = true;
         try {
             const logLines = await getMigrationLogLines();
             if (logLines.length > 0) {
@@ -148,6 +154,8 @@ export default function DraftingView({
             }
         } catch (e) {
             console.error("Failed to load logs", e);
+        } finally {
+            pollInFlightRef.current = false;
         }
     }, [projectId, activeTenantId, getMigrationLogLines]); // Stable ref: no isOrchestrationRunning dependency
 
@@ -219,7 +227,7 @@ export default function DraftingView({
         setIsInitialLoading(false);
     }, [projectId, activeTenantId, fetchOrchestrationLogs, getMigrationLogLines]);
 
-    // Poll logs when orchestration is running (every 3 seconds)
+    // Poll logs when orchestration is running (every 5 seconds)
     // Safety: auto-stop after 45 minutes to prevent infinite polling if backend dies
     const MAX_POLL_MS = 45 * 60 * 1000;
     useEffect(() => {
@@ -231,8 +239,8 @@ export default function DraftingView({
             // Wait 1.5 seconds before first fetch to allow backend to clear old logs
             initialTimeout = setTimeout(() => {
                 fetchOrchestrationLogs();
-                // Then poll every 3 seconds
-                interval = setInterval(fetchOrchestrationLogs, 3000);
+                // Then poll every 5 seconds, skipping overlap via pollInFlightRef
+                interval = setInterval(fetchOrchestrationLogs, 5000);
             }, 1500);
 
             // Safety timeout: stop polling after MAX_POLL_MS even if backend never responds

@@ -19,6 +19,14 @@ except ImportError:
     except ImportError:
         from .persistence_service import PersistenceService
 
+try:
+    from apps.api.services.persistence_service import SupabasePersistence
+except ImportError:
+    try:
+        from services.persistence_service import SupabasePersistence
+    except ImportError:
+        from .persistence_service import SupabasePersistence
+
 class TopologyService:
     """
     The Topology Architect: Orchestration Agent.
@@ -28,6 +36,7 @@ class TopologyService:
     def __init__(self, project_id: str, tenant_id: str = None, source_folder: str = None):
         self.project_id = project_id
         self.tenant_id = tenant_id
+        self.persistence = SupabasePersistence(tenant_id=tenant_id)
         self.base_path = PersistenceService.ensure_solution_dir(project_id, tenant_id=tenant_id)
         self.storage = PersistenceService.get_storage()
         
@@ -105,9 +114,69 @@ class TopologyService:
         
         logger.info(f"Found {len(task_files)} unique task files (migration assets) in storage.", "Topology")
 
+        # Storage can be empty for older/imported projects where assets live in DB only.
+        # In that case, build a minimal package inventory from utm_objects.
+        if not task_files:
+            try:
+                query = self.persistence.client.table("utm_objects").select("source_name, metadata")
+                query = query.eq("project_id", self.project_id)
+                if self.tenant_id:
+                    query = query.eq("tenant_id", self.tenant_id)
+
+                db_rows = (query.execute().data or [])
+                seen_names = set()
+
+                for row in db_rows:
+                    source_name = (row.get("source_name") or "").strip()
+                    if not source_name:
+                        continue
+
+                    source_name_lower = source_name.lower()
+                    ext = os.path.splitext(source_name_lower)[1]
+                    if ext not in {".dtsx", ".sql"}:
+                        continue
+                    if source_name_lower in seen_names:
+                        continue
+
+                    seen_names.add(source_name_lower)
+                    md = row.get("metadata") or {}
+                    task_files.append({
+                        "name": source_name,
+                        "path": source_name,
+                        "type": "file",
+                        "from_db_fallback": True,
+                        "metadata": md
+                    })
+
+                logger.info(
+                    f"Topology DB fallback discovered {len(task_files)} task files from utm_objects.",
+                    "Topology"
+                )
+            except Exception as e:
+                logger.warning(f"Topology DB fallback failed: {e}", "Topology")
+
         for f_node in task_files:
             p_path = f_node["path"]
             try:
+                if f_node.get("from_db_fallback"):
+                    pkg_name = f_node["name"]
+                    md = f_node.get("metadata") or {}
+
+                    # Preserve known dependency hints if they were persisted in metadata.
+                    inputs = md.get("inputs") or []
+                    outputs = md.get("outputs") or []
+                    lookups = md.get("lookups") or []
+
+                    package_metadatas.append({
+                        "package_name": pkg_name,
+                        "path": p_path,
+                        "inputs": list(set(inputs)),
+                        "outputs": list(set(outputs)),
+                        "lookups": list(set(lookups)),
+                        "complexity": md.get("complexity") or "MEDIUM"
+                    })
+                    continue
+
                 # Read content instead of passing path
                 content = self.storage.read_file(p_path)
                 if isinstance(content, bytes):

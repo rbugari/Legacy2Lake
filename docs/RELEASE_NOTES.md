@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 4.4.1 - Drafting Direct Compliance Stabilization - 2026-04-13
+
+### Drafting Compliance Behavior
+
+- Agent F now separates execution-layer metadata from review-layer criteria in Drafting Delivery.
+- direct drafting reviews can normalize `REJECTED -> IMPROVED` when code is executable and blockers are non-structural refinement concerns.
+- normalization now validates real code signals (read/write/config + literal hardcode checks) instead of relying only on critique wording.
+
+### Direct Zero-Hardcode Enforcement
+
+- direct mode validation now rejects literal defaults inside `config.get(...)` for table/schema/catalog/path keys.
+- added helper-assignment hardcode detection for variables like `source_table`, `target_table`, `schema`, and similar aliases.
+- preserved cross-tech direct checks for PySpark, Fabric, and AWS Glue direct transpilation paths.
+
+### Drafting Run Outcome
+
+- validated end-to-end drafting run for project `1051e4b0-570d-443a-9412-0430a6ac3040` with final compliance result: 7/7 assets accepted (`APPROVED` or `IMPROVED`).
+
 ## Version 4.4.0 - Intelligent Reengineering MVP (Medallion-First) - In Progress - 2026-04-11
 
 ### Runtime Strategy

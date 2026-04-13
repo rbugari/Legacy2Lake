@@ -189,6 +189,65 @@ class AgentCService:
                 self.cache_manager = None
                 self.query_optimizer = None
                 self.parallel_processor = None
+
+    def _normalize_layer_value(self, raw_value: Optional[Any]) -> Optional[str]:
+        if raw_value in (None, ""):
+            return None
+
+        value = str(raw_value).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "direct": "direct",
+            "direct_translation": "direct",
+            "raw": "bronze",
+            "landing": "bronze",
+            "staging": "bronze",
+            "bronze": "bronze",
+            "curated": "silver",
+            "refined": "silver",
+            "silver": "silver",
+            "serving": "gold",
+            "presentation": "gold",
+            "gold": "gold"
+        }
+        return aliases.get(value)
+
+    def _resolve_execution_layer(self, node_data: Dict[str, Any], target_engine: str) -> str:
+        metadata = node_data.get("metadata") or {}
+        logical_medulla = metadata.get("logical_medulla") or {}
+
+        preferred_candidates = [
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+            metadata.get("layer"),
+        ]
+
+        for candidate in preferred_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized and normalized != "direct":
+                return normalized
+
+        weak_candidates = [
+            node_data.get("layer"),
+            metadata.get("layer"),
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+        ]
+
+        for candidate in weak_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized:
+                return normalized
+
+        asset_name = str(node_data.get("package_name") or node_data.get("name") or "").lower()
+        asset_type = str(node_data.get("type") or "").lower()
+        if target_engine in {"pyspark", "databricks", "fabric"} and (
+            asset_name.endswith(".dtsx") or "ssis" in asset_type
+        ):
+            return "silver"
+
+        return "direct"
     
     async def _load_project_custom_instructions(self, project_id: str) -> str:
         """
@@ -237,6 +296,40 @@ class AgentCService:
             "structured_refinement": "Apply bounded medallion optimization (Bronze/Silver/Gold) with quality and governance consistency.",
             "intelligent_reengineering": "Allow advanced optimization opportunities and structural improvements when they clearly improve target architecture.",
         }.get(post_drafting_mode, "Use standard direct modernization guidance for the selected layer.")
+
+    @staticmethod
+    def _resolve_generation_layer(layer: str, post_drafting_mode: Optional[str]) -> str:
+        """In drafting delivery, force direct-transpilation prompts even for medallion-tagged assets."""
+        normalized_layer = str(layer or "direct").lower()
+        if post_drafting_mode in (None, "drafting_delivery"):
+            return "direct"
+        return normalized_layer
+
+    @staticmethod
+    def _resolve_target_table_alias(
+        node_data: Dict[str, Any],
+        schema_context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Resolve target table alias for prompt variables, including SQL assets that only expose outputs."""
+
+        direct_target = (
+            node_data.get("target_table")
+            or node_data.get("target_name")
+            or (schema_context or {}).get("table_name")
+        )
+        if direct_target:
+            return str(direct_target).strip()
+
+        outputs = node_data.get("outputs") or []
+        if isinstance(outputs, list):
+            for output in outputs:
+                if not output:
+                    continue
+                normalized = str(output).strip().strip("[]")
+                if normalized:
+                    return normalized
+
+        return None
     
     def _extract_schema_from_code(self, code: str, table_name: str) -> Dict[str, Any]:
         """
@@ -475,9 +568,14 @@ class AgentCService:
         target_engine = normalize_tech_stack(target_engine) or target_engine
         
         source_engine = str(node_data.get("source_tech") or "mssql").lower()
-        layer = node_data.get("layer", "direct")  # v4.0: Default to direct translation (1:1 transpilation)
+        layer = self._resolve_execution_layer(node_data, target_engine)
+        generation_layer = self._resolve_generation_layer(layer, post_drafting_mode)
         
-        logger.info(f"[AgentC] target_engine={target_engine}, source_engine={source_engine}, layer={layer}", "AgentC")
+        logger.info(
+            f"[AgentC] target_engine={target_engine}, source_engine={source_engine}, "
+            f"execution_layer={layer}, generation_layer={generation_layer}",
+            "AgentC"
+        )
         
         # Pass target_engine to factory so it can override registry default
         cartridge_instance = CartridgeFactory.get_cartridge(project_id, registry, tenant_id=self.tenant_id, target_tech=target_engine)
@@ -872,7 +970,7 @@ class AgentCService:
         # v4.0: Generate code using database-driven prompts (if schema + params available)
         if schema_context and parameters_context:
             try:
-                logger.info(f"[AgentC v4.0] Generating code from DB prompt for layer={layer}", "AgentC")
+                logger.info(f"[AgentC v4.0] Generating code from DB prompt for layer={generation_layer}", "AgentC")
                 
                 # Initialize prompt services
                 await self._initialize_prompts()
@@ -881,7 +979,7 @@ class AgentCService:
                 prompt = await self.prompt_service.get_active_prompt(
                     agent_id="agent-c",
                     tech_stack=target_engine,
-                    pattern_type=layer
+                    pattern_type=generation_layer
                 )
                 
                 if prompt:
@@ -889,7 +987,7 @@ class AgentCService:
                     context = {
                         'schema': table_schema.__dict__ if hasattr(table_schema, '__dict__') else table_schema,
                         'params': params.__dict__ if hasattr(params, '__dict__') else params,
-                        'layer': layer,
+                        'layer': generation_layer,
                         'target_engine': target_engine,
                         'table_name': table_schema.table_name if hasattr(table_schema, 'table_name') else 'unknown',
                         'columns': [col.__dict__ if hasattr(col, '__dict__') else col for col in table_schema.columns] if hasattr(table_schema, 'columns') else []
@@ -911,7 +1009,7 @@ class AgentCService:
                     )
                 else:
                     logger.warning(
-                        f"[AgentC v4.0] No prompt found for agent-c/{target_engine}/{layer}, skipping template generation",
+                        f"[AgentC v4.0] No prompt found for agent-c/{target_engine}/{generation_layer}, skipping template generation",
                         "AgentC"
                     )
                     template_code = None
@@ -934,7 +1032,7 @@ class AgentCService:
             logger.info(f"[AgentC] Using cartridge_prompt from node_data ({len(core_rules)} chars)", "AgentC")
         else:
             # v4.0 Database-driven approach
-            cartridge_prompt_id = build_cartridge_prompt_id(layer, target_engine) or f"agent_c_{layer}_{target_engine}"
+            cartridge_prompt_id = build_cartridge_prompt_id(generation_layer, target_engine) or f"agent_c_{generation_layer}_{target_engine}"
             
             try:
                 await self._initialize_prompts()
@@ -976,7 +1074,7 @@ class AgentCService:
                 
                 # Build resolution context (flat for alias matching)
                 res_context = {
-                    'layer': layer,
+                    'layer': generation_layer,
                     'target_engine': target_engine,
                     'post_drafting_mode': post_drafting_mode,
                     'refinement_strategy': refinement_strategy,
@@ -988,12 +1086,7 @@ class AgentCService:
                     res_context.update(schema_context)
 
                 # Common aliases used by direct cartridges
-                schema_table_name = schema_context.get("table_name") if schema_context else None
-                target_table = (
-                    node_data.get("target_table")
-                    or node_data.get("target_name")
-                    or schema_table_name
-                )
+                target_table = self._resolve_target_table_alias(node_data, schema_context)
                 source_table = (
                     node_data.get("source_table")
                     or node_data.get("source_name")
@@ -1163,7 +1256,7 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
             validation_result = await validator.validate_code(
                 code=generated_code,
                 tech_id=target_engine,
-                layer=layer,
+                layer=generation_layer,
                 context=node_data
             )
             
@@ -1212,7 +1305,7 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
                 test_metadata = {
                     'source_table': node_data.get('source_table'),
                     'target_table': node_data.get('target_table'),
-                    'layer': layer,
+                    'layer': generation_layer,
                     'tech_id': target_engine
                 }
                 

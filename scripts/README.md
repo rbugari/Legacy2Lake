@@ -53,6 +53,15 @@ Runs the drafting/governance chain against the SSIS fixture:
 - Agent F
 - Agent G
 
+### `run_ssis_full_pipeline.py`
+
+Runs the complete fixture + drafting/governance flow end-to-end:
+
+- executes `evaluate_ssis_fixture.py`
+- reads mesh nodes from Agent A output
+- executes `evaluate_ssis_generation_pipeline.py` per node
+- writes consolidated summary to `test_results/ssis_full_pipeline_summary.json`
+
 Use when:
 
 - validating generation quality
@@ -71,6 +80,10 @@ Typical SSIS validation workflow:
 
 1. run `evaluate_ssis_fixture.py`
 2. run `evaluate_ssis_generation_pipeline.py`
+
+Or run a single end-to-end command:
+
+1. run `run_ssis_full_pipeline.py --tenant-id <tenant_uuid>`
 
 ## Cleanup Policy
 

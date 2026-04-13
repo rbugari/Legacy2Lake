@@ -48,3 +48,24 @@ def test_agent_c_mode_context_renders_with_prompt_assembler_defaults():
     assert "project=analytics" in rendered
     assert "dataset=silver" in rendered
     assert "out=/mnt/lake/silver/dim_customer" in rendered
+
+
+def test_agent_c_resolve_target_table_alias_prefers_explicit_target_table():
+    node_data = {
+        "target_table": "fact_sales",
+        "outputs": ["[IGNORED_OUTPUT]"],
+    }
+
+    resolved = AgentCService._resolve_target_table_alias(node_data, schema_context={"table_name": "fallback_table"})
+
+    assert resolved == "fact_sales"
+
+
+def test_agent_c_resolve_target_table_alias_uses_outputs_when_missing_primary_fields():
+    node_data = {
+        "outputs": ["[ORDERS]", "[CUSTOMERS]"],
+    }
+
+    resolved = AgentCService._resolve_target_table_alias(node_data, schema_context=None)
+
+    assert resolved == "ORDERS"
