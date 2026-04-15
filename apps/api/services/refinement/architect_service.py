@@ -167,6 +167,10 @@ class ArchitectService:
             "config": [],
             "utils": [],
         }
+        if execution_mode == "intelligent_reengineering":
+            refined_files["reengineered_shared"] = []
+            refined_files["reengineered_core"] = []
+            refined_files["reengineered_publish"] = []
 
         # 1. Generate Shared Scaffolding
         scaffolding = cartridge.generate_scaffolding()
@@ -213,67 +217,105 @@ class ArchitectService:
                     "",
                 ])
 
-            # 1. Bronze Layer
-            print(f"[ARCHITECT DEBUG] Generating bronze for {unit_name}...")
-            bronze_code = (trace_header + (cartridge.generate_bronze(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_bronze(table_metadata)
-            print(f"[ARCHITECT DEBUG] Bronze code length: {len(bronze_code) if bronze_code else 0}")
-            bronze_key = f"{bronze_prefix}/{base_filename}_bronze{ext}"
-            print(f"[ARCHITECT DEBUG] Saving bronze to: {bronze_key}")
-            try:
-                storage.save_file(bronze_key, bronze_code)
-                print(f"[ARCHITECT DEBUG] ✅ Bronze saved successfully")
-                refined_files["bronze"].append(bronze_key)
-            except Exception as e:
-                print(f"[ARCHITECT DEBUG] ❌ Bronze save FAILED: {e}")
-                import traceback
-                traceback.print_exc()
-                raise
-            
-            # 2. Silver Layer
-            print(f"[ARCHITECT DEBUG] Generating silver for {unit_name}...")
-            silver_code = (trace_header + (cartridge.generate_silver(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_silver(table_metadata)
-            print(f"[ARCHITECT DEBUG] Silver code length: {len(silver_code) if silver_code else 0}")
-            silver_key = f"{silver_prefix}/{base_filename}_silver{ext}"
-            print(f"[ARCHITECT DEBUG] Saving silver to: {silver_key}")
-            try:
-                storage.save_file(silver_key, silver_code)
-                print(f"[ARCHITECT DEBUG] ✅ Silver saved successfully")
-                refined_files["silver"].append(silver_key)
-            except Exception as e:
-                print(f"[ARCHITECT DEBUG] ❌ Silver save FAILED: {e}")
-                import traceback
-                traceback.print_exc()
-                raise
-            
-            # 3. Gold Layer
-            print(f"[ARCHITECT DEBUG] Generating gold for {unit_name}...")
-            gold_code = (trace_header + (cartridge.generate_gold(table_metadata) or "")) if execution_mode == "intelligent_reengineering" else cartridge.generate_gold(table_metadata)
-            print(f"[ARCHITECT DEBUG] Gold code length: {len(gold_code) if gold_code else 0}")
-            gold_key = f"{gold_prefix}/{base_filename}_gold{ext}"
-            print(f"[ARCHITECT DEBUG] Saving gold to: {gold_key}")
-            try:
-                storage.save_file(gold_key, gold_code)
-                print(f"[ARCHITECT DEBUG] ✅ Gold saved successfully")
-                refined_files["gold"].append(gold_key)
-            except Exception as e:
-                print(f"[ARCHITECT DEBUG] ❌ Gold save FAILED: {e}")
-                import traceback
-                traceback.print_exc()
-                raise
+            if execution_mode == "intelligent_reengineering":
+                reeng_prefix = f"{output_dir.rstrip('/')}/reengineered"
+                shared_prefix = f"{reeng_prefix}/shared"
+                core_prefix = f"{reeng_prefix}/core"
+                publish_prefix = f"{reeng_prefix}/publish"
+
+                print(f"[ARCHITECT DEBUG] Generating shared/core/publish for {unit_name}...")
+                shared_code = trace_header + (cartridge.generate_bronze(table_metadata) or "")
+                core_code = trace_header + (cartridge.generate_silver(table_metadata) or "")
+                publish_code = trace_header + (cartridge.generate_gold(table_metadata) or "")
+
+                shared_key = f"{shared_prefix}/{base_filename}_shared{ext}"
+                core_key = f"{core_prefix}/{base_filename}_core{ext}"
+                publish_key = f"{publish_prefix}/{base_filename}_publish{ext}"
+
+                storage.save_file(shared_key, shared_code)
+                storage.save_file(core_key, core_code)
+                storage.save_file(publish_key, publish_code)
+
+                # Backward-compatible layer indexing for existing validators/auditors.
+                refined_files["bronze"].append(shared_key)
+                refined_files["silver"].append(core_key)
+                refined_files["gold"].append(publish_key)
+                refined_files["reengineered_shared"].append(shared_key)
+                refined_files["reengineered_core"].append(core_key)
+                refined_files["reengineered_publish"].append(publish_key)
+
+                generated_assets = {
+                    "shared": shared_key,
+                    "core": core_key,
+                    "publish": publish_key,
+                }
+            else:
+                # 1. Bronze Layer
+                print(f"[ARCHITECT DEBUG] Generating bronze for {unit_name}...")
+                bronze_code = cartridge.generate_bronze(table_metadata)
+                print(f"[ARCHITECT DEBUG] Bronze code length: {len(bronze_code) if bronze_code else 0}")
+                bronze_key = f"{bronze_prefix}/{base_filename}_bronze{ext}"
+                print(f"[ARCHITECT DEBUG] Saving bronze to: {bronze_key}")
+                try:
+                    storage.save_file(bronze_key, bronze_code)
+                    print(f"[ARCHITECT DEBUG] ✅ Bronze saved successfully")
+                    refined_files["bronze"].append(bronze_key)
+                except Exception as e:
+                    print(f"[ARCHITECT DEBUG] ❌ Bronze save FAILED: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+
+                # 2. Silver Layer
+                print(f"[ARCHITECT DEBUG] Generating silver for {unit_name}...")
+                silver_code = cartridge.generate_silver(table_metadata)
+                print(f"[ARCHITECT DEBUG] Silver code length: {len(silver_code) if silver_code else 0}")
+                silver_key = f"{silver_prefix}/{base_filename}_silver{ext}"
+                print(f"[ARCHITECT DEBUG] Saving silver to: {silver_key}")
+                try:
+                    storage.save_file(silver_key, silver_code)
+                    print(f"[ARCHITECT DEBUG] ✅ Silver saved successfully")
+                    refined_files["silver"].append(silver_key)
+                except Exception as e:
+                    print(f"[ARCHITECT DEBUG] ❌ Silver save FAILED: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+
+                # 3. Gold Layer
+                print(f"[ARCHITECT DEBUG] Generating gold for {unit_name}...")
+                gold_code = cartridge.generate_gold(table_metadata)
+                print(f"[ARCHITECT DEBUG] Gold code length: {len(gold_code) if gold_code else 0}")
+                gold_key = f"{gold_prefix}/{base_filename}_gold{ext}"
+                print(f"[ARCHITECT DEBUG] Saving gold to: {gold_key}")
+                try:
+                    storage.save_file(gold_key, gold_code)
+                    print(f"[ARCHITECT DEBUG] ✅ Gold saved successfully")
+                    refined_files["gold"].append(gold_key)
+                except Exception as e:
+                    print(f"[ARCHITECT DEBUG] ❌ Gold save FAILED: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+
+                generated_assets = {
+                    "bronze": bronze_key,
+                    "silver": silver_key,
+                    "gold": gold_key,
+                }
 
             print(f"[ARCHITECT DEBUG] === Completed processing {unit_name} ===")
-            self._log(log, f"Refined unit {unit_name} from {len(source_files)} source file(s) into reusable Bronze, Silver, and Gold layers.")
+            if execution_mode == "intelligent_reengineering":
+                self._log(log, f"Refined unit {unit_name} from {len(source_files)} source file(s) into reengineered shared/core/publish artifacts.")
+            else:
+                self._log(log, f"Refined unit {unit_name} from {len(source_files)} source file(s) into reusable Bronze, Silver, and Gold layers.")
 
             if execution_mode == "intelligent_reengineering":
                 reengineering_manifest.append(
                     self._build_reengineering_manifest_entry(
                         processing_unit,
                         table_metadata,
-                        {
-                            "bronze": bronze_key,
-                            "silver": silver_key,
-                            "gold": gold_key,
-                        },
+                        generated_assets,
                     )
                 )
             
