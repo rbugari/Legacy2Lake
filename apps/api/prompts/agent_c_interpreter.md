@@ -29,6 +29,64 @@ If the task or cartridge indicates `layer = direct`, the following rules OVERRID
 - Do not introduce source-discovery fallbacks such as Delta reads or table scans when the legacy package provides an explicit source query or source table.
 - If metadata provides an explicit column list, prefer explicit projection over `SELECT *`.
 
+### Intelligent Reengineering Mode (v4.4+)
+
+If the execution context specifies `post_drafting_mode == "intelligent_reengineering"`, apply these additional rules:
+
+**Objective**: Consolidate multiple drafted packages into reusable, target-native ELT-oriented assets. This is NOT layering—it is **architectural redesign with business entity discovery**.
+
+**Key Differences from Structured Refinement**:
+- **Consolidation Strategy**: Analyze drafted outputs across the entire project. Look for:
+  - **Shared Dimensions**: Same logical entities (e.g., Customer, Product) appearing in multiple drafted packages → Consolidate into ONE reusable dimension.
+  - **Repeated Transformations**: Same join patterns or business rules appearing in multiple packages → Extract into shared transformation modules.
+  - **Common Ingestion Paths**: Multiple packages loading from the same legacy source → Consolidate into a single, optimized extraction layer.
+- **Manifest Traceability**: Every consolidated output MUST include source file traceability in comments. Example:
+  ```
+  -- REENGINEERED CONSOLIDATED ASSET
+  -- Source Packages: sales_etl_2023.dtsx, sales_etl_2024.dtsx
+  -- Reusable Entity: DimCustomer
+  -- Contributing Columns: customer_id, customer_name, region (from both packages)
+  ```
+- **Artifact Layout**: Generate outputs under explicit reengineering paths:
+  - `reengineered/shared/` - Dimension and lookup tables (reusable across domains)
+  - `reengineered/core/` - Fact tables and core transformations
+  - `reengineered/publish/` - Presentation layer and data products
+- **Validation Rule**: Do NOT consolidate unless evidence strongly supports it:
+  - Same entity name in schema (e.g., both packages have `Customer` table).
+  - Matching primary key structure or business semantics.
+  - Clear shared source reference (e.g., both load from same CRM system).
+  - **DO NOT invent consolidation**: If sources are truly independent, keep them separate.
+
+**Acceptance Criteria for Reengineering Outputs**:
+1. ✅ Consolidation is **explainable** (comments + manifest reference source packages).
+2. ✅ Business keys are preserved (no silent assumption changes).
+3. ✅ Traceability never breaks (can always map reengineered output back to source packages).
+4. ✅ The number of outputs is **demonstrably smaller** than the number of input packages (consolidation is visible).
+5. ✅ Each consolidated output has a clear reuse thesis (why is it a shared asset?).
+
+**Example - Acceptable Consolidation**:
+```
+Input Packages:
+  - sales_regional.dtsx → drafting/sales_regional/fact_sales.sql
+  - sales_central.dtsx → drafting/sales_central/fact_sales.sql
+  (Same source legacy DB, same schema, different regions)
+
+Output:
+  - reengineered/core/fact_sales.sql
+    (Unified fact table with region partitioning; manifest explains consolidation of 2 regional packages)
+```
+
+**Example - Unacceptable Pseudo-Consolidation**:
+```
+❌ Input: sales.dtsx (single package)
+   Output: reengineered/core/fact_sales.sql
+   (WRONG: No consolidation across packages, just renaming a single asset. Use structured_refinement instead.)
+
+❌ Input: sales.dtsx + crm.dtsx (unrelated systems)
+   Output: reengineered/shared/unified_customer_fact.sql
+   (WRONG: No common semantics; invented relationship. Keep separate.)
+```
+
 ## Input
 1. **Logical Medulla**: A cleaned summary of SQL queries, column mappings, and component intent (Source, Lookup, Destination).
 2. **Target DDL**: The schema of the destination table (CRITICAL for casting).
