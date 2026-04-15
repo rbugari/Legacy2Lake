@@ -1,5 +1,33 @@
 # Release Notes
 
+## Version 4.4.2 - Intelligent Reengineering Artifact Separation And Full Lifecycle Validation - 2026-04-15
+
+### Refinement Artifact Layout
+
+- `intelligent_reengineering` now emits explicit reengineering artifact paths:
+  - `reengineered/shared`
+  - `reengineered/core`
+  - `reengineered/publish`
+- architect keeps backward-compatible indexing in legacy `bronze/silver/gold` buckets so existing validators and packaging flows continue to work.
+
+### Consolidation Validation
+
+- added unit validation that executes `ArchitectService.refine_project` with consolidation metadata and verifies:
+  - multiple drafted sources are consolidated into one processing unit
+  - artifacts are generated under `reengineered/*`
+  - manifest contains traceability and `reengineering_summary`
+
+### Full Lifecycle E2E (Workspace)
+
+- executed full cycle for workspace/project `1051e4b0-570d-443a-9412-0430a6ac3040`:
+  - Triage
+  - Drafting
+  - Refinement
+  - Governance
+  - Handover
+- result: `overall_ok=true`
+- report: `test_results/e2e_workspace_1051e4b0-570d-443a-9412-0430a6ac3040.json`
+
 ## Version 4.4.1 - Drafting Direct Compliance Stabilization - 2026-04-13
 
 ### Drafting Compliance Behavior

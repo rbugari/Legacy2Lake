@@ -1,6 +1,6 @@
 # Cartridge Manual (v4.0 Stabilized)
 
-> Last Updated: 2026-03-21
+> Last Updated: 2026-04-15
 > Status: Current cartridge model
 
 Cartridges are the Level 2 prompts of the platform. They specialize generation for a specific target technology and layer while the agent prompt stays comparatively neutral.
@@ -68,6 +68,8 @@ These layers can express modernization intent such as:
 - consolidation of repeated legacy logic into reusable target assets
 - redesign from legacy ETL package choreography into target-native ELT patterns when supported by the evidence
 
+For `intelligent_reengineering` in v4.4, runtime refinement can materialize artifacts using reengineering-specific paths (`reengineered/shared`, `reengineered/core`, `reengineered/publish`) while preserving compatibility indexes expected by legacy downstream consumers.
+
 ### Direct
 
 The `direct` layer has stricter constraints:
@@ -78,6 +80,7 @@ The `direct` layer has stricter constraints:
 - use runtime parameterization instead of unresolved placeholders
 - avoid hardcoded object names
 - prefer explicit column mapping when metadata is available
+- reject invented literal defaults in configuration access for dynamic object keys (table/schema/catalog/path)
 
 Examples of enhancements that should not be invented in `direct` mode unless the source explicitly requires them:
 

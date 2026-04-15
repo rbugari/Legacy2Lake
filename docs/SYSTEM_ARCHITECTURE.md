@@ -1,10 +1,10 @@
 # Legacy2Lake UTM - System Architecture
 
-> Version: v4.0 stabilized
-> Last Updated: 2026-03-23
+> Version: v4.4 (in progress)
+> Last Updated: 2026-04-15
 > Status: Production
 
-This document describes the current architecture after the v4.0 prompt consolidation and stabilization work.
+This document describes the current architecture after v4.0 stabilization and the active v4.4 execution-mode evolution.
 
 ## 1. Core Principles
 
@@ -45,6 +45,16 @@ The production flow is organized as:
 4. Refinement
 5. Certification
 6. Handover
+
+### Post-Drafting Execution Modes
+
+The runtime distinguishes three post-drafting paths:
+
+- `drafting_delivery`: terminal path, direct to governance/certification without refinement
+- `structured_refinement`: bounded medallion optimization
+- `intelligent_reengineering`: project-scoped consolidation and redesign path with explicit traceability
+
+In v4.4, this separation is runtime-enforced (not only prompt wording).
 
 ### Phase Navigation Model
 
@@ -127,19 +137,24 @@ Agents do not own hardcoded models. They resolve provider and deployment dynamic
 
 ## 8. Current Validation Snapshot
 
-On `2026-03-21`, the platform was validated against the real fixture [`tests/fixtures/ssis_test_repo`](C:\proyectos_dev\UTM\tests\fixtures\ssis_test_repo) using Azure `gpt-4.1`.
+Recent validation checkpoints:
+
+- `2026-04-13`: drafting-focused compliance run reached 7/7 accepted outputs for project `1051e4b0-570d-443a-9412-0430a6ac3040`
+- `2026-04-15`: full lifecycle run (Triage -> Drafting -> Refinement -> Governance -> Handover) completed successfully for project `1051e4b0-570d-443a-9412-0430a6ac3040`
 
 Validated outcomes:
 
 - `Agent A` generated a usable modernization mesh
-- `Agent C` generated valid `snowflake_sql:direct` and `pyspark:direct` artifacts
-- `Agent F` reviewed both outputs with target-aware scoring
-- `Agent G` generated parsed governance audit plus runbook
+- `Agent C` generated direct outputs with strict zero-hardcode constraints in direct mode
+- `Agent F` applied mode-aware review criteria and drafting normalization where appropriate
+- refinement emitted mode-aware manifest metadata and reengineering artifact layouts
+- governance and delivery exports completed with certified outputs
 
 Key report artifacts:
 
 - [`test_results/ssis_fixture_evaluation.json`](C:\proyectos_dev\UTM\test_results\ssis_fixture_evaluation.json)
 - [`test_results/ssis_generation_pipeline.json`](C:\proyectos_dev\UTM\test_results\ssis_generation_pipeline.json)
+- [`test_results/e2e_workspace_1051e4b0-570d-443a-9412-0430a6ac3040.json`](C:\proyectos_dev\UTM\test_results\e2e_workspace_1051e4b0-570d-443a-9412-0430a6ac3040.json)
 
 ## 9. What This Architecture Does Not Assume
 

@@ -1,8 +1,8 @@
-# Documentation Index - Legacy2Lake v4.0
+# Documentation Index - Legacy2Lake v4.4
 
-> Last Updated: 2026-03-21
-> Architecture Version: v4.0 stabilized
-> Status: Production
+> Last Updated: 2026-04-15
+> Architecture Version: v4.4 (in progress)
+> Status: Production with active v4.4 evolution
 
 This index points to the documents that describe the current operating model of the platform. Historical sprint and planning documents remain in the repo, but the files listed here are the ones that should be treated as authoritative for the present state.
 
@@ -34,10 +34,10 @@ This index points to the documents that describe the current operating model of 
   - `agent-qa`, `agent-s`, `agent-a`, `agent-c`, `agent-f`, `agent-g`, `agent-d`
 - Deterministic engines still active:
   - `agent-p`, `agent-r`, `agent-o`
-- Real E2E validation:
-  - SSIS fixture executed on `2026-03-21`
-  - Azure `gpt-4.1`
-  - `Agent A -> Agent C -> Agent F -> Agent G` chain validated
+- Real E2E validations:
+  - Drafting validation executed on `2026-04-13` for project `1051e4b0-570d-443a-9412-0430a6ac3040` with 7/7 accepted packages
+  - Full lifecycle validation executed on `2026-04-15` for project `1051e4b0-570d-443a-9412-0430a6ac3040` (Triage -> Drafting -> Refinement -> Governance -> Handover)
+  - Latest E2E report: `test_results/e2e_workspace_1051e4b0-570d-443a-9412-0430a6ac3040.json`
 
 ## Core Workflow
 
@@ -55,3 +55,10 @@ Planning is intentionally kept small. If you need the current product thinking, 
 - [`docs/planning`](C:\proyectos_dev\UTM\docs\planning)
 - [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](C:\proyectos_dev\UTM\docs\planning\V4_3_POST_DRAFTING_EXECUTION_MODES.md)
 - [`docs/planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md`](C:\proyectos_dev\UTM\docs\planning\V4_4_INTELLIGENT_REENGINEERING_MVP.md)
+
+## v4.4 Implementation Snapshot
+
+- `intelligent_reengineering` now uses mode-aware runtime behavior end-to-end.
+- refinement profile emits `reengineering_units`, `shared_entities`, `consolidation_candidates`, and `common_ingestion_paths`.
+- architect now emits reengineering artifacts under `reengineered/shared`, `reengineered/core`, and `reengineered/publish` while preserving compatibility indexes for legacy bronze/silver/gold consumers.
+- governance and refinement state expose mode-aware context and manifest summaries for operator visibility.

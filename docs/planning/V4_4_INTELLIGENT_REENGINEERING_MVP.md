@@ -1,9 +1,28 @@
 # v4.4 Plan - Intelligent Reengineering MVP
 
-> Last Updated: 2026-04-10
-> Status: Ready to execute
+> Last Updated: 2026-04-15
+> Status: In execution (partially delivered)
 > Scope: Backend + Frontend + Prompt alignment + Governance
 > Constraint: project-scoped only, no cross-project or cross-tenant consolidation
+
+## Progress Snapshot (2026-04-15)
+
+Implemented:
+
+- mode-aware refinement orchestration path is active
+- profiler emits `reengineering_units`, `shared_entities`, `consolidation_candidates`, and `common_ingestion_paths`
+- governance exposes mode-aware context and refinement manifest summaries
+- architect now generates reengineering-specific artifact layout under:
+  - `reengineered/shared`
+  - `reengineered/core`
+  - `reengineered/publish`
+- backward compatibility retained for existing `bronze/silver/gold` downstream consumers
+- full workspace lifecycle validation executed successfully for project `1051e4b0-570d-443a-9412-0430a6ac3040`
+
+Open items to close DoD:
+
+- extend dedicated frontend automated coverage for mode-specific refinement/handover summaries
+- finalize prompt-layer documentation alignment for reengineering-specific objectives and reviewer acceptance examples
 
 ## 1. Why v4.4 Exists
 
