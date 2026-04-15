@@ -1,8 +1,8 @@
 # Documentation Index - Legacy2Lake v4.4
 
 > Last Updated: 2026-04-15
-> Architecture Version: v4.4 (in progress)
-> Status: Production with active v4.4 evolution
+> Architecture Version: v4.4 (stable)
+> Status: Production - v4.4 stable release
 
 This index points to the documents that describe the current operating model of the platform. Historical sprint and planning documents remain in the repo, but the files listed here are the ones that should be treated as authoritative for the present state.
 
@@ -56,9 +56,35 @@ Planning is intentionally kept small. If you need the current product thinking, 
 - [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](C:\proyectos_dev\UTM\docs\planning\V4_3_POST_DRAFTING_EXECUTION_MODES.md)
 - [`docs/planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md`](C:\proyectos_dev\UTM\docs\planning\V4_4_INTELLIGENT_REENGINEERING_MVP.md)
 
-## v4.4 Implementation Snapshot
+## v4.4 Final Implementation Status
 
-- `intelligent_reengineering` now uses mode-aware runtime behavior end-to-end.
-- refinement profile emits `reengineering_units`, `shared_entities`, `consolidation_candidates`, and `common_ingestion_paths`.
-- architect now emits reengineering artifacts under `reengineered/shared`, `reengineered/core`, and `reengineered/publish` while preserving compatibility indexes for legacy bronze/silver/gold consumers.
-- governance and refinement state expose mode-aware context and manifest summaries for operator visibility.
+✅ **Release Complete** - All Definition of Done items closed:
+
+1. **Intelligent Reengineering Runtime** (Fully Implemented)
+   - Mode-aware orchestration branching by `post_drafting_mode`
+   - Profiler emits `reengineering_units`, `shared_entities`, `consolidation_candidates`, `common_ingestion_paths`
+   - Architect generates reengineering artifacts: `reengineered/shared`, `reengineered/core`, `reengineered/publish`
+   - Backward compatibility: legacy `bronze/silver/gold` indexing preserved
+
+2. **Governance & Operator Visibility** (Production-Ready)
+   - Mode-aware context in governance reports
+   - Manifest summaries in refinement state endpoint
+   - Consolidation and traceability signals visible in UI
+
+3. **Frontend Test Coverage** (Automated DoD Item 1)
+   - RefinementView.test.tsx: 12 mode-specific test cases
+   - Cross-mode validation (intelligent_reengineering, structured_refinement, drafting_delivery)
+   - Schema viewer asset loading and error handling
+
+4. **Prompt Documentation Alignment** (Complete DoD Item 2)
+   - Agent C: Intelligent Reengineering Mode section with consolidation strategy guidance
+   - Agent F: Reengineering validation criteria with scoring examples
+   - Prompt consistency validator: All 7 agents validated (0 errors, 13 passed checks)
+
+5. **End-to-End Validation** (Successful)
+   - Full lifecycle run: Triage→Drafting→Refinement→Governance→Handover (100% ok)
+   - Project: 1051e4b0-570d-443a-9412-0430a6ac3040
+   - Drafting: 7/7 assets accepted
+   - Governance: Score generated, export ZIP produced
+
+For detailed v4.4 changes, see [RELEASE_NOTES.md](docs/RELEASE_NOTES.md#version-440-intelligent-reengineering-mvp---released---2026-04-15).

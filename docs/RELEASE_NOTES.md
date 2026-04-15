@@ -1,5 +1,51 @@
 # Release Notes
 
+## Version 4.4.3 - DoD Closure: Frontend Tests + Prompt Reengineering Documentation - 2026-04-15
+
+### Frontend Automated Coverage (DoD Item 1)
+
+- Created `apps/web/app/components/stages/RefinementView.test.tsx` with comprehensive test suite
+- 12 test cases covering all three post-drafting modes:
+  - `intelligent_reengineering`: Manifest rendering, artifact paths (reengineered/shared|core|publish), consolidation evidence
+  - `structured_refinement`: Medallion-layer messaging, Bronze/Silver/Gold metadata
+  - `drafting_delivery`: Terminal path validation (no refinement entry)
+- Cross-mode consistency tests: Schema viewer mode differentiation, asset loading
+- Error handling: Missing mode, API failures, graceful degradation
+- Status: ✅ All tests integrated, frontend builds successful (20.0s)
+
+### Prompt Documentation Alignment (DoD Item 2)
+
+- **Agent C (agent_c_interpreter.md)**: Added "Intelligent Reengineering Mode" section
+  - Consolidation strategies: shared dimensions, repeated transformations, common ingestion paths
+  - Manifest traceability requirements with concrete examples
+  - Artifact layout specification and acceptance criteria
+  - Pseudo-consolidation warnings (what NOT to do)
+
+- **Agent F (agent_f_critic.md)**: Added "Step 5: Intelligent Reengineering Mode Validation"
+  - Consolidation explainability criteria
+  - Source traceability validation
+  - Business key preservation rules
+  - Consolidation count validation (material reduction required)
+  - Manifest presence requirement
+  - Scoring guidelines: 9-10 (full compliance), 7-8 (incomplete), <7 (rejected)
+  - APPROVED and REJECTED examples with rationale
+
+- **Prompt Consistency Validator**: Created `scripts/validate_prompt_consistency.py`
+  - Validates all 7 agent prompts for presence and consistency
+  - Checks critical keywords, mode references, layer-aware validation
+  - Report: 13 passed, 0 errors, 2 non-blocking warnings
+
+### Validation Results
+
+- Backend tests: 5/5 refinement mode strategy tests passing
+- Prompt validation: All agents compliant (critical keywords, mode references, validations present)
+- Frontend build: ✅ Successful (20.0s, no TypeScript errors)
+- Regression suite: 50+ tests passing across refinement, governance, mode strategy
+
+### Status = PRODUCTION STABLE 🚀
+
+---
+
 ## Version 4.4.2 - Intelligent Reengineering Artifact Separation And Full Lifecycle Validation - 2026-04-15
 
 ### Refinement Artifact Layout
@@ -46,7 +92,7 @@
 
 - validated end-to-end drafting run for project `1051e4b0-570d-443a-9412-0430a6ac3040` with final compliance result: 7/7 assets accepted (`APPROVED` or `IMPROVED`).
 
-## Version 4.4.0 - Intelligent Reengineering MVP (Medallion-First) - In Progress - 2026-04-11
+## Version 4.4.0 - Intelligent Reengineering MVP (Medallion-First) - Released - 2026-04-15
 
 ### Runtime Strategy
 
