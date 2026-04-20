@@ -1174,6 +1174,46 @@ async def get_project_settings(project_id: str, db: SupabasePersistence = Depend
     return await db.get_project_settings(project_id) or {}
 
 
+# [Sprint 2] Post-Drafting Mode Decision Gate
+@router.post("/{project_id}/set-post-drafting-mode")
+async def set_post_drafting_mode(
+    project_id: str, 
+    payload: Dict[str, str],
+    db: SupabasePersistence = Depends(get_db)
+):
+    """
+    Sets the post-Drafting mode for a project.
+    Modes: 'drafting_delivery', 'structured_refinement', 'intelligent_reengineering'
+    """
+    mode = payload.get("mode", "").strip()
+    if not mode:
+        raise HTTPException(status_code=400, detail="Missing mode in payload")
+    
+    success = await db.set_post_drafting_mode(project_id, mode)
+    if not success:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to set post_drafting_mode. Invalid project or mode: {mode}"
+        )
+    
+    return {
+        "success": True, 
+        "project_id": project_id, 
+        "post_drafting_mode": mode,
+        "message": f"Post-Drafting mode set to: {mode}"
+    }
+
+
+@router.get("/{project_id}/get-post-drafting-mode")
+async def get_post_drafting_mode(
+    project_id: str,
+    db: SupabasePersistence = Depends(get_db)
+):
+    """Retrieves the post-Drafting mode for a project (if set)."""
+    mode = await db.get_post_drafting_mode(project_id)
+    return {"post_drafting_mode": mode}
+
+
 # --- Project Lifecycle ---
 
 

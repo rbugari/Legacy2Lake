@@ -139,6 +139,7 @@ async def test_run_triage_background_refreshes_understanding_after_success(triag
             lock_id="lock-123",
             lock_service=lock_service,
             tenant_id=triage_db_mock.tenant_id,
+            owner_user_id=triage_db_mock.tenant_id,
             username="tester",
             db_config={"client_id": triage_db_mock.client_id},
         )
@@ -193,6 +194,7 @@ async def test_run_triage_background_continues_when_understanding_refresh_fails(
             lock_id="lock-456",
             lock_service=lock_service,
             tenant_id=triage_db_mock.tenant_id,
+            owner_user_id=triage_db_mock.tenant_id,
             username="tester",
             db_config={"client_id": triage_db_mock.client_id},
         )

@@ -1,6 +1,6 @@
 # Cartridge Manual (v4.0 Stabilized)
 
-> Last Updated: 2026-03-21
+> Last Updated: 2026-04-15
 > Status: Current cartridge model
 
 Cartridges are the Level 2 prompts of the platform. They specialize generation for a specific target technology and layer while the agent prompt stays comparatively neutral.
@@ -65,6 +65,10 @@ These layers can express modernization intent such as:
 - lineage-aware structure
 - platform-appropriate optimization
 - governance and quality expectations
+- consolidation of repeated legacy logic into reusable target assets
+- redesign from legacy ETL package choreography into target-native ELT patterns when supported by the evidence
+
+For `intelligent_reengineering` in v4.4, runtime refinement can materialize artifacts using reengineering-specific paths (`reengineered/shared`, `reengineered/core`, `reengineered/publish`) while preserving compatibility indexes expected by legacy downstream consumers.
 
 ### Direct
 
@@ -76,6 +80,7 @@ The `direct` layer has stricter constraints:
 - use runtime parameterization instead of unresolved placeholders
 - avoid hardcoded object names
 - prefer explicit column mapping when metadata is available
+- reject invented literal defaults in configuration access for dynamic object keys (table/schema/catalog/path)
 
 Examples of enhancements that should not be invented in `direct` mode unless the source explicitly requires them:
 
@@ -138,3 +143,5 @@ Some gaps detected by governance in real validation are not cartridge failures b
 - partitioning strategy
 
 Those may be intentionally absent in `direct` mode and should be handled by selecting a richer modernization layer or by explicitly asking for those behaviors.
+
+For avoidance of doubt: medallion modernization does not mean blindly turning each migrated package into one Bronze, one Silver, and one Gold artifact. The intended use is solution-level redesign guided by shared entities, common business rules, and reusable target assets.

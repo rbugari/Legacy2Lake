@@ -76,11 +76,14 @@ from apps.api.routers.triage import router as triage_router
 from apps.api.routers.transpile import router as transpile_router
 from apps.api.routers.governance import router as governance_router
 from apps.api.routers.lab import router as lab_router
+from apps.api.routers.matrix_tests import router as matrix_tests_router
 from apps.api.routers.reports import router as reports_router
 from apps.api.routers.locks import router as locks_router
 from apps.api.routers.visualization import router as visualization_router  # Sprint 13: Visualization endpoints
 from apps.api.routers.prompts import router as prompts_router  # v4.0: Zero-Hardcode Core
 from apps.api.routers.gaps import router as gaps_router  # Sprint 3: Gap & Decision Workspace
+from apps.api.routers.project_assistant import router as assistant_router  # v4.5: Project Assistant
+from apps.api.routers.traceability import router as traceability_router  # v4.5: Traceability Review
 from apps.api.routers.dependencies import get_db
 
 app = FastAPI(
@@ -211,6 +214,7 @@ app.include_router(project_members_router)
 app.include_router(triage_router)
 app.include_router(transpile_router)
 app.include_router(governance_router)
+app.include_router(matrix_tests_router)
 app.include_router(agents_router)
 app.include_router(lab_router)
 app.include_router(reports_router)
@@ -218,6 +222,8 @@ app.include_router(locks_router)
 app.include_router(visualization_router)  # Sprint 13: Visualization endpoints
 app.include_router(prompts_router)  # v4.0: Zero-Hardcode Core - Prompt management
 app.include_router(gaps_router)  # Sprint 3: Gap & Decision Workspace
+app.include_router(assistant_router)  # v4.5: Project Assistant
+app.include_router(traceability_router)  # v4.5: Traceability Review
 app.include_router(config.router)
 app.include_router(system.router, prefix="/system")
 

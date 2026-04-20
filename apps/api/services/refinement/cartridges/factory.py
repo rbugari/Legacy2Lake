@@ -3,6 +3,14 @@ from .base_cartridge import Cartridge
 from .pyspark_cartridge import PySparkCartridge
 
 try:
+    from apps.api.prompts.catalog import normalize_tech_stack
+except ImportError:
+    try:
+        from prompts.catalog import normalize_tech_stack
+    except ImportError:
+        from ....prompts.catalog import normalize_tech_stack
+
+try:
     from services.persistence_service import SupabasePersistence
 except ImportError:
     from apps.api.services.persistence_service import SupabasePersistence
@@ -22,8 +30,17 @@ class CartridgeFactory:
             target_tech: Optional override for target technology (takes priority over registry)
         """
         # Priority: Explicit parameter > Registry > Default
-        target = str(target_tech or registry.get("paths", {}).get("target_stack", "pyspark")).lower()
+        target_raw = str(target_tech or registry.get("paths", {}).get("target_stack", "pyspark"))
+        target = normalize_tech_stack(target_raw.lower()) or target_raw.lower()
         print(f"[CartridgeFactory] DEBUG: target_tech={target_tech}, registry_target={registry.get('paths', {}).get('target_stack')}, final_target={target}")
+
+        # Keep the cartridge runtime aligned with the normalized target resolved here.
+        # Without this, SQL families like snowflake_sql can be selected by the factory
+        # but still behave like generic snowflake/pyspark because cartridges read
+        # registry.paths.target_stack to decide file extension and generation mode.
+        registry_paths = dict(registry.get("paths", {}))
+        registry_paths["target_stack"] = target
+        registry["paths"] = registry_paths
         
         # Resolve Tech Config from DB
         try:
@@ -54,7 +71,7 @@ class CartridgeFactory:
             print(f"[CartridgeFactory] DEBUG: DbtCartridge imported successfully")
             return DbtCartridge(project_id, registry, tenant_id)  # Sprint 9: Pass tenant_id
             
-        elif target in ["snowflake", "snowflake_sql", "snowflake_sql_direct", "snowflake_native_sql"]:
+        elif target in ["snowflake", "snowflake_sql", "snowflake_sql_direct", "snowflake_native_sql", "snowflake_sql_native"]:
             print(f"[CartridgeFactory] DEBUG: Matched 'snowflake', importing SnowflakeCartridge...")
             from .snowflake_cartridge import SnowflakeCartridge
             print(f"[CartridgeFactory] DEBUG: SnowflakeCartridge imported successfully")

@@ -954,6 +954,64 @@ class SupabasePersistence:
         except Exception:
             return False
 
+    # [Sprint 2] Post-Drafting Mode Branching
+    async def set_post_drafting_mode(self, project_id: str, mode: str) -> bool:
+        """
+        Sets the post-Drafting mode for a project.
+        Valid modes: 'drafting_delivery', 'structured_refinement', 'intelligent_reengineering'
+        """
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
+        
+        valid_modes = {'drafting_delivery', 'structured_refinement', 'intelligent_reengineering'}
+        if mode not in valid_modes:
+            print(f"Invalid post_drafting_mode: {mode}. Must be one of: {valid_modes}")
+            return False
+        
+        try:
+            from datetime import datetime, timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            self.client.table("utm_projects").update({
+                "post_drafting_mode": mode,
+                "post_drafting_mode_set_at": now_iso
+            }).eq("project_id", resolved_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error setting post_drafting_mode for {project_id}: {e}")
+            return False
+
+    async def get_post_drafting_mode(self, project_id: str) -> Optional[str]:
+        """Retrieves the post-Drafting mode for a project."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return None
+        
+        try:
+            res = self.client.table("utm_projects").select("post_drafting_mode").eq("project_id", resolved_id).execute()
+            if res.data:
+                return res.data[0].get("post_drafting_mode")
+            return None
+        except Exception as e:
+            print(f"Error getting post_drafting_mode for {project_id}: {e}")
+            return None
+
+    async def clear_post_drafting_mode(self, project_id: str) -> bool:
+        """Clears the persisted post-Drafting decision so a new Drafting run can ask again."""
+        resolved_id = await self._resolve_uuid(project_id)
+        if not resolved_id:
+            return False
+
+        try:
+            self.client.table("utm_projects").update({
+                "post_drafting_mode": None,
+                "post_drafting_mode_set_at": None,
+            }).eq("project_id", resolved_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error clearing post_drafting_mode for {project_id}: {e}")
+            return False
+
     async def save_asset_context(self, project_id: str, source_path: str, notes: str, rules: Dict[str, Any] = None) -> bool:
         """Saves or updates human context for a specific asset."""
         data = {
@@ -1888,6 +1946,12 @@ class SupabasePersistence:
             res = self.client.table("utm_code_validations").select("*").eq("project_id", resolved_id).order("created_at", desc=True).limit(limit).execute()
             return res.data if res.data else []
         except Exception as e:
+            err = str(e)
+            # Supabase PostgREST: table missing in schema cache.
+            # Treat as feature-not-enabled and keep UI responsive.
+            if "PGRST205" in err or "utm_code_validations" in err and "schema cache" in err:
+                print("[get_code_validations] utm_code_validations not available yet; returning empty validations")
+                return []
             print(f"Error getting code validations: {e}")
             return []
 

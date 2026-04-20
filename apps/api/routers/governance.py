@@ -24,6 +24,40 @@ from apps.api.services.lock_service import LockService, ProcessLockError
 router = APIRouter(tags=["Refinement & Governance"])
 
 
+def _build_mode_governance_context(mode: Optional[str]) -> Dict[str, Any]:
+    if mode == "intelligent_reengineering":
+        return {
+            "mode": mode,
+            "evaluation_focus": "medallion_consolidation_with_traceability",
+            "notes": "Intelligent reengineering is evaluated as medallion-first consolidation when multiple drafted packages share the same logical source object.",
+        }
+    if mode == "structured_refinement":
+        return {
+            "mode": mode,
+            "evaluation_focus": "bounded_medallion_optimization",
+            "notes": "Structured refinement is evaluated for layer quality, consistency, and governance compliance.",
+        }
+    if mode == "drafting_delivery":
+        return {
+            "mode": mode,
+            "evaluation_focus": "drafting_fidelity_and_controls",
+            "notes": "Drafting Delivery is evaluated for direct-path fidelity and control readiness.",
+        }
+    return {
+        "mode": "not_selected",
+        "evaluation_focus": "default_controls",
+        "notes": "No explicit post-drafting mode found; applying default governance controls.",
+    }
+
+
+def _attach_mode_governance_context(report: Dict[str, Any], mode: Optional[str]) -> Dict[str, Any]:
+    if not isinstance(report, dict):
+        return {"report": report, "mode_context": _build_mode_governance_context(mode)}
+    enriched = dict(report)
+    enriched["mode_context"] = _build_mode_governance_context(mode)
+    return enriched
+
+
 # --- Models ---
 
 class RefinementRequest(BaseModel):
@@ -45,6 +79,7 @@ async def _run_refinement_background(
     lock_id: str,
     lock_service: LockService,
     tenant_id: str,
+    owner_user_id: str,
     username: str,
     db_config: Dict[str, Any]
 ):
@@ -105,7 +140,7 @@ async def _run_refinement_background(
     finally:
         # Release lock
         try:
-            await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
             print(f"[REFINEMENT] Lock {lock_id} released")
         except Exception as e:
             print(f"WARNING: Failed to release lock {lock_id}: {e}")
@@ -143,6 +178,7 @@ async def start_refinement(
     
     # Get username for lock
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     username = identity.get("username", "Unknown User")
     if not username or username == "Unknown User":
         try:
@@ -154,7 +190,7 @@ async def start_refinement(
     # Generate or get session ID
     session_id = request.headers.get("X-Session-ID")
     if not session_id:
-        session_id = str(uuid.uuid4())
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_OID, request.headers.get("user-agent", "")))
     
     # Try to acquire lock
     lock_id = None
@@ -162,7 +198,7 @@ async def start_refinement(
         lock = await lock_service.acquire_lock(
             project_id=project_id,
             process_type="refinement",
-            user_id=tenant_id,
+            user_id=owner_user_id,
             username=username,
             session_id=session_id,
             user_agent=request.headers.get("user-agent"),
@@ -182,6 +218,73 @@ async def start_refinement(
     
     # === MAIN REFINEMENT LOGIC ===
     try:
+        # [Sprint 2] Check post-Drafting mode decision
+        mode = await db.get_post_drafting_mode(project_id)
+        if mode == 'drafting_delivery':
+            # Project chose terminal Drafting path - cannot proceeding to refinement
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                "Refinement blocked: project is in drafting_delivery mode. Select a refinement-enabled mode to continue.",
+                step="SYSTEM"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Refinement not available",
+                    "message": "Refinement is not available for projects in Drafting Delivery mode.",
+                    "reason": "You selected the Drafting Delivery path. Assets proceed directly to Governance for audit and certification.",
+                    "mode": "drafting_delivery",
+                    "next_action": "Proceed to Governance stage",
+                    "project_id": project_id
+                }
+            )
+        elif mode == 'structured_refinement':
+            # Structured Refinement mode: allowed to proceed with medallion optimization
+            pass  # Will proceed to refinement orchestration below
+        elif mode == 'intelligent_reengineering':
+            # Intelligent Reengineering mode: allowed to proceed with advanced optimization
+            pass  # Will proceed to refinement orchestration below
+        elif mode is None:
+            # Not yet decided - cannot proceed
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                "Refinement blocked: post-drafting mode is not selected.",
+                step="SYSTEM"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Mode not selected",
+                    "message": "Project has not yet selected a post-Drafting execution mode.",
+                    "options": {
+                        "drafting_delivery": "Terminal path: proceed directly to Governance",
+                        "structured_refinement": "Bounded refinement with multi-layer medallion optimization",
+                        "intelligent_reengineering": "Advanced reengineering with architectural improvements"
+                    },
+                    "required_endpoint": f"/projects/{project_id}/set-post-drafting-mode",
+                    "project_id": project_id
+                }
+            )
+        else:
+            # Invalid mode value
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                f"Refinement blocked: invalid post-drafting mode '{mode}'.",
+                step="SYSTEM"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid mode",
+                    "message": f"Unknown post-Drafting mode: {mode}",
+                    "valid_modes": ["drafting_delivery", "structured_refinement", "intelligent_reengineering"],
+                    "project_id": project_id
+                }
+            )
+        
         # Update status to REFINING and start background task
         await db.update_project_status(project_id, "REFINING")
         
@@ -198,6 +301,7 @@ async def start_refinement(
             lock_id,
             lock_service,
             tenant_id,
+            owner_user_id,
             username,
             db_config
         )
@@ -212,7 +316,7 @@ async def start_refinement(
         # === ERROR: Release lock ===
         if lock_id:
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
             except:
                 pass
         raise e
@@ -229,7 +333,8 @@ async def get_refinement_state(project_id: str, db: SupabasePersistence = Depend
 
     state = {
         "log": [],
-        "profile": None
+        "profile": None,
+        "manifest_summary": None,
     }
 
     try:
@@ -247,6 +352,41 @@ async def get_refinement_state(project_id: str, db: SupabasePersistence = Depend
             state["profile"] = json.loads(profile_content)
     except:
         pass
+
+    manifest_payload = None
+    manifest_name = None
+    try:
+        manifest_content = PersistenceService.read_file_content(project_name, "Refined/reengineering_manifest.json")
+        if manifest_content:
+            manifest_payload = json.loads(manifest_content)
+            manifest_name = "reengineering_manifest.json"
+    except:
+        pass
+
+    if manifest_payload is None:
+        try:
+            manifest_content = PersistenceService.read_file_content(project_name, "Refined/refinement_manifest.json")
+            if manifest_content:
+                manifest_payload = json.loads(manifest_content)
+                manifest_name = "refinement_manifest.json"
+        except:
+            pass
+
+    if manifest_payload:
+        processing_units = manifest_payload.get("processing_units") or []
+        reengineering_summary = manifest_payload.get("reengineering_summary") or []
+        state["manifest_summary"] = {
+            "manifest_name": manifest_name,
+            "execution_mode": manifest_payload.get("execution_mode", "structured_refinement"),
+            "objective": manifest_payload.get("objective", ""),
+            "processing_units_count": len(processing_units),
+            "consolidation_units_count": len(reengineering_summary),
+            "consolidated_targets": [
+                item.get("target_asset_name")
+                for item in reengineering_summary
+                if item.get("target_asset_name")
+            ][:10],
+        }
 
     return state
 
@@ -271,9 +411,10 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
     """Returns the certification report. If cached (from background run), returns instantly. Otherwise generates synchronously."""
     # Try cached report first — set by background task
     settings = await db.get_project_settings(project_id) or {}
+    mode = await db.get_post_drafting_mode(project_id)
     cached = settings.get("governance_report")
     if cached:
-        return cached
+        return _attach_mode_governance_context(cached, mode)
 
     project_name = project_id
     if "-" in project_id:
@@ -284,7 +425,7 @@ async def get_governance(project_id: str, db: SupabasePersistence = Depends(get_
     service = GovernanceService(tenant_id=db.tenant_id, client_id=db.client_id)
     try:
         report = await service.get_certification_report(project_id)
-        return report
+        return _attach_mode_governance_context(report, mode)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -302,6 +443,7 @@ async def _run_governance_background(
     lock_id: str,
     lock_service,
     tenant_id: str,
+    owner_user_id: str,
     client_id: str,
 ):
     """Runs governance certification in background, logging each step."""
@@ -316,8 +458,14 @@ async def _run_governance_background(
 
         await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Running compliance audit (Critic + Governor)...", step="AGENT_G")
         report = await service.get_certification_report(project_id)
+        mode = await db.get_post_drafting_mode(project_id)
 
-        await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion lineage and COP score...", step="AGENT_G")
+        if mode == "intelligent_reengineering":
+            await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion consolidation lineage and COP score...", step="AGENT_G")
+        else:
+            await db.log_execution(project_id, "GOVERNANCE", "[AGENT G] Computing medallion lineage and COP score...", step="AGENT_G")
+
+        report = _attach_mode_governance_context(report, mode)
 
         # Persist report in project settings for retrieval without re-running Agent G
         settings = await db.get_project_settings(project_id) or {}
@@ -335,7 +483,7 @@ async def _run_governance_background(
         await db.update_project_status(project_id, "REFINED")  # rollback
     finally:
         try:
-            await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+            await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
         except Exception:
             pass
 
@@ -350,8 +498,9 @@ async def run_governance_background(
 ):
     """Starts governance certification in background. Poll /execution-logs?type=governance + project status CERTIFIED."""
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     username = identity.get("username", "Unknown User")
-    session_id = request.headers.get("X-Session-ID") or str(uuid.uuid4())
+    session_id = request.headers.get("X-Session-ID") or str(uuid.uuid5(uuid.NAMESPACE_OID, request.headers.get("user-agent", "")))
 
     lock_service = LockService(tenant_id=tenant_id, client_id=identity.get("client_id"))
     lock_id = None
@@ -359,7 +508,7 @@ async def run_governance_background(
         lock = await lock_service.acquire_lock(
             project_id=project_id,
             process_type="governance",
-            user_id=tenant_id,
+            user_id=owner_user_id,
             username=username,
             session_id=session_id,
             user_agent=request.headers.get("user-agent"),
@@ -375,6 +524,7 @@ async def run_governance_background(
         lock_id,
         lock_service,
         tenant_id,
+        owner_user_id,
         identity.get("client_id"),
     )
     return {"status": "RUNNING", "message": "Governance pipeline started in background. Poll /execution-logs?type=governance for progress."}

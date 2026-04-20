@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-04-17T00:00:00Z",
+  "project_id": "84d8da3f-dacf-4b1f-8ecd-2a9bd63c8c18",
+  "target_labels": {
+    "aws": "AWS Glue PySpark",
+    "databricks": "Databricks PySpark",
+    "dbt": "dbt SQL",
+    "gcp": "Google BigQuery SQL",
+    "ms_fabric": "MS Fabric PySpark",
+    "ms_fabric_sql": "MS Fabric Warehouse SQL",
+    "pyspark": "PySpark Generic",
+    "salesforce": "Salesforce Data Cloud",
+    "snowflake": "Snowflake Snowpark Python",
+    "snowflake_sql": "Snowflake SQL Native"
+  },
+  "targets": {
+    "aws": false,
+    "databricks": false,
+    "dbt": false,
+    "gcp": false,
+    "ms_fabric": false,
+    "ms_fabric_sql": true,
+    "pyspark": false,
+    "salesforce": false,
+    "snowflake": true,
+    "snowflake_sql": true
+  },
+  "target_help": {
+    "databricks": "Usar para Databricks PySpark.",
+    "pyspark": "Usar solo para PySpark generico o Apache Spark estandar. No es Databricks."
+  },
+  "modes": {
+    "drafting_delivery": false,
+    "structured_refinement": true,
+    "intelligent_reengineering": false
+  },
+  "exports": {
+    "download_delivery_zip": true,
+    "download_governance_zip": true,
+    "package_full_run_zip": true
+  },
+  "options": {
+    "content_stages": [
+      "drafting",
+      "refinement"
+    ],
+    "skip_reset_first": false,
+    "drafting_limit": 0,
+    "phase_timeout_seconds": 1800,
+    "poll_seconds": 5,
+    "max_text_bytes": 500000
+  }
+}

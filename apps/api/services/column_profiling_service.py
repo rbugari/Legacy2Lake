@@ -162,8 +162,8 @@ class ColumnProfilingService:
                 for idx, mapping in enumerate(asset_mappings, 1):
                     source_col = mapping["source_column"]
                     target_col = mapping.get("target_column", source_col)
-                    source_type = mapping.get("source_datatype", "STRING")
-                    target_type = mapping.get("target_datatype", "STRING")
+                    source_type = mapping.get("source_datatype") or "STRING"
+                    target_type = mapping.get("target_datatype") or "STRING"
                     is_nullable = mapping.get("is_nullable", True)
                     
                     # Infer PII using existing keyword detection

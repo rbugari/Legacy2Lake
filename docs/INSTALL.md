@@ -59,6 +59,20 @@ For the current SSIS validation path:
 1. run [`evaluate_ssis_fixture.py`](C:\proyectos_dev\UTM\scripts\evaluate_ssis_fixture.py)
 2. run [`evaluate_ssis_generation_pipeline.py`](C:\proyectos_dev\UTM\scripts\evaluate_ssis_generation_pipeline.py)
 
+For a full end-to-end run across mesh nodes with a single command:
+
+```powershell
+python scripts/run_ssis_full_pipeline.py --tenant-id f98edb5e-4165-4c49-9fce-18894e8a818c
+```
+
+Optional smoke run (first 1 node):
+
+```powershell
+python scripts/run_ssis_full_pipeline.py --tenant-id f98edb5e-4165-4c49-9fce-18894e8a818c --max-nodes 1
+```
+
+The summary report is generated at `test_results/ssis_full_pipeline_summary.json`.
+
 ## Notes
 
 - prefer the documentation in [`docs/INDEX.md`](C:\proyectos_dev\UTM\docs\INDEX.md) as the current source of truth

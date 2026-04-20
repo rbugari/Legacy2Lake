@@ -100,8 +100,13 @@ export default function RefinementView({
     const [isRefinementRunning, setIsRefinementRunning] = useState(false); // Active refinement process
     const isRefinementRunningRef = useRef(false); // Ref to read in callbacks without adding to deps
     const [isFetchingLogs, setIsFetchingLogs] = useState(false); // True while fetching logs
+    const isFetchingLogsRef = useRef(false); // Prevent overlapping poll requests
+    const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null);
+    const [isSavingMode, setIsSavingMode] = useState(false);
+    const [modeError, setModeError] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
+    const [manifestSummary, setManifestSummary] = useState<any>(null);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
 
     // Workbench State
@@ -116,6 +121,14 @@ export default function RefinementView({
     useEffect(() => {
         const fetchState = async () => {
             try {
+                try {
+                    const modeRes = await fetchWithAuth(`projects/${projectId}/get-post-drafting-mode`);
+                    const modeData = await modeRes.json();
+                    setPostDraftingMode(modeData.post_drafting_mode || null);
+                } catch (err) {
+                    console.warn('[RefinementView] Could not load post-drafting mode:', err);
+                }
+
                 // Check project status first to decide whether to load old logs
                 const REFINED_OR_BEYOND = ['REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
                 let currentStatus = '';
@@ -144,6 +157,9 @@ export default function RefinementView({
                     }
                     if (data.profile) {
                         setProfile(data.profile);
+                    }
+                    if (data.manifest_summary) {
+                        setManifestSummary(data.manifest_summary);
                     }
                 }
 
@@ -174,8 +190,13 @@ export default function RefinementView({
 
     // Keep ref in sync with state
     useEffect(() => { isRefinementRunningRef.current = isRefinementRunning; }, [isRefinementRunning]);
+    useEffect(() => { isFetchingLogsRef.current = isFetchingLogs; }, [isFetchingLogs]);
 
     const fetchRefinementLogs = useCallback(async () => {
+        if (isFetchingLogsRef.current) {
+            return;
+        }
+
         setIsFetchingLogs(true);
         try {
             // Fetch execution logs from backend
@@ -206,6 +227,7 @@ export default function RefinementView({
                     console.log("[RefinementView] Refinement complete, stopping polling");
                     setIsRefinementRunning(false);
                 }
+                return;
             }
         } catch (e) {
             console.error("[RefinementView] Failed to load refinement logs", e);
@@ -247,6 +269,9 @@ export default function RefinementView({
                 if (stateData.profile) {
                     setProfile(stateData.profile);
                 }
+                if (stateData.manifest_summary) {
+                    setManifestSummary(stateData.manifest_summary);
+                }
             } catch (e) {
                 console.error("Failed to reload profile", e);
             }
@@ -265,6 +290,24 @@ export default function RefinementView({
 
 
     const handleRunRefinement = async () => {
+        if (!postDraftingMode) {
+            setLogs([
+                '[SYSTEM] Refinement blocked: post-drafting mode is not selected.',
+                '[SYSTEM] Open Configuration > Execution Mode and set a mode before running refinement.'
+            ]);
+            onSectionChange('mode');
+            return;
+        }
+
+        if (postDraftingMode === 'drafting_delivery') {
+            setLogs([
+                '[SYSTEM] Refinement unavailable for this project.',
+                '[SYSTEM] The selected post-Drafting mode is Drafting Delivery (terminal path).',
+                '[SYSTEM] Choose a different mode from Drafting if you want to run refinement.'
+            ]);
+            return;
+        }
+
         // Check if re-executing a previous stage (rollback warning)
         const CURRENT_STAGE = 3; // Refinement is stage 3
         if (projectStage !== undefined && projectStage > CURRENT_STAGE) {
@@ -297,6 +340,7 @@ export default function RefinementView({
         setIsFinished(false);
         setLogs([]); // Start with empty logs - will be populated by polling
         setProfile(null); // Clear previous profile
+        setManifestSummary(null);
 
         try {
             const res = await fetchWithAuth(`refine/start`, {
@@ -493,6 +537,97 @@ export default function RefinementView({
         l.toUpperCase().includes("SUCCESS")
     );
 
+    // Mode-aware configuration
+    const modeConfig = {
+        'drafting_delivery': {
+            summary: 'Stage Skipped (Drafting Delivery)',
+            strategy: 'Terminal Path',
+            explanation: 'Project proceeds directly to Governance. No refinement will be applied.',
+            nextStage: 'Governance (audit & certification)',
+            actionLabel: 'Skip to Governance',
+            allowRefinement: false,
+            headerTitle: 'Refinement Skipped',
+            headerSubtitle: 'Drafting Delivery Selected',
+        },
+        'structured_refinement': {
+            summary: 'Structured Refinement Ready',
+            strategy: 'Bounded Medallion Optimization',
+            explanation: 'Multi-layer optimization with quality rules and governance compliance.',
+            details: 'Refinement will apply medallion patterns (Bronze → Silver → Gold) with focus on consistency and best practices.',
+            nextStage: 'Run Refinement or Skip to Governance',
+            actionLabel: 'Run Refinement',
+            allowRefinement: true,
+            headerTitle: 'Structured Refinement',
+            headerSubtitle: 'Medallion Optimization',
+        },
+        'intelligent_reengineering': {
+            summary: 'Intelligent Reengineering Ready',
+            strategy: 'Medallion Consolidation Optimization',
+            explanation: 'Medallion-first optimization with consolidation only when multiple packages share the same logical source object.',
+            details: 'Reengineering keeps Bronze/Silver/Gold outputs and adds traceable consolidation decisions for multi-package shared-source scenarios.',
+            nextStage: 'Run Reengineering or Skip to Governance',
+            actionLabel: 'Run Reengineering',
+            allowRefinement: true,
+            headerTitle: 'Intelligent Reengineering',
+            headerSubtitle: 'Advanced Optimization',
+        },
+    };
+
+    const activeConfig = modeConfig[postDraftingMode as keyof typeof modeConfig] || modeConfig['structured_refinement'];
+
+    const modeLabel = `Mode: ${postDraftingMode ? activeConfig.headerTitle : 'Not Selected'}`;
+
+    const refinementSummary = activeConfig.explanation;
+
+    const canAdvanceWithoutRefinement = postDraftingMode === 'drafting_delivery';
+
+    const modeOptions = [
+        {
+            id: 'drafting_delivery',
+            title: 'Drafting Delivery',
+            subtitle: 'Terminal path to Governance',
+            details: 'Skip refinement and continue directly to certification/governance.',
+            color: 'emerald'
+        },
+        {
+            id: 'structured_refinement',
+            title: 'Structured Refinement',
+            subtitle: 'Bounded medallion optimization',
+            details: 'Refine with consistent Bronze → Silver → Gold patterns and guardrails.',
+            color: 'amber'
+        },
+        {
+            id: 'intelligent_reengineering',
+            title: 'Intelligent Reengineering',
+            subtitle: 'Advanced optimization',
+            details: 'Apply deeper architecture improvements and consolidation decisions.',
+            color: 'purple'
+        },
+    ] as const;
+
+    const handleSavePostDraftingMode = async (mode: string) => {
+        setIsSavingMode(true);
+        setModeError(null);
+        try {
+            const response = await fetchWithAuth(`projects/${projectId}/set-post-drafting-mode`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode }),
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to save post-drafting mode');
+            }
+
+            setPostDraftingMode(mode);
+        } catch (e: any) {
+            setModeError(e?.message || 'Failed to save mode');
+        } finally {
+            setIsSavingMode(false);
+        }
+    };
+
     useEffect(() => {
         if (!isFinished && logs.some(l => l.toUpperCase().includes("PIPELINE COMPLETE") || l.toUpperCase().includes("COMPLETED"))) {
             setIsFinished(true);
@@ -513,13 +648,13 @@ export default function RefinementView({
         <>
             <div className="flex flex-col h-full bg-[var(--background)]">
                 <StageHeader
-                    title="Stage 3: Intelligent Refinement"
-                    subtitle="Improve generated output, validate structure, and prepare the solution for governance"
+                    title={`Stage 3: ${activeConfig.headerTitle}`}
+                    subtitle={`${activeConfig.headerSubtitle} — ${activeConfig.explanation}`}
                     icon={<Layers className="text-purple-500" />}
-                    helpText="Use Refinement to compare outputs, improve quality, validate schema alignment, and reduce obvious technical debt before Governance."
+                    helpText={`Strategy: ${activeConfig.strategy}. ${activeConfig.details || activeConfig.explanation}`}
                     onApprove={handleApprove}
-                    approveLabel="Next Phase: Governance"
-                    isApproveDisabled={isRefinementRunning || !isComplete}
+                    approveLabel={activeConfig.allowRefinement ? "Next Phase: Governance" : "Skip To Governance"}
+                    isApproveDisabled={isRefinementRunning || (!isComplete && !canAdvanceWithoutRefinement)}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={onToggleFullscreen}
                     onReset={onReset}
@@ -533,8 +668,10 @@ export default function RefinementView({
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                     <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Refinement Status</p>
-                                    <p className="mt-3 text-2xl font-black text-white">{isRefinementRunning ? 'Running' : isComplete ? 'Complete' : 'Ready'}</p>
-                                    <p className="mt-2 text-sm text-gray-400">Pattern optimization, validation and modernization.</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{isRefinementRunning ? 'Running' : isComplete ? 'Complete' : activeConfig.allowRefinement ? 'Ready' : 'Blocked'}</p>
+                                    <p className="mt-2 text-sm text-gray-400">{activeConfig.summary}</p>
+                                    <p className="mt-3 text-xs font-black uppercase tracking-wider text-gray-500">{modeLabel}</p>
+                                    <p className="mt-2 text-xs text-gray-500">Strategy: <span className="text-gray-300 font-semibold">{activeConfig.strategy}</span></p>
                                 </div>
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                                     <p className="text-[11px] font-black uppercase tracking-widest text-purple-400">Execution Logs</p>
@@ -548,6 +685,29 @@ export default function RefinementView({
                                 </div>
                             </div>
 
+                            {(manifestSummary || profile) && (
+                                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6">
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">Consolidation & Traceability</p>
+                                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                        <div>
+                                            <p className="text-gray-400">Manifest</p>
+                                            <p className="text-white font-semibold">{manifestSummary?.manifest_name || 'pending'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-400">Processing Units</p>
+                                            <p className="text-white font-semibold">{manifestSummary?.processing_units_count ?? profile?.total_files ?? 0}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-400">Consolidation Candidates</p>
+                                            <p className="text-white font-semibold">{(profile?.consolidation_candidates || []).length}</p>
+                                        </div>
+                                    </div>
+                                    {manifestSummary?.objective && (
+                                        <p className="mt-3 text-xs text-gray-300 leading-relaxed">{manifestSummary.objective}</p>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
                                 <h2 className="text-xl font-black text-white">Stage Home</h2>
                                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
@@ -556,10 +716,10 @@ export default function RefinementView({
                                 <div className="mt-6 flex flex-wrap gap-3">
                                     <button
                                         onClick={() => onSectionChange('run-refinement')}
-                                        disabled={isRefinementRunning}
+                                        disabled={isRefinementRunning || !activeConfig.allowRefinement}
                                         className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-500 disabled:opacity-50"
                                     >
-                                        {isRefinementRunning ? 'Refining...' : 'Run Refinement'}
+                                        {!activeConfig.allowRefinement ? 'Refinement Disabled' : isRefinementRunning ? 'Refining...' : activeConfig.actionLabel}
                                     </button>
                                     <button
                                         onClick={() => onSectionChange('summary')}
@@ -579,7 +739,72 @@ export default function RefinementView({
                                     >
                                         Design Settings
                                     </button>
+                                    <button
+                                        onClick={() => onSectionChange('mode')}
+                                        className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                    >
+                                        Execution Mode
+                                    </button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeSection === 'mode' && (
+                        <div className="max-w-7xl mx-auto h-full overflow-auto p-1">
+                            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 mb-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-blue-400">Configuration</p>
+                                <h3 className="mt-2 text-lg font-black text-white">Post-Drafting Execution Mode</h3>
+                                <p className="mt-2 text-sm text-gray-300">
+                                    Define how this project should behave before running refinement. You can change this anytime from this panel.
+                                </p>
+                                <p className="mt-3 text-xs text-gray-400">Current mode: <span className="font-semibold text-gray-200">{postDraftingMode || 'not selected'}</span></p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {modeOptions.map((mode) => {
+                                    const selected = postDraftingMode === mode.id;
+                                    const borderColor = mode.color === 'emerald'
+                                        ? 'border-emerald-500/40'
+                                        : mode.color === 'amber'
+                                            ? 'border-amber-500/40'
+                                            : 'border-purple-500/40';
+
+                                    const selectedRing = selected ? 'ring-2 ring-offset-2 ring-offset-[var(--background)] ring-white/40' : '';
+
+                                    return (
+                                        <button
+                                            key={mode.id}
+                                            onClick={() => handleSavePostDraftingMode(mode.id)}
+                                            disabled={isSavingMode || isRefinementRunning}
+                                            className={`text-left p-5 rounded-xl border bg-white/5 hover:bg-white/10 transition-all ${borderColor} ${selectedRing} disabled:opacity-50`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-black text-white">{mode.title}</p>
+                                                    <p className="mt-1 text-xs font-semibold text-gray-300">{mode.subtitle}</p>
+                                                </div>
+                                                {selected && <CheckCircle size={18} className="text-emerald-400 shrink-0" />}
+                                            </div>
+                                            <p className="mt-3 text-xs text-gray-400 leading-relaxed">{mode.details}</p>
+                                            <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                                                {selected ? 'Selected' : 'Click to apply'}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {modeError && (
+                                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                                    {modeError}
+                                </div>
+                            )}
+
+                            <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
+                                <p className="text-xs text-gray-400">
+                                    Tip: if you are going to execute refinement now, choose Structured Refinement or Intelligent Reengineering.
+                                </p>
                             </div>
                         </div>
                     )}
@@ -592,16 +817,20 @@ export default function RefinementView({
                                         <div className="mx-auto w-16 h-16 bg-purple-100 dark:bg-purple-900/20 rounded-full flex items-center justify-center">
                                             <RefreshCw size={32} className="text-purple-600 dark:text-purple-400" />
                                         </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Ready to Refine</h3>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{!activeConfig.allowRefinement ? activeConfig.summary : 'Ready to Refine'}</h3>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                                            Click "Refine & Modernize" to apply architectural patterns and optimize the generated code.
+                                            {!activeConfig.allowRefinement
+                                                ? 'This project was explicitly sent through Drafting Delivery. Re-run Drafting and choose another mode if you want refinement.'
+                                                : activeConfig.details || 'Click "' + activeConfig.actionLabel + '" to apply architectural patterns and optimize the generated code.'}
                                         </p>
-                                        <div className="text-xs text-gray-400 space-y-1 mt-4">
-                                            <div>🔍 Profiler: Analyze code patterns</div>
-                                            <div>🏗️ Architect: Apply Medallion design</div>
-                                            <div>⚡ Refactor: Optimize performance</div>
-                                            <div>🚀 Ops: Package for deployment</div>
-                                        </div>
+                                        {activeConfig.allowRefinement && (
+                                            <div className="text-xs text-gray-400 space-y-1 mt-4">
+                                                <div>🔍 Profiler: Analyze code patterns</div>
+                                                <div>{activeConfig.strategy === 'Bounded Medallion Optimization' ? '🏗️ Architect: Apply Medallion design' : '🏗️ Architect: Apply advanced optimizations'}</div>
+                                                <div>⚡ Refactor: Optimize performance</div>
+                                                <div>🚀 Ops: Package for deployment</div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ) : (
@@ -616,7 +845,7 @@ export default function RefinementView({
                                     />
 
                                     {profile && (
-                                        <div className="grid grid-cols-2 gap-4 shrink-0">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
                                             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
                                                 <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Files Analyzed</h3>
                                                 <p className="text-2xl font-bold text-purple-500">{profile.total_files}</p>
@@ -625,6 +854,19 @@ export default function RefinementView({
                                                 <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Shared Connections</h3>
                                                 <p className="text-2xl font-bold text-orange-500">{Object.keys(profile.shared_connections || {}).length}</p>
                                             </div>
+                                            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
+                                                <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Consolidation Candidates</h3>
+                                                <p className="text-2xl font-bold text-amber-500">{(profile.consolidation_candidates || []).length}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {manifestSummary && (
+                                        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm shrink-0">
+                                            <h3 className="font-bold text-gray-500 text-xs uppercase mb-2">Manifest Summary</h3>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-semibold">File:</span> {manifestSummary.manifest_name}</p>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300"><span className="font-semibold">Mode:</span> {manifestSummary.execution_mode}</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{manifestSummary.objective}</p>
                                         </div>
                                     )}
                                 </>
@@ -857,7 +1099,7 @@ export default function RefinementView({
 
                     {/* Code Comparison */}
                     {(activeSection === 'diff' || activeSection === 'comparison') && (
-                        <div className="flex h-full gap-4">
+                        <div className="flex h-full gap-4 min-w-0">
                             <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
                                     <h3 className="font-bold text-sm uppercase text-gray-400">Refined Files</h3>
@@ -894,12 +1136,12 @@ export default function RefinementView({
                                 </div>
                             </div>
 
-                            <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
-                                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
-                                    <h3 className="font-bold text-sm flex items-center gap-2">
+                            <div className="flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
+                                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-3 bg-gray-50 dark:bg-gray-900/50 min-w-0">
+                                    <h3 className="font-bold text-sm flex items-center gap-2 min-w-0">
                                         <FileText size={16} className="text-purple-500" />
                                         {selectedFile ? (
-                                            <span className="flex items-center gap-2">
+                                            <span className="flex items-center gap-2 min-w-0 truncate">
                                                 {selectedFile.split(/[\\/]/).pop()}
                                                 {selectedFile.toLowerCase().includes("bronze") && <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800">🟠 BRONZE</span>}
                                                 {selectedFile.toLowerCase().includes("silver") && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600">⚪ SILVER</span>}
@@ -907,14 +1149,14 @@ export default function RefinementView({
                                             </span>
                                         ) : "Select a file"}
                                     </h3>
-                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[300px]">{selectedFile}</span>}
+                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[300px] shrink-0">{selectedFile}</span>}
                                 </div>
 
-                                <div className="flex-1 overflow-auto relative">
+                                <div className="flex-1 min-w-0 overflow-hidden relative">
                                     {isLoadingFile ? (
                                         <div className="flex items-center justify-center h-full text-gray-500">Loading content...</div>
                                     ) : selectedFile ? (
-                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+                                        <div className="h-full w-full min-w-0 overflow-auto bg-[#1e1e1e]">
                                             <SyntaxHighlighter
                                                 language={(() => {
                                                     if (selectedFile.endsWith('.py')) return 'python';
@@ -924,9 +1166,15 @@ export default function RefinementView({
                                                     return 'text';
                                                 })()}
                                                 style={vscDarkPlus}
-                                                customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
+                                                customStyle={{ margin: 0, padding: '1rem 1.25rem', background: 'transparent', fontSize: '14px', lineHeight: '1.6', minWidth: '100%', overflowX: 'auto' }}
                                                 showLineNumbers={true}
-                                                wrapLines={true}
+                                                wrapLines={false}
+                                                codeTagProps={{
+                                                    style: {
+                                                        fontFamily: 'var(--font-mono), Consolas, Monaco, "Courier New", monospace',
+                                                        whiteSpace: 'pre'
+                                                    }
+                                                }}
                                             >
                                                 {fileContent}
                                             </SyntaxHighlighter>

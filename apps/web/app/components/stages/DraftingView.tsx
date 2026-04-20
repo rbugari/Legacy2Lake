@@ -9,6 +9,7 @@ import ProcessLockModal from "../ProcessLockModal";
 import SchemaViewer from "../visualization/SchemaViewer";
 import GenerationStats from "../visualization/GenerationStats";
 import CodeGenerationSummary from "../visualization/CodeGenerationSummary";
+import PostDraftingDecisionGate from "./PostDraftingDecisionGate";
 import StageHeader from "../StageHeader";
 import { useConfirm } from '@/app/hooks/useConfirm';
 import ReadinessBadge from '../ReadinessBadge';
@@ -91,12 +92,15 @@ export default function DraftingView({
     const [isOrchestrationRunning, setIsOrchestrationRunning] = useState(false); // Active orchestration process
     const isOrchestrationRunningRef = useRef(false); // Ref to read in callbacks without adding to deps
     const [isDraftingComplete, setIsDraftingComplete] = useState(false); // True when project is in DRAFTED status
+    const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null); // [Sprint 2] Mode selected by user
+    const [isLoadingMode, setIsLoadingMode] = useState(false); // [Sprint 2] Loading indicator for fetching mode
     const { confirm, ConfirmDialog } = useConfirm();
     const [logs, setLogs] = useState<string[]>([]); // Simple log stream simulation
     const [progress, setProgress] = useState(0);
     const [migrationLimit, setMigrationLimit] = useState(0); // [NEW] Batch Limit control
     const [isApproving, setIsApproving] = useState(false);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
+    const pollInFlightRef = useRef(false);
 
     // Keep ref in sync with state
     useEffect(() => { isOrchestrationRunningRef.current = isOrchestrationRunning; }, [isOrchestrationRunning]);
@@ -120,6 +124,11 @@ export default function DraftingView({
 
     // Helper: Fetch Logs with status detection
     const fetchOrchestrationLogs = useCallback(async () => {
+        if (pollInFlightRef.current) {
+            return;
+        }
+
+        pollInFlightRef.current = true;
         try {
             const logLines = await getMigrationLogLines();
             if (logLines.length > 0) {
@@ -145,6 +154,8 @@ export default function DraftingView({
             }
         } catch (e) {
             console.error("Failed to load logs", e);
+        } finally {
+            pollInFlightRef.current = false;
         }
     }, [projectId, activeTenantId, getMigrationLogLines]); // Stable ref: no isOrchestrationRunning dependency
 
@@ -216,7 +227,7 @@ export default function DraftingView({
         setIsInitialLoading(false);
     }, [projectId, activeTenantId, fetchOrchestrationLogs, getMigrationLogLines]);
 
-    // Poll logs when orchestration is running (every 3 seconds)
+    // Poll logs when orchestration is running (every 5 seconds)
     // Safety: auto-stop after 45 minutes to prevent infinite polling if backend dies
     const MAX_POLL_MS = 45 * 60 * 1000;
     useEffect(() => {
@@ -228,8 +239,8 @@ export default function DraftingView({
             // Wait 1.5 seconds before first fetch to allow backend to clear old logs
             initialTimeout = setTimeout(() => {
                 fetchOrchestrationLogs();
-                // Then poll every 3 seconds
-                interval = setInterval(fetchOrchestrationLogs, 3000);
+                // Then poll every 5 seconds, skipping overlap via pollInFlightRef
+                interval = setInterval(fetchOrchestrationLogs, 5000);
             }, 1500);
 
             // Safety timeout: stop polling after MAX_POLL_MS even if backend never responds
@@ -256,6 +267,30 @@ export default function DraftingView({
         }
         prevOrchestrationRunning.current = isOrchestrationRunning;
     }, [isOrchestrationRunning, progress, onCompletion]);
+
+    // [Sprint 2] Load post-drafting mode when drafting is complete
+    useEffect(() => {
+        if (isDraftingComplete && postDraftingMode === null) {
+            const loadMode = async () => {
+                setIsLoadingMode(true);
+                try {
+                    const res = await fetchWithAuth(`projects/${projectId}/get-post-drafting-mode`);
+                    const data = await res.json();
+                    setPostDraftingMode(data.post_drafting_mode || "unset");
+                } catch (err) {
+                    console.error("Failed to load post-drafting mode:", err);
+                    setPostDraftingMode("unset");
+                } finally {
+                    setIsLoadingMode(false);
+                }
+            };
+            loadMode();
+        }
+    }, [isDraftingComplete, projectId, postDraftingMode]);
+
+    const handlePostDraftingModeSelected = (mode: string) => {
+        setPostDraftingMode(mode);
+    };
 
     // --- Tab 1: Execution Handlers ---
     const handleRunMigration = async () => {
@@ -293,6 +328,7 @@ export default function DraftingView({
 
         setIsOrchestrationRunning(true);
         setIsDraftingComplete(false); // Reset completion flag on new run
+        setPostDraftingMode(null); // Force re-decision after a fresh Drafting execution
         setProgress(0); // Reset progress to 0% at start
         // Initial feedback
         setLogs(["Starting Migration Orchestrator in background..."]);
@@ -508,15 +544,24 @@ export default function DraftingView({
                             </div>
                         )}
 
-                        {/* ── Completion Banner ── informational only; Next button is in StageHeader */}
+                        {/* ── Completion Banner + Decision Gate ── */}
                         {isDraftingComplete && !isOrchestrationRunning && (
-                            <div className="flex items-center gap-3 px-6 py-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                                <CheckCircle size={18} className="text-emerald-400 shrink-0" />
-                                <div>
-                                    <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">All assets processed successfully — review the output or use the <strong className="text-gray-400">Next Phase</strong> button above to proceed to Refinement.</p>
+                            postDraftingMode === null || postDraftingMode === "unset" ? (
+                                // [Sprint 2] Show Decision Gate
+                                <PostDraftingDecisionGate
+                                    projectId={projectId}
+                                    onModeSelected={handlePostDraftingModeSelected}
+                                />
+                            ) : (
+                                // Mode already selected - show confirmation banner
+                                <div className="flex items-center gap-3 px-6 py-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <CheckCircle size={18} className="text-emerald-400 shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
+                                        <p className="text-xs text-gray-500 mt-0.5">All assets processed successfully — review the output or use the <strong className="text-gray-400">Next Phase</strong> button above to proceed.</p>
+                                    </div>
                                 </div>
-                            </div>
+                            )
                         )}
 
                         {!isDraftingComplete && !isOrchestrationRunning && (

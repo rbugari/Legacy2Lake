@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 # Import all agents
@@ -61,6 +61,121 @@ class MigrationOrchestrator:
         
         # Log Persistence
         self.log_file = os.path.join(self.base_path, "migration.log")
+
+    def _normalize_layer_value(self, raw_value: Optional[Any]) -> Optional[str]:
+        """Map source metadata into the execution layers supported by prompts/audits."""
+        if raw_value in (None, ""):
+            return None
+
+        value = str(raw_value).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "direct": "direct",
+            "direct_translation": "direct",
+            "raw": "bronze",
+            "landing": "bronze",
+            "staging": "bronze",
+            "bronze": "bronze",
+            "curated": "silver",
+            "refined": "silver",
+            "silver": "silver",
+            "serving": "gold",
+            "presentation": "gold",
+            "gold": "gold"
+        }
+        return aliases.get(value)
+
+    def _resolve_task_layer(self, asset_meta: Dict[str, Any], target_tech: str) -> str:
+        """Prefer explicit medallion intent; only fall back to direct when no modernization signal exists."""
+        metadata = asset_meta.get("metadata") or {}
+        logical_medulla = metadata.get("logical_medulla") or {}
+
+        preferred_candidates = [
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+            metadata.get("layer"),
+        ]
+
+        for candidate in preferred_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized and normalized != "direct":
+                return normalized
+
+        weak_candidates = [
+            asset_meta.get("layer"),
+            metadata.get("layer"),
+            metadata.get("lineage_group"),
+            logical_medulla.get("layer"),
+            logical_medulla.get("lineage_group"),
+        ]
+
+        for candidate in weak_candidates:
+            normalized = self._normalize_layer_value(candidate)
+            if normalized:
+                return normalized
+
+        source_name = str(asset_meta.get("source_name") or "").lower()
+        asset_type = str(asset_meta.get("type") or "").lower()
+        normalized_target = str(target_tech or "").lower()
+
+        if normalized_target in {"pyspark", "databricks", "fabric"} and (
+            source_name.endswith(".dtsx") or "ssis" in asset_type
+        ):
+            return "silver"
+
+        return "direct"
+
+    @staticmethod
+    def _is_sql_target(target_tech: Optional[str]) -> bool:
+        try:
+            from apps.api.services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+        except ImportError:
+            try:
+                from services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+            except ImportError:
+                from .refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+
+        contract = resolve_contract(target_tech)
+        if contract:
+            return contract.sql_flavor != SQLFlavor.PYSPARK
+
+        normalized = str(target_tech or "").lower().replace(" ", "_")
+        return normalized not in {"", "pyspark", "spark", "databricks", "ms_fabric", "snowflake"}
+
+    @staticmethod
+    def _artifact_base_name(package_name: str) -> str:
+        return os.path.splitext(package_name or "")[0]
+
+    @staticmethod
+    def _get_valid_optimized_content(audit_report: Dict[str, Any], target_tech: Optional[str]) -> Optional[str]:
+        return AgentFService._extract_valid_optimized_code(
+            (audit_report or {}).get("optimized_code"),
+            str(target_tech or ""),
+        )
+
+    @classmethod
+    def _primary_artifact_filename(cls, package_name: str, target_tech: Optional[str]) -> str:
+        base_name = cls._artifact_base_name(package_name)
+        suffix = ".sql" if cls._is_sql_target(target_tech) else ".py"
+        return f"{base_name}{suffix}"
+
+    @classmethod
+    def _split_generated_content(
+        cls,
+        code_result: Dict[str, Any],
+        target_tech: Optional[str],
+    ) -> tuple[str, str, str]:
+        """Route generated output to the correct artifact lane based on target tech."""
+        generic_code = code_result.get("code", "") or ""
+        sql_code = code_result.get("sql_code", "") or ""
+        pyspark_code = code_result.get("pyspark_code", "") or ""
+
+        if cls._is_sql_target(target_tech):
+            sql_content = sql_code or generic_code
+            return "", sql_content, sql_content
+
+        notebook_content = pyspark_code or generic_code
+        return notebook_content, "", notebook_content
 
     async def _log_persistence(self, message: str, step: str = "SYSTEM"):
         """Persists a message to the database log and cloud storage log."""
@@ -273,7 +388,7 @@ class MigrationOrchestrator:
                 task_def = {
                     "asset_id": asset_meta.get("object_id") or asset_meta.get("id"),  # Sprint 13: Required for persistence
                     "tech_id": tech_id_normalized,  # Sprint 13: For persistence
-                    "layer": "direct",  # v4.0: Direct translation (1:1 transpilation). For architectural patterns (Medallion/Data Vault), apply in Refinement phase.
+                    "layer": self._resolve_task_layer(asset_meta, tech_id_normalized),
                     "project_id": self.project_uuid,
                     "package_name": pkg_name,
                     "name": pkg_name, # Compatibility with Agent C expecting 'name'
@@ -290,6 +405,7 @@ class MigrationOrchestrator:
                     "business_entity": asset_meta.get("business_entity"),
                     "target_name": asset_meta.get("target_name"),
                     "metadata": asset_meta.get("metadata", {}), # Extracted XML metadata
+                    "raw_content": asset_meta.get("raw_content", ""),  # Full source script body
                     "support_intelligence": support_intel,
                     "scout_assessment": scout_assessment,
                     "source_tech": source_tech, 
@@ -305,12 +421,10 @@ class MigrationOrchestrator:
                 set_context = package_metadatas if len(package_metadatas) < 50 else [] # Limit size for tokens
                 code_result = await self.agent_c.transpile_task(task_def, set_context=set_context)
                 
-                notebook_content = code_result.get("pyspark_code", "")
-                sql_content = code_result.get("sql_code", "")
-                
-                # Determine which content Agent C produced and use that for Agent F
-                # Agent C returns pyspark_code for PySpark targets and sql_code for SQL targets
-                generated_code_for_review = notebook_content or sql_content
+                notebook_content, sql_content, generated_code_for_review = self._split_generated_content(
+                    code_result,
+                    tech_id_normalized,
+                )
                 
                 if not generated_code_for_review:
                     reason = code_result.get("error") or code_result.get("reason", "Empty code response")
@@ -340,14 +454,14 @@ class MigrationOrchestrator:
                 logger.info(f"Audit Status: {status} (Score: {audit_report.get('score', 0)})", "Compliance")
                 
                 # Save Artifacts
-                clean_name = pkg_name.replace(".dtsx", "")
+                clean_name = self._artifact_base_name(pkg_name)
                 if notebook_content:
                     self._save_artifact(f"{clean_name}.py", notebook_content)
                 if sql_content:
                     self._save_artifact(f"{clean_name}.sql", sql_content)
                 # If Agent F improved the code, update the relevant content
-                if status == "IMPROVED" and audit_report.get("optimized_code"):
-                    optimized = audit_report["optimized_code"]
+                optimized = self._get_valid_optimized_content(audit_report, tech_id_normalized)
+                if status == "IMPROVED" and optimized:
                     if notebook_content:
                         notebook_content = optimized
                         self._save_artifact(f"{clean_name}.py", notebook_content)
@@ -427,8 +541,9 @@ class MigrationOrchestrator:
                 # Collect sample transformations and audits
                 sample_transformations = []
                 for pkg_name in results["succeeded"][:3]:  # Sample first 3 successful packages
-                    clean_name = pkg_name.replace(".dtsx", "")
-                    code_key = f"{self.output_path.rstrip('/')}/{clean_name}.py"
+                    clean_name = self._artifact_base_name(pkg_name)
+                    code_filename = self._primary_artifact_filename(pkg_name, target_tech)
+                    code_key = f"{self.output_path.rstrip('/')}/{code_filename}"
                     audit_key = f"{self.output_path.rstrip('/')}/{clean_name}_audit.json"
                     
                     try:
@@ -516,8 +631,8 @@ class MigrationOrchestrator:
         # Calculate total lines generated
         total_lines = 0
         for pkg_name in results["succeeded"]:
-            clean_name = pkg_name.replace(".dtsx", "")
-            code_key = f"{self.output_path.rstrip('/')}/{clean_name}.py"
+            code_filename = self._primary_artifact_filename(pkg_name, target_tech)
+            code_key = f"{self.output_path.rstrip('/')}/{code_filename}"
             try:
                 code_content = self.storage.read_file(code_key)
                 if code_content:

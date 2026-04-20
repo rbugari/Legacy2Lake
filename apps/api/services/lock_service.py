@@ -21,6 +21,7 @@ LOCK_TIMEOUTS = {
     "refinement": 120,
     "certification": 45,
     "governance": 20,
+    "matrix_test": 720,
     "default": 30
 }
 
@@ -76,11 +77,16 @@ class LockService:
         existing_lock = await self._get_active_lock(project_id, process_type)
         
         if existing_lock:
-            # Check if it's the same user/session trying to re-acquire
-            if (existing_lock['locked_by_user_id'] == user_id and 
-                existing_lock['locked_by_session_id'] == session_id):
-                # Same session trying to re-acquire - extend the lock
-                logger.info(f"Extending existing lock {existing_lock['lock_id']} for same session")
+            # Check if it's the same logical owner trying to re-acquire.
+            # Prefer the actual user_id, but keep tenant_id compatibility for legacy locks
+            # that were created before user-scoped ownership was available.
+            same_owner = existing_lock['locked_by_user_id'] == user_id
+            if not same_owner and self.tenant_id:
+                same_owner = existing_lock['locked_by_user_id'] == self.tenant_id
+
+            if same_owner:
+                # Same owner trying to re-acquire - extend the lock
+                logger.info(f"Extending existing lock {existing_lock['lock_id']} for same owner")
                 return await self._extend_lock(existing_lock['lock_id'])
             else:
                 # Different user/session - lock is held
@@ -245,9 +251,8 @@ class LockService:
                 .eq('project_id', project_id)\
                 .eq('process_type', process_type)\
                 .eq('status', 'active')\
-                .single()\
                 .execute()
-            return result.data if result.data else None
+            return result.data[0] if result.data else None
         except Exception:
             # No active lock found
             return None

@@ -9,7 +9,10 @@ import {
     Layers,
     LayoutTemplate,
     Cpu,
-    MessagesSquare
+    MessagesSquare,
+    GitCompare,
+    Bot,
+    Shield
 } from 'lucide-react';
 
 interface NewsCenterProps {
@@ -22,41 +25,59 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
 
     const news = [
         {
-            sprint: "v3.7 Release",
-            title: "Executive Reports & Parity",
-            description: "Major updates to governance, reporting, and environmental stability.",
+            sprint: "v4.5 · New",
+            title: "Project Intelligence Assistant",
+            description: "Chat with your project's source knowledge. The assistant answers questions about assets, PII, dependencies and readiness — backed by real Triage data.",
             features: [
-                "New PDF Reports: Export blueprints and conversion manifests.",
-                "Verified 1:1 Parity Matrix: Total infra synchronization.",
-                "Agent G Governance: Advanced policy compliance engine.",
-                "Multi-Target Transpilation: Convert to Snowflake and Fabric simultaneously.",
-                "Delta Lineage Visualization: Real-time tracking of data flow."
+                "Conversation history persisted across sessions.",
+                "Chat thread auto-resets on each Triage rerun.",
+                "Clear History button to start fresh at any time.",
+                "Confidence and intent labels on every answer.",
+                "Available from the assistant button in the workspace header."
             ],
-            icon: <Zap className="text-yellow-400" />,
-            color: "from-yellow-500/10 to-transparent"
+            icon: <Bot className="text-indigo-400" />,
+            color: "from-indigo-500/10 to-transparent"
         },
         {
-            sprint: "Sprint 2",
-            title: "Estructura Global y Wizard",
-            description: "Mejoramos la base del workspace para una navegación coherente y centralizada.",
+            sprint: "v4.5 · New",
+            title: "Traceability Review",
+            description: "Field-level and table-level traceability from legacy source to generated target output — with PRESERVED / INFERRED / CHANGED / UNRESOLVED badges per column.",
             features: [
-                "Project Creation Wizard: Inicialización en 4 pasos.",
-                "Contextual Workspace Sidebar: Resumen del proyecto siempre a la vista.",
-                "Solution Config Drawer: Ajustes centralizados en un solo lugar."
+                "Per-asset traceability map computed on demand.",
+                "Stacked progress bar shows mapping coverage at a glance.",
+                "PII column markers surfaced in the detail view.",
+                "Transformation hints extracted from understanding payload.",
+                "Results cached in Supabase for fast retrieval."
             ],
-            icon: <Layers className="text-cyan-400" />,
+            icon: <GitCompare className="text-cyan-400" />,
             color: "from-cyan-500/10 to-transparent"
         },
         {
-            sprint: "Sprint 1",
-            title: "Identidad Visual Blue-Green",
-            description: "El primer paso hacia una experiencia premium y profesional.",
+            sprint: "v4.4 → v4.5",
+            title: "Intelligent Reengineering Mode",
+            description: "A third post-drafting mode that consolidates repeated patterns across assets — shared dimensions, common ingestion paths, reusable transformations.",
             features: [
-                "Nueva paleta de colores Cyan/Emerald de alta fidelidad.",
-                "Global Logs Sidepanel para diagnóstico en tiempo real.",
-                "Rediseño completo de Triage y Administración."
+                "Consolidation manifest links source assets to shared outputs.",
+                "Agent C produces consolidated artifacts with traceability.",
+                "Agent F validates consolidation explainability and business key preservation.",
+                "Medallion Bronze/Silver/Gold contract enforced end-to-end.",
+                "Mode selector exposed in Drafting stage settings."
             ],
-            icon: <LayoutTemplate className="text-emerald-400" />,
+            icon: <Cpu className="text-yellow-400" />,
+            color: "from-yellow-500/10 to-transparent"
+        },
+        {
+            sprint: "v4.0 → v4.5",
+            title: "Gap Workspace + Governance Suite",
+            description: "A structured workspace for capturing, resolving and tracking gaps and decisions found during Governance review.",
+            features: [
+                "Gap items with status, owner, priority and resolution notes.",
+                "Linked to Governance stage — accessible from the sidebar.",
+                "Executive Summary panel with readiness signals.",
+                "Audit checks and quality metrics in dedicated sections.",
+                "Zero-hardcode prompt architecture with tenant-scoped configuration."
+            ],
+            icon: <Shield className="text-emerald-400" />,
             color: "from-emerald-500/10 to-transparent"
         }
     ];
@@ -85,7 +106,7 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
                         </button>
                     </div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                        Check out the latest features and usability improvements.
+                        Top updates from v4.0 → v4.5
                     </p>
                 </div>
 

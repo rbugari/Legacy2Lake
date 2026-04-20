@@ -109,10 +109,33 @@ async def _persist_column_mappings(
         def _clean_col(raw: str) -> str:
             if not raw:
                 return ""
+            import re as _re
+            # Handle SSIS ExternalColumns[colname] or Columns[colname] patterns
+            m = _re.search(r'Columns\[([^\]]+)\]', raw, _re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
             token = raw.split("::")[-1]
             token = token.split(".")[-1]
-            token = token.strip().strip("[]\"")
+            token = token.strip().strip('[]"')
             return token
+
+        def _infer_col_type(col_name: str) -> str:
+            """Infer SQL type from column name heuristics."""
+            lower = col_name.lower().strip('_')
+            if any(lower.endswith(k) or k + '_' in lower for k in ('date', 'time', 'timestamp', 'fecha', 'hora')) \
+                    or any(k in lower for k in ('created_at', 'updated_at', 'modified_at', 'deleted_at')):
+                return 'DATE'
+            if any(k in lower for k in ('amount', 'price', 'cost', 'rate', 'salary', 'subtotal', 'tax', 'discount', 'valor', 'importe', 'total')) \
+                    and not lower.endswith('id'):
+                return 'DECIMAL'
+            if any(lower == k or lower.endswith('_' + k) for k in ('flag', 'active', 'enabled', 'deleted', 'discontinued')) \
+                    or lower.startswith(('is_', 'has_', 'can_', 'allow_')):
+                return 'BOOLEAN'
+            if lower.endswith('id') or lower.endswith('_id') \
+                    or any(lower == k for k in ('qty', 'quantity', 'age', 'year', 'month', 'day', 'seq', 'sequence')) \
+                    or any(lower.endswith('_' + k) for k in ('qty', 'num', 'count', 'no', 'code', 'key', 'seq')):
+                return 'INTEGER'
+            return 'VARCHAR'
 
         def _extract_mapping_expression(mapping: Dict[str, Any]) -> str:
             for key in [
@@ -205,6 +228,7 @@ async def _persist_column_mappings(
                         asset_id=asset_id,
                         source_column=source_col,
                         target_column=target_col,
+                        source_datatype=mapping.get("data_type") or mapping.get("type") or _infer_col_type(source_col),
                         transformation_rule=trans_rule
                     ))
             
@@ -232,6 +256,7 @@ async def _persist_column_mappings(
                         asset_id=asset_id,
                         source_column=col_name,
                         target_column=col_name,
+                        source_datatype=mapping.get("data_type") or mapping.get("type") or _infer_col_type(col_name),
                         transformation_rule=trans_rule or (comp_type_upper or "OUTPUT")
                     ))
         
@@ -693,6 +718,7 @@ async def _run_triage_background(
     lock_id: Optional[str],
     lock_service: LockService,
     tenant_id: str,
+    owner_user_id: str,
     username: str,
     db_config: dict  # Pass DB connection params instead of instance
 ):
@@ -887,35 +913,37 @@ async def _run_triage_background(
             result = await agent_a.analyze_manifest(manifest, system_prompt_override=prompt)
         
             if "error" in result:
-                await _log(f"Agent A failed: {result['error']}", agent="AGENT_A")
-                return
-             
-            rf_nodes = result.get("mesh_graph", {}).get("nodes", [])
-            rf_edges = result.get("mesh_graph", {}).get("edges", [])
-        
-            # Auto-Promotion Fallback: Ensure CORE-likely physical assets are in the graph
-            for item in manifest["file_inventory"]:
-                if item["name"].lower() in ['triage.log', 'thumbs.db', '.ds_store', 'desktop.ini']:
-                    continue
-                 
-                if not any(n["id"] == item["path"] for n in rf_nodes):
-                    ext = item["name"].split('.')[-1].lower() if '.' in item["name"] else ''
-                    if ext in ['dtsx', 'sql', 'py', 'spark', 'scala']:
-                        rf_nodes.append({
-                            "id": item["path"],
-                            "label": item["name"],
-                            "category": "CORE",
-                            "complexity": "LOW",
-                            "confidence": 0.5,
-                            "business_entity": "SYSTEM_INFERRED",
-                            "target_name": item["name"]
-                        })
-        
-            await _log(f"Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}", agent="AGENT_A")
+                await _log(f"⚠️ Agent A failed: {result['error']} — continuing with auto-inferred graph", agent="AGENT_A")
+                rf_nodes = []
+                rf_edges = []
+            else:
+                rf_nodes = result.get("mesh_graph", {}).get("nodes", [])
+                rf_edges = result.get("mesh_graph", {}).get("edges", [])
         
         except Exception as e:
-            await _log(f"CRITICAL Architecture Analysis Failed: {e}", agent="AGENT_A")
-            return
+            await _log(f"⚠️ Architecture Analysis failed: {e} — continuing with auto-inferred graph", agent="AGENT_A")
+            rf_nodes = []
+            rf_edges = []
+
+        # Auto-Promotion Fallback: Ensure CORE-likely physical assets are in the graph
+        for item in manifest["file_inventory"]:
+            if item["name"].lower() in ['triage.log', 'thumbs.db', '.ds_store', 'desktop.ini']:
+                continue
+
+            if not any(n["id"] == item["path"] for n in rf_nodes):
+                ext = item["name"].split('.')[-1].lower() if '.' in item["name"] else ''
+                if ext in ['dtsx', 'sql', 'py', 'spark', 'scala']:
+                    rf_nodes.append({
+                        "id": item["path"],
+                        "label": item["name"],
+                        "category": "CORE",
+                        "complexity": "LOW",
+                        "confidence": 0.5,
+                        "business_entity": "SYSTEM_INFERRED",
+                        "target_name": item["name"]
+                    })
+
+        await _log(f"Analysis Complete. Total Nodes (AI + Inferred): {len(rf_nodes)}", agent="AGENT_A")
 
         # Check for cancellation
         if await _check_cancellation():
@@ -1232,6 +1260,20 @@ async def _run_triage_background(
     
         await db.update_project_status(project_uuid, "TRIAGED")
         await _log("✅ Triage completed successfully", agent="TRIAGE")
+
+        # Reset assistant chat thread (v4.5): invalidate stale context after rerun
+        try:
+            from apps.api.services.project_assistant_service import ProjectAssistantService as _AssistantSvc
+        except ImportError:
+            try:
+                from services.project_assistant_service import ProjectAssistantService as _AssistantSvc
+            except ImportError:
+                _AssistantSvc = None  # type: ignore
+        if _AssistantSvc and db.tenant_id:
+            try:
+                _AssistantSvc(tenant_id=db.tenant_id, project_id=str(project_uuid)).reset_for_triage_rerun()
+            except Exception as _e:
+                print(f"[TRIAGE] Assistant reset non-critical error: {_e}")
         
     except Exception as e:
         # Log error to DB
@@ -1249,7 +1291,7 @@ async def _run_triage_background(
         # === ALWAYS: Release lock ===
         if lock_id:
             try:
-                await lock_service.release_lock(lock_id=lock_id, user_id=tenant_id)
+                await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
                 print(f"[TRIAGE] Lock {lock_id} released")
             except Exception as e:
                 print(f"WARNING: Failed to release lock {lock_id}: {e}")
@@ -1276,12 +1318,36 @@ async def run_triage(
             status_code=403,
             detail="VIEWER users have read-only access. Only COLLABORATOR, MANAGER, and ADMIN can execute project phases."
         )
+
+    # Resolve project UUID early so we can fail fast if the project is already past triage.
+    project_uuid = project_id
+    if "-" not in project_id:
+        project_uuid = await db.get_project_id_by_name(project_id) or project_id
+
+    current_status = await db.get_project_status(project_uuid)
+    locked_statuses = {
+        "TRIAGE_APPROVED", "DRAFTING", "ORCHESTRATING", "DRAFTED",
+        "REFINEMENT", "REFINING", "REFINED",
+        "GOVERNANCE", "DOCUMENTING", "GOVERNED", "CERTIFYING",
+        "CERTIFIED", "COMPLETED", "DELIVERED"
+    }
+    if current_status in locked_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "triage_locked",
+                "message": f"Project is in {current_status} mode. Triage is locked until the project is reset or moved back to TRIAGE.",
+                "status": current_status,
+                "project_id": project_uuid,
+            }
+        )
     
     # === PROCESS LOCKING ===
     lock_service = LockService(tenant_id=identity.get("tenant_id"), client_id=identity.get("client_id"))
     
     # Get username for lock
     tenant_id = identity.get("tenant_id")
+    owner_user_id = identity.get("user_id") or tenant_id
     username = identity.get("username", "Unknown User")
     if not username or username == "Unknown User":
         # Fetch from database if not in identity
@@ -1294,7 +1360,7 @@ async def run_triage(
     # Generate or get session ID
     session_id = request.headers.get("X-Session-ID")
     if not session_id:
-        session_id = str(uuid.uuid4())
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_OID, request.headers.get("user-agent", "")))
     
     # Try to acquire lock
     lock_id = None
@@ -1302,7 +1368,7 @@ async def run_triage(
         lock = await lock_service.acquire_lock(
             project_id=project_id,
             process_type="triage",
-            user_id=tenant_id,
+            user_id=owner_user_id,
             username=username,
             session_id=session_id,
             user_agent=request.headers.get("user-agent"),
@@ -1323,10 +1389,6 @@ async def run_triage(
     
     # === UPDATE STATUS TO PROCESSING ===
     try:
-        project_uuid = project_id
-        if "-" not in project_id:  # If name, get UUID
-            project_uuid = await db.get_project_id_by_name(project_id) or project_id
-        
         await db.update_project_status(project_uuid, "PROCESSING")
     except Exception as e:
         print(f"WARNING: Could not update status to PROCESSING: {e}")
@@ -1344,6 +1406,7 @@ async def run_triage(
         lock_id=lock_id,
         lock_service=lock_service,
         tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
         username=username,
         db_config=db_config
     )

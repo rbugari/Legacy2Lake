@@ -12,10 +12,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Skip if no database connection available
-pytestmark = pytest.mark.skipif(
-    not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
-    reason="Supabase credentials not available"
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
+        reason="Supabase credentials not available"
+    ),
+]
 
 from apps.api.services.lock_service import LockService, ProcessLockError
 from apps.api.services.persistence_service import SupabasePersistence

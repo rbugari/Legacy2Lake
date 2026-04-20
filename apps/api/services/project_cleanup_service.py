@@ -409,9 +409,10 @@ class ProjectCleanupService:
             base_path = PersistenceService.ensure_solution_dir(project_name, self.tenant_id)
             backup_path = f"{base_path.rstrip('/')}/{backup_filename}"
             
-            # Verify file exists
+            # Idempotent: if already deleted, treat as success
             if not self.storage.exists(backup_path):
-                return {"success": False, "error": f"Backup file not found: {backup_filename}"}
+                logger.info(f"[Cleanup] Backup already deleted (idempotent): {backup_filename}", "Cleanup")
+                return {"success": True}
             
             # Delete the file
             self.storage.delete_file(backup_path)

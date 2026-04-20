@@ -26,7 +26,7 @@ from apps.api.services.agent_g_service import AgentGService
 EVAL_REPORT_PATH = ROOT / "test_results" / "ssis_fixture_evaluation.json"
 PIPELINE_REPORT_PATH = ROOT / "test_results" / "ssis_generation_pipeline.json"
 DEFAULT_TENANT_ID = os.getenv("EVAL_TENANT_ID", "f98edb5e-4165-4c49-9fce-18894e8a818c")
-DEFAULT_NODE_LABEL = "ETL_Dim_Customer"
+DEFAULT_NODE_LABEL = "ETL_Dim_Customer.dtsx"
 
 
 def extract_code(result: dict) -> str:
@@ -56,11 +56,30 @@ def load_mesh_report() -> dict:
     return json.loads(EVAL_REPORT_PATH.read_text(encoding="utf-8"))
 
 
+def _normalize_node_label(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized.endswith(".dtsx"):
+        normalized = normalized[:-5]
+    return normalized
+
+
 def find_node(mesh: dict, node_label: str) -> dict:
+    requested = _normalize_node_label(node_label)
+
+    # 1) Exact raw label match
     for node in mesh.get("nodes", []):
-        if node.get("label") == node_label:
+        if (node.get("label") or "") == node_label:
             return node
-    raise ValueError(f"Node '{node_label}' not found in mesh.")
+
+    # 2) Normalized match (accept labels with/without .dtsx)
+    for node in mesh.get("nodes", []):
+        if _normalize_node_label(node.get("label") or "") == requested:
+            return node
+
+    available = [node.get("label") for node in mesh.get("nodes", []) if node.get("label")]
+    raise ValueError(
+        f"Node '{node_label}' not found in mesh. Available labels: {available}"
+    )
 
 
 def build_task_info(node: dict, project_name: str, target_tech: str, layer: str) -> dict:

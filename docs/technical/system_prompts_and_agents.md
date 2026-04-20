@@ -1,6 +1,6 @@
 # System Prompts And Agents (v4.0 Stabilized)
 
-> Last Updated: 2026-03-21
+> Last Updated: 2026-04-15
 > Status: Current operating model
 
 This document describes the real agent roster, the prompt architecture in production, and how prompt resolution works after the v4.0 prompt consolidation.
@@ -140,12 +140,15 @@ The important design rule is:
 - Notes:
   - multi-target by design
   - no longer PySpark-first in the core prompt
+  - applies mode-aware runtime context (drafting delivery vs refinement modes)
 
 ### Agent F
 
 - Input: generated asset plus the same target-aware cartridge context
 - Output: review object with score and critique
 - Notes: evaluates against the actual target, not a fixed PySpark worldview
+  - in drafting delivery/direct review, can normalize rejection outcomes when code is executable and only non-structural objections remain
+  - hardcoded-literal violations remain explicit blockers
 
 ### Agent G
 
@@ -183,3 +186,9 @@ The `direct` layer is intentionally different from medallion layers:
 - prompts prefer explicit column mapping when metadata exists
 
 This is especially important for `SQL` and `PySpark` direct outputs derived from SSIS or legacy SQL.
+
+## 8. v4.4 Runtime Notes
+
+- post-drafting mode (`drafting_delivery`, `structured_refinement`, `intelligent_reengineering`) is resolved at runtime and passed through generation/review flows
+- direct-mode validation includes strict no-hardcode checks for literal defaults and helper assignments
+- refinement/governance consume mode context for manifest summaries and mode-aware scoring narratives

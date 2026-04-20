@@ -38,14 +38,15 @@ class OpsAuditorService:
         refined_prefix = f"{base_path.rstrip('/')}/{PersistenceService.STAGE_REFINEMENT}"
 
         # 1. Validation Engine
-        validation_results = await self._perform_validation(refined_files, log, base_path)
+        execution_mode = architect_output.get("execution_mode", "structured_refinement")
+        validation_results = await self._perform_validation(refined_files, log, base_path, execution_mode)
 
         # 2. Artifact Generation
         self._log(log, "Generating Infrastructure-as-Code (IaC) manifests...")
-        iac_path = await self._generate_iac_manifest(project_id, refined_files, refined_prefix)
+        iac_path = await self._generate_iac_manifest(project_id, refined_files, refined_prefix, execution_mode)
         
         self._log(log, "Generating Operational Handbook (README_DEVOPS.md)...")
-        handbook_path = await self._generate_handbook(project_id, refined_files, refined_prefix)
+        handbook_path = await self._generate_handbook(project_id, refined_files, refined_prefix, execution_mode)
 
         self._log(log, "Audit Complete.")
         
@@ -58,7 +59,7 @@ class OpsAuditorService:
             }
         }
 
-    async def _perform_validation(self, refined_files: dict, log: list, base_path: str) -> dict:
+    async def _perform_validation(self, refined_files: dict, log: list, base_path: str, execution_mode: str) -> dict:
         results = {"passed": True, "issues": []}
         storage = PersistenceService.get_storage()
 
@@ -79,6 +80,12 @@ class OpsAuditorService:
             self._log(log, f"ERROR: {msg}", model="System")
             results["issues"].append(msg)
             results["passed"] = False
+
+        if execution_mode == "intelligent_reengineering" and not refined_files.get("manifest"):
+            msg = "MISSING ARTIFACT: reengineering manifest not found."
+            self._log(log, f"ERROR: {msg}", model="System")
+            results["issues"].append(msg)
+            results["passed"] = False
         
         # Semantic Check
         silver_files = refined_files.get("silver", [])
@@ -93,10 +100,11 @@ class OpsAuditorService:
         for sf_key in silver_files:
             try:
                 filename_only = sf_key.split("/")[-1]
+                unit_name = filename_only.replace("_silver.py", "").replace("_silver.sql", "").replace("_silver.dtsx", "")
                 # Guess original name
                 source_guess = filename_only.replace("_silver.py", ".py").replace("_silver.dtsx", ".dtsx")
                 
-                pk_expected = meta.get("primary_keys", {}).get(source_guess, ["id"])
+                pk_expected = meta.get("unit_primary_keys", {}).get(unit_name) or meta.get("primary_keys", {}).get(source_guess, ["id"])
                 if isinstance(pk_expected, str): pk_expected = [pk_expected]
 
                 content = storage.read_file(sf_key)
@@ -120,7 +128,7 @@ class OpsAuditorService:
 
         return results
 
-    async def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+    async def _generate_iac_manifest(self, project_id: str, refined_files: dict, target_prefix: str, execution_mode: str) -> str:
         storage = PersistenceService.get_storage()
         bundle = {
             "bundle": {"name": f"legacy2lake_{project_id}"},
@@ -134,7 +142,9 @@ class OpsAuditorService:
             }
         }
 
-        for layer in ["bronze", "silver", "gold"]:
+        layer_order = ["bronze", "silver", "gold"]
+
+        for layer in layer_order:
             files = refined_files.get(layer, [])
             if not files: continue
             
@@ -155,25 +165,35 @@ class OpsAuditorService:
         storage.save_file(manifest_key, yaml.dump(bundle, default_flow_style=False))
         return manifest_key
 
-    async def _generate_handbook(self, project_id: str, refined_files: dict, target_prefix: str) -> str:
+    async def _generate_handbook(self, project_id: str, refined_files: dict, target_prefix: str, execution_mode: str) -> str:
         storage = PersistenceService.get_storage()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        architecture_overview = "This project follows a **Medallion Architecture** (Bronze, Silver, Gold)."
+        execution_order = """1. **Bronze**: Ingest raw data from source systems.
+    2. **Silver**: Clean, deduplicate, and apply SCD Type 2 logic.
+    3. **Gold**: Final business aggregations and semantic views."""
+        registry_block = f"""- **Bronze Files**: {len(refined_files.get('bronze', []))} files
+    - **Silver Files**: {len(refined_files.get('silver', []))} files
+    - **Gold Files**: {len(refined_files.get('gold', []))} files"""
+
+        if execution_mode == "intelligent_reengineering":
+            architecture_overview = "This project follows a **Medallion Architecture with Intelligent Reengineering Consolidation** (Bronze, Silver, Gold)."
+            execution_order = """1. **Bronze**: Consolidated ingestion for shared source objects.
+    2. **Silver**: Consolidated cleansing and merge logic across shared objects.
+    3. **Gold**: Consolidated publish outputs with traceability."""
+
         content = f"""# Operational Handbook: {project_id}
 Generated by Legacy2Lake Ops Auditor - {timestamp}
 
 ## Architecture Overview
-This project follows a **Medallion Architecture** (Bronze, Silver, Gold).
+{architecture_overview}
 
 ### 1. Execution Order
-1. **Bronze**: Ingest raw data from source systems.
-2. **Silver**: Clean, deduplicate, and apply SCD Type 2 logic.
-3. **Gold**: Final business aggregations and semantic views.
+{execution_order}
 
 ## Component Registry
-- **Bronze Files**: {len(refined_files.get('bronze', []))} files
-- **Silver Files**: {len(refined_files.get('silver', []))} files
-- **Gold Files**: {len(refined_files.get('gold', []))} files
+{registry_block}
 
 ## Deployment Notes
 - **Infrastructure**: Use the provided `workflows.yaml` for Databricks Job configuration.

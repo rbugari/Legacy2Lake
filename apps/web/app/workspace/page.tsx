@@ -15,7 +15,9 @@ import StageSidebar from "../components/navigation/StageSidebar";
 import { getSectionsForStage } from "../config/sidebar-sections";
 import SolutionConfigDrawer from "../components/SolutionConfigDrawer";
 import WorkspaceShield from "../components/WorkspaceShield";
-import ReportsLibraryModal from "../components/ReportsLibraryModal";
+import ReportsCatalogModal from "../components/ReportsCatalogModal";
+import ReportsAccessPanel from "../components/ReportsAccessPanel";
+import ProjectAssistantModal from "../components/ProjectAssistantModal";
 // import StageControls from "../components/StageControls";
 
 import { API_BASE_URL } from "../lib/config";
@@ -23,7 +25,7 @@ import { fetchWithAuth } from "../lib/auth-client";
 import {
     Activity, ArrowRight, CheckCircle, Code, FileText, GitCommit,
     GitPullRequest, Layout, Play, Save, SlidersHorizontal, Share2,
-    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield, Library
+    Terminal, Download, ArrowLeft, RefreshCw, Users, Eye, Shield, Library, Bot
 } from "lucide-react";
 
 function WorkspaceContent() {
@@ -47,6 +49,7 @@ function WorkspaceContent() {
     const [showLogs, setShowLogs] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
     const [showReportsLibrary, setShowReportsLibrary] = useState(false);
+    const [showAssistant, setShowAssistant] = useState(false);
     const [sidebarStats, setSidebarStats] = useState({ core: 0, ignored: 0, pending: 0 });
 
     // New Global UI State
@@ -424,6 +427,13 @@ function WorkspaceContent() {
                                 </button>
                                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 mx-1" />
                                 <button
+                                    onClick={() => setShowAssistant(true)}
+                                    className="p-1.5 text-gray-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-all"
+                                    title="Source Assistant"
+                                >
+                                    <Bot size={18} />
+                                </button>
+                                <button
                                     onClick={() => setShowReportsLibrary(true)}
                                     className="p-1.5 text-gray-500 hover:text-purple-500 hover:bg-purple-500/10 rounded-md transition-all"
                                     title="Reports Library"
@@ -455,6 +465,13 @@ function WorkspaceContent() {
                             onSetView={setActiveView}
                         />
                     </header>
+
+                    {projectStage >= 5 && (
+                        <ReportsAccessPanel
+                            currentStage={projectStage}
+                            onOpenCatalog={() => setShowReportsLibrary(true)}
+                        />
+                    )}
 
                     {/* Stage Content */}
                     <div className="flex-1 relative overflow-hidden">
@@ -576,8 +593,8 @@ function WorkspaceContent() {
                         targetTech={targetTech}
                     />
 
-                    {/* Reports Library Modal */}
-                    <ReportsLibraryModal
+                    {/* Reports Catalog Modal */}
+                    <ReportsCatalogModal
                         isOpen={showReportsLibrary}
                         onClose={() => setShowReportsLibrary(false)}
                         projectId={id}
@@ -585,6 +602,14 @@ function WorkspaceContent() {
                         currentStage={projectStage}
                         activeTenantId={ghostTenantId || undefined}
                     />
+                    {/* Source Assistant Modal */}
+                    {showAssistant && (
+                        <ProjectAssistantModal
+                            projectId={id}
+                            projectName={projectName || 'Project'}
+                            onClose={() => setShowAssistant(false)}
+                        />
+                    )}
                 </main >
             </div >
         </ReactFlowProvider >

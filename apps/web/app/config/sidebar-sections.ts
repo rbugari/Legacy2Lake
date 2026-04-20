@@ -3,7 +3,7 @@ import {
     Server, Zap, FileCode, Shield, Lock, Layers, ArrowRight, MessageSquare,
     Terminal, Activity, FileText, Code, RefreshCw, FolderTree,
     Eye, AlertCircle, CheckCircle, Book, BookOpen, GitBranch, PlayCircle,
-    Package, Archive, Download, Search, BarChart3, ShieldCheck, ShieldAlert, Cpu
+    Package, Archive, Download, Search, BarChart3, ShieldCheck, ShieldAlert, Cpu, GitCompare
 } from 'lucide-react';
 
 export interface SidebarSection {
@@ -254,6 +254,7 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             collapsible: true,
             children: [
                 { id: 'run-refinement', label: 'Run Refinement', icon: PlayCircle, variant: 'action' },
+                { id: 'mode', label: 'Execution Mode', icon: Zap, variant: 'action' },
                 { id: 'settings', label: 'Design Settings', icon: Settings, variant: 'action' },
                 { id: 'prompts', label: 'Cartridge Prompts', icon: FileCode, variant: 'action' }
             ]
@@ -299,6 +300,12 @@ export const SIDEBAR_SECTIONS: Record<number, SidebarSection[]> = {
             icon: AlertCircle,
             variant: 'view',
             badge: 'gapCount'
+        },
+        {
+            id: 'traceability',
+            label: 'Traceability Review',
+            icon: GitCompare,
+            variant: 'view'
         },
         {
             id: 'quality',

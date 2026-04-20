@@ -5,6 +5,8 @@ Tests the complete triage process from project creation to asset analysis.
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
+pytestmark = pytest.mark.integration
+
 
 class TestTriageFlow:
     """Integration tests for the triage/discovery flow."""

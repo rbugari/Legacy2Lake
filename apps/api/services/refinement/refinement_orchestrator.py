@@ -97,9 +97,20 @@ class RefinementOrchestrator:
             return await self.persistence.check_cancellation(project_id)
         except: return False
 
+    async def _resolve_refinement_mode(self, project_id: str) -> str:
+        try:
+            mode = await self.persistence.get_post_drafting_mode(project_id)
+        except Exception:
+            mode = None
+
+        if mode in {"structured_refinement", "intelligent_reengineering"}:
+            return mode
+        return "structured_refinement"
+
     async def run_refinement(self, project_id: str, models: Dict[str, str]):
         """Executes the standard refinement pipeline."""
         timestamp_start = datetime.now().isoformat()
+        execution_mode = await self._resolve_refinement_mode(project_id)
         
         # Reset cancellation flag for the new run
         try:
@@ -136,6 +147,7 @@ class RefinementOrchestrator:
             f"Project   : {project_id}",
             f"Tenant    : {self.tenant_id}",
             f"Client    : {self.client_id}",
+            f"Mode      : {execution_mode}",
             "",
             "AGENT MATRIX CONFIGURATION:",
             f"- Profiler    : {models['Profiler']}",
@@ -194,9 +206,19 @@ class RefinementOrchestrator:
             local_log.append(f"--- [PHASE 2] ARCHITECT: {models['Architect']} ---")
             print(f"[ORCHESTRATOR DEBUG] Starting Phase 2: ARCHITECT")
             print(f"[ORCHESTRATOR DEBUG] Calling architect.refine_project() with profile_meta")
-            msg = await _log("[PHASE PROGRESS: 2/4] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
+            if execution_mode == "intelligent_reengineering":
+                msg = await _log("[PHASE PROGRESS: 2/4] Running Intelligent Reengineering on Medallion layers (multi-package shared-object consolidation)...", "Architect")
+            else:
+                msg = await _log("[PHASE PROGRESS: 2/4] Segmenting into Medallion Architecture (Bronze/Silver/Gold)...", "Architect")
             local_log.append(msg)
-            architect_out = await self.architect.refine_project(project_id, profile_meta, local_log, project_name=self.project_name, target_tech=target_tech)
+            architect_out = await self.architect.refine_project(
+                project_id,
+                profile_meta,
+                local_log,
+                project_name=self.project_name,
+                target_tech=target_tech,
+                execution_mode=execution_mode,
+            )
             print(f"[ORCHESTRATOR DEBUG] Architect complete. architect_out keys: {architect_out.keys() if architect_out else 'None'}")
             print(f"[ORCHESTRATOR DEBUG] refined_files: {architect_out.get('refined_files', {}) if architect_out else {}}")
             
@@ -206,7 +228,10 @@ class RefinementOrchestrator:
                 local_log.append(msg)
                 return {"log": local_log, "status": "cancelled"}
 
-            msg = await _log(f"Medallion structure created.", "Architect")
+            if execution_mode == "intelligent_reengineering":
+                msg = await _log("Reengineering structure created.", "Architect")
+            else:
+                msg = await _log("Medallion structure created.", "Architect")
             local_log.append(msg)
             local_log.append("")
             

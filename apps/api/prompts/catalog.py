@@ -38,7 +38,11 @@ TECH_STACK_ALIASES: Dict[str, str] = {
     "fabric_sql": "ms_fabric_sql",
     "microsoft_fabric": "ms_fabric",
     "microsoft_fabric_sql": "ms_fabric_sql",
+    "ms_fabric_warehouse": "ms_fabric_sql",
     "sf": "salesforce",
+    "snowflake_native_sql": "snowflake_sql",
+    "snowflake_sql_direct": "snowflake_sql",
+    "snowflake_sql_native": "snowflake_sql",
     "snowflake_snowpark": "snowflake",
 }
 
