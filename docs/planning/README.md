@@ -16,6 +16,7 @@ This folder keeps only planning material that is still useful for the current pr
 | [V4_3_POST_DRAFTING_EXECUTION_MODES.md](V4_3_POST_DRAFTING_EXECUTION_MODES.md) | v4.3 post-Drafting release plan and execution modes |
 | [V4_4_INTELLIGENT_REENGINEERING_MVP.md](V4_4_INTELLIGENT_REENGINEERING_MVP.md) | executable plan for the first real intelligent reengineering runtime path |
 | [V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md](V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md) | v4.5 integrated plan for readiness, executive summary, gaps workspace, traceability review, and project chat assistant |
+| [V4_6_TALEND_SOURCE_SUPPORT.md](V4_6_TALEND_SOURCE_SUPPORT.md) | v4.6 proposed Talend DI source integration (parser, cartridge, agent prompts, E2E validation) |
 | [V4_3_SPRINT_1_PRODUCT_CONTRACT_FREEZE.md](V4_3_SPRINT_1_PRODUCT_CONTRACT_FREEZE.md) | sprint 1 contract freeze and launch packet |
 | [V4_3_SPRINT_2_DRAFTING_BRANCHING_AND_TERMINAL_PATH.md](V4_3_SPRINT_2_DRAFTING_BRANCHING_AND_TERMINAL_PATH.md) | sprint 2 branching path and terminal Drafting implementation |
 | [V4_3_SPRINT_3_STRUCTURED_REFINEMENT_CLARIFICATION.md](V4_3_SPRINT_3_STRUCTURED_REFINEMENT_CLARIFICATION.md) | sprint 3 refinement language, prompts, and governance alignment |
