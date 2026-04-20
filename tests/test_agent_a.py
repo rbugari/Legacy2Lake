@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import pytest
 from dotenv import load_dotenv
 
 # Add apps/api to path
@@ -9,6 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "apps", "api"))
 from services.ssis_parser import SSISParser
 from services.agent_a_service import AgentAService
 
+@pytest.mark.integration
 async def test_discovery():
     load_dotenv()
     

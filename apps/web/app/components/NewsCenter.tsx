@@ -9,7 +9,10 @@ import {
     Layers,
     LayoutTemplate,
     Cpu,
-    MessagesSquare
+    MessagesSquare,
+    GitCompare,
+    Bot,
+    Shield
 } from 'lucide-react';
 
 interface NewsCenterProps {
@@ -22,45 +25,59 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
 
     const news = [
         {
-            sprint: "Since v4.0",
-            title: "Dual Product Reporting Catalog",
-            description: "A single reports surface now clearly separates Source Intelligence from Migration Factory outputs.",
+            sprint: "v4.5 · New",
+            title: "Project Intelligence Assistant",
+            description: "Chat with your project's source knowledge. The assistant answers questions about assets, PII, dependencies and readiness — backed by real Triage data.",
             features: [
-                "Reports Access panel integrated into workspace.",
-                "Catalog APIs: list, metadata, and summary endpoints.",
-                "Product-line grouping with clear user-facing narratives.",
-                "Schema Intelligence and Forensic Assessment endpoints exposed.",
-                "Handover-focused presentation without polluting Discovery view."
+                "Conversation history persisted across sessions.",
+                "Chat thread auto-resets on each Triage rerun.",
+                "Clear History button to start fresh at any time.",
+                "Confidence and intent labels on every answer.",
+                "Available from the assistant button in the workspace header."
             ],
-            icon: <Zap className="text-yellow-400" />,
-            color: "from-yellow-500/10 to-transparent"
+            icon: <Bot className="text-indigo-400" />,
+            color: "from-indigo-500/10 to-transparent"
         },
         {
-            sprint: "Since v4.0",
-            title: "Flexible Report Formats",
-            description: "Reports now support default and optional formats per artifact with cleaner download behavior.",
+            sprint: "v4.5 · New",
+            title: "Traceability Review",
+            description: "Field-level and table-level traceability from legacy source to generated target output — with PRESERVED / INFERRED / CHANGED / UNRESOLVED badges per column.",
             features: [
-                "Per-report format selector (PDF, Markdown, HTML, JSON).",
-                "Knowledge Export consolidated into one entry with dynamic format routing.",
-                "HTTP method handling fixed (GET for read endpoints, POST only for triage/final PDFs).",
-                "Catalog metadata now includes available_formats.",
-                "Project-level validation tested on real tenant/project data."
+                "Per-asset traceability map computed on demand.",
+                "Stacked progress bar shows mapping coverage at a glance.",
+                "PII column markers surfaced in the detail view.",
+                "Transformation hints extracted from understanding payload.",
+                "Results cached in Supabase for fast retrieval."
             ],
-            icon: <Cpu className="text-cyan-400" />,
+            icon: <GitCompare className="text-cyan-400" />,
             color: "from-cyan-500/10 to-transparent"
         },
         {
-            sprint: "Since v4.0",
-            title: "Trust-First Discovery Validation",
-            description: "Discovery cross-check now behaves as recommendation, while preserving user intent and known project context.",
+            sprint: "v4.4 → v4.5",
+            title: "Intelligent Reengineering Mode",
+            description: "A third post-drafting mode that consolidates repeated patterns across assets — shared dimensions, common ingestion paths, reusable transformations.",
             features: [
-                "Detected technology ranking now prioritizes dominant evidence (frequency-based).",
-                "Manual source-tech selection is explicitly preserved as a valid decision.",
-                "Conflict messaging reframed from hard override to guided recommendation.",
-                "Category taxonomy standardized to English across UI and API.",
-                "Hydration and UX noise reduced during reset/re-run workflows."
+                "Consolidation manifest links source assets to shared outputs.",
+                "Agent C produces consolidated artifacts with traceability.",
+                "Agent F validates consolidation explainability and business key preservation.",
+                "Medallion Bronze/Silver/Gold contract enforced end-to-end.",
+                "Mode selector exposed in Drafting stage settings."
             ],
-            icon: <MessagesSquare className="text-emerald-400" />,
+            icon: <Cpu className="text-yellow-400" />,
+            color: "from-yellow-500/10 to-transparent"
+        },
+        {
+            sprint: "v4.0 → v4.5",
+            title: "Gap Workspace + Governance Suite",
+            description: "A structured workspace for capturing, resolving and tracking gaps and decisions found during Governance review.",
+            features: [
+                "Gap items with status, owner, priority and resolution notes.",
+                "Linked to Governance stage — accessible from the sidebar.",
+                "Executive Summary panel with readiness signals.",
+                "Audit checks and quality metrics in dedicated sections.",
+                "Zero-hardcode prompt architecture with tenant-scoped configuration."
+            ],
+            icon: <Shield className="text-emerald-400" />,
             color: "from-emerald-500/10 to-transparent"
         }
     ];
@@ -89,7 +106,7 @@ export default function NewsCenter({ isOpen, onClose }: NewsCenterProps) {
                         </button>
                     </div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                        Top updates delivered from v4.0 to now.
+                        Top updates from v4.0 → v4.5
                     </p>
                 </div>
 

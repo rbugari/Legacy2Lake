@@ -98,7 +98,7 @@ def knowledge_service():
         ))
     ))
     
-    service.client = mock_client
+    service.db.client = mock_client
     
     return service
 

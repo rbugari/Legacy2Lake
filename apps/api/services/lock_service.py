@@ -21,6 +21,7 @@ LOCK_TIMEOUTS = {
     "refinement": 120,
     "certification": 45,
     "governance": 20,
+    "matrix_test": 720,
     "default": 30
 }
 
@@ -250,9 +251,8 @@ class LockService:
                 .eq('project_id', project_id)\
                 .eq('process_type', process_type)\
                 .eq('status', 'active')\
-                .single()\
                 .execute()
-            return result.data if result.data else None
+            return result.data[0] if result.data else None
         except Exception:
             # No active lock found
             return None

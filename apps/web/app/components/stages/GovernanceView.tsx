@@ -22,6 +22,7 @@ import UnifiedLogViewer from '../UnifiedLogViewer';
 import { useConfirm } from '@/app/hooks/useConfirm';
 import ExecutiveSummaryPanel from '../ExecutiveSummaryPanel';
 import GapWorkspace from '../GapWorkspace';
+import TraceabilityPanel from '../TraceabilityPanel';
 
 const GOVERNANCE_AGENTS = [
     { id: 'F', name: 'Agent F (Critic)', role: 'Compliance & code quality audit' },
@@ -414,6 +415,13 @@ export default function GovernanceView({
                 {activeSection === 'gaps' && (
                     <div className="max-w-4xl mx-auto h-full overflow-auto p-6">
                         <GapWorkspace projectId={projectId} />
+                    </div>
+                )}
+
+                {/* v4.5: Traceability Review */}
+                {activeSection === 'traceability' && (
+                    <div className="max-w-4xl mx-auto h-full overflow-auto p-6">
+                        <TraceabilityPanel projectId={projectId} />
                     </div>
                 )}
 

@@ -9,6 +9,7 @@ This index points to the documents that describe the current operating model of 
 ## Canonical Docs
 
 - [README](C:\proyectos_dev\UTM\README.md)
+- [Business Summary v4.0 -> v4.4](C:\proyectos_dev\UTM\docs\BUSINESS_SUMMARY_V4_0_TO_V4_4.md)
 - [Introduction](C:\proyectos_dev\UTM\docs\INTRODUCTION.md)
 - [Installation](C:\proyectos_dev\UTM\docs\INSTALL.md)
 - [Environment Vs Database](C:\proyectos_dev\UTM\docs\ENV_VS_DATABASE.md)

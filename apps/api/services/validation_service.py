@@ -574,7 +574,7 @@ class ValidationService:
             (r'\b(hive_metastore\.|main\.|bronze_raw\.|silver_curated\.|gold_business\.)', "hardcoded_table_reference"),
             (r'["\"](?:/mnt/|abfss://|s3://|gs://)[^"\"]*["\"]', "hardcoded_storage_path"),
             (r'\bsaveAsTable\(\s*["\"][^"\"]+["\"]\s*\)', "hardcoded_saveastable"),
-            (r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', "hardcoded_config_default"),
+            (r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)(?!_(?:format|mode|type|strategy|encoding|compression|version|delimiter|charset))[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', "hardcoded_config_default"),
         ]
 
         bad_lines: List[str] = []
@@ -585,7 +585,7 @@ class ValidationService:
             # Allow dynamic config-based resolution in direct mode, but not invented literal defaults.
             if (
                 ("config.get(" in line or "cfg.get(" in line)
-                and not re.search(r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', line)
+                and not re.search(r'\b(?:config|cfg)\.get\(\s*["\"][^"\"]*(?:catalog|schema|table|path|object|source|target)(?!_(?:format|mode|type|strategy|encoding|compression|version|delimiter|charset))[^"\"]*["\"]\s*,\s*["\"][^"\"]+["\"]\s*\)', line)
             ):
                 continue
 

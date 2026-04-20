@@ -78,7 +78,7 @@ def test_classify_ssis_file(qa_service):
     item = {"name": "Package1.dtsx", "size": 1024, "lines": 200}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "migrable"
+    assert category == "migratable"
     assert tech == "SSIS"
 
 
@@ -87,7 +87,7 @@ def test_classify_datastage_file(qa_service):
     item = {"name": "Job1.dsx", "size": 2048, "lines": 350}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "migrable"
+    assert category == "migratable"
     assert tech == "DataStage"
 
 
@@ -96,13 +96,13 @@ def test_classify_pentaho_files(qa_service):
     # Job file
     item1 = {"name": "extract_data.kjb", "size": 1024, "lines": 150}
     category1, tech1 = qa_service._classify_file(item1)
-    assert category1 == "migrable"
+    assert category1 == "migratable"
     assert tech1 == "Pentaho"
     
     # Transformation file
     item2 = {"name": "transform.ktr", "size": 1024, "lines": 200}
     category2, tech2 = qa_service._classify_file(item2)
-    assert category2 == "migrable"
+    assert category2 == "migratable"
     assert tech2 == "Pentaho"
 
 
@@ -111,7 +111,7 @@ def test_classify_informatica_file(qa_service):
     item = {"name": "workflow.pmx", "size": 1500, "lines": 300}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "migrable"
+    assert category == "migratable"
     assert tech == "Informatica"
 
 
@@ -120,7 +120,7 @@ def test_classify_sql_file(qa_service):
     item = {"name": "schema.sql", "size": 4096, "lines": 180}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "soporte"
+    assert category == "support"
     assert tech == "SQL"
 
 
@@ -129,7 +129,7 @@ def test_classify_csv_file(qa_service):
     item = {"name": "data.csv", "size": 512, "lines": 50}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "soporte"
+    assert category == "support"
     assert tech is None
 
 
@@ -138,13 +138,13 @@ def test_classify_documentation_file(qa_service):
     # Markdown
     item1 = {"name": "README.md", "size": 256, "lines": 30}
     category1, tech1 = qa_service._classify_file(item1)
-    assert category1 == "documentacion"
+    assert category1 == "documentation"
     assert tech1 is None
     
     # Text file
     item2 = {"name": "notes.txt", "size": 128, "lines": 15}
     category2, tech2 = qa_service._classify_file(item2)
-    assert category2 == "documentacion"
+    assert category2 == "documentation"
     assert tech2 is None
 
 
@@ -153,7 +153,7 @@ def test_classify_unrecognized_file(qa_service):
     item = {"name": "random.xyz", "size": 64, "lines": 0}
     category, tech = qa_service._classify_file(item)
     
-    assert category == "no_reconocido"
+    assert category == "unrecognized"
     assert tech is None
 
 
@@ -195,14 +195,14 @@ def test_estimate_complexity_no_lines(qa_service):
 
 def test_calculate_score_all_migrable(qa_service):
     """Test score when all files are migrable (score=100)"""
-    breakdown = {"migrable": 5, "soporte": 0, "documentacion": 0, "no_reconocido": 0}
+    breakdown = {"migratable": 5, "support": 0, "documentation": 0, "unrecognized": 0}
     score = qa_service._calculate_score(breakdown, total=5)
     assert score == 100
 
 
 def test_calculate_score_mixed(qa_service):
     """Test score with mixed file types"""
-    breakdown = {"migrable": 3, "soporte": 2, "documentacion": 1, "no_reconocido": 1}
+    breakdown = {"migratable": 3, "support": 2, "documentation": 1, "unrecognized": 1}
     total = 7
     # Formula: (3*4 + 2*2 + 1*1 + 1*0) / (7*4) * 100 = 17/28 * 100 = 60.7 ≈ 60
     score = qa_service._calculate_score(breakdown, total)
@@ -211,7 +211,7 @@ def test_calculate_score_mixed(qa_service):
 
 def test_calculate_score_no_migrable(qa_service):
     """Test score when no migrable files (low score)"""
-    breakdown = {"migrable": 0, "soporte": 2, "documentacion": 3, "no_reconocido": 0}
+    breakdown = {"migratable": 0, "support": 2, "documentation": 3, "unrecognized": 0}
     total = 5
     # Formula: (0*4 + 2*2 + 3*1 + 0*0) / (5*4) * 100 = 7/20 * 100 = 35
     score = qa_service._calculate_score(breakdown, total)
@@ -220,7 +220,7 @@ def test_calculate_score_no_migrable(qa_service):
 
 def test_calculate_score_empty(qa_service):
     """Test score with no files (should return 0)"""
-    breakdown = {"migrable": 0, "soporte": 0, "documentacion": 0, "no_reconocido": 0}
+    breakdown = {"migratable": 0, "support": 0, "documentation": 0, "unrecognized": 0}
     score = qa_service._calculate_score(breakdown, total=0)
     assert score == 0
 
@@ -256,16 +256,16 @@ def test_semaforo_red(qa_service):
 
 def test_identify_blockers_no_migrable(qa_service):
     """Test blocker: no migrable files"""
-    breakdown = {"migrable": 0, "soporte": 5, "documentacion": 2, "no_reconocido": 1}
+    breakdown = {"migratable": 0, "support": 5, "documentation": 2, "unrecognized": 1}
     blockers = qa_service._identify_blockers(breakdown, total=8)
     
     assert len(blockers) > 0
-    assert any("No migrable files" in b for b in blockers)
+    assert any("No migratable files" in b for b in blockers)
 
 
 def test_identify_blockers_too_many_unrecognized(qa_service):
     """Test blocker: >70% unrecognized files"""
-    breakdown = {"migrable": 1, "soporte": 0, "documentacion": 1, "no_reconocido": 8}
+    breakdown = {"migratable": 1, "support": 0, "documentation": 1, "unrecognized": 8}
     blockers = qa_service._identify_blockers(breakdown, total=10)
     
     assert len(blockers) > 0
@@ -274,7 +274,7 @@ def test_identify_blockers_too_many_unrecognized(qa_service):
 
 def test_identify_blockers_missing_support(qa_service):
     """Test blocker: migrable files but no support files"""
-    breakdown = {"migrable": 3, "soporte": 0, "documentacion": 1, "no_reconocido": 0}
+    breakdown = {"migratable": 3, "support": 0, "documentation": 1, "unrecognized": 0}
     blockers = qa_service._identify_blockers(breakdown, total=4)
     
     assert len(blockers) > 0
@@ -283,7 +283,7 @@ def test_identify_blockers_missing_support(qa_service):
 
 def test_identify_blockers_none(qa_service):
     """Test no blockers when project is viable"""
-    breakdown = {"migrable": 5, "soporte": 2, "documentacion": 1, "no_reconocido": 0}
+    breakdown = {"migratable": 5, "support": 2, "documentation": 1, "unrecognized": 0}
     blockers = qa_service._identify_blockers(breakdown, total=8)
     
     # Since score would be high, this test shouldn't call _identify_blockers
@@ -297,7 +297,7 @@ def test_identify_blockers_none(qa_service):
 
 def test_build_summary(qa_service):
     """Test LLM summary generation"""
-    breakdown = {"migrable": 3, "soporte": 2, "documentacion": 1, "no_reconocido": 0}
+    breakdown = {"migratable": 3, "support": 2, "documentation": 1, "unrecognized": 0}
     techs = {"SSIS", "SQL"}
     
     summary = qa_service._build_summary(breakdown, techs, total=6, lines=1000)
@@ -311,7 +311,7 @@ def test_build_summary(qa_service):
 
 def test_build_summary_no_techs(qa_service):
     """Test summary when no technologies detected"""
-    breakdown = {"migrable": 0, "soporte": 2, "documentacion": 1, "no_reconocido": 2}
+    breakdown = {"migratable": 0, "support": 2, "documentation": 1, "unrecognized": 2}
     techs = set()
     
     summary = qa_service._build_summary(breakdown, techs, total=5, lines=100)
@@ -330,33 +330,37 @@ async def test_assess_complete_flow(qa_service, mock_manifest):
     # Mock DiscoveryService.generate_manifest
     with patch('apps.api.services.quick_assessment_service.DiscoveryService') as mock_discovery:
         mock_discovery.generate_manifest.return_value = mock_manifest
-        
-        # Mock LLM opinion (optional, can fail gracefully)
-        with patch.object(qa_service, '_get_llm_opinion', return_value=None):
-            
-            result = await qa_service.assess("test-project-123")
-            
-            # Verify result structure
-            assert isinstance(result, QuickAssessmentResult)
-            assert result.score >= 0 and result.score <= 100
-            assert result.semaforo in ["green", "yellow", "red"]
-            assert result.total_files == 8
-            assert len(result.file_details) == 8
-            
-            # Verify breakdown
-            assert result.file_breakdown["migrable"] == 3  # 3 SSIS files
-            assert result.file_breakdown["soporte"] == 3  # SQL, CSV, JSON
-            assert result.file_breakdown["documentacion"] == 1  # MD
-            assert result.file_breakdown["no_reconocido"] == 1  # XYZ
-            
-            # Verify technologies detected
-            assert "SSIS" in result.detected_techs
-            assert "SQL" in result.detected_techs
-            
-            # Verify file details
-            ssis_files = [f for f in result.file_details if f.category == "MIGRABLE"]
-            assert len(ssis_files) == 3
-            assert all(f.detected_tech == "SSIS" for f in ssis_files)
+
+        with patch.object(qa_service.db, 'get_project_metadata', new_callable=AsyncMock) as mock_meta:
+            mock_meta.return_value = None
+            with patch.object(qa_service.db, 'get_project_settings', new_callable=AsyncMock) as mock_settings:
+                mock_settings.return_value = {}
+                with patch.object(qa_service, '_get_llm_opinion', new_callable=AsyncMock) as mock_llm:
+                    mock_llm.return_value = None
+
+                    result = await qa_service.assess("test-project-123")
+
+                    # Verify result structure
+                    assert isinstance(result, QuickAssessmentResult)
+                    assert result.score >= 0 and result.score <= 100
+                    assert result.semaforo in ["green", "yellow", "red"]
+                    assert result.total_files == 8
+                    assert len(result.file_details) == 8
+
+                    # Verify breakdown
+                    assert result.file_breakdown["migratable"] == 3  # 3 SSIS files
+                    assert result.file_breakdown["support"] == 3  # SQL, CSV, JSON
+                    assert result.file_breakdown["documentation"] == 1  # MD
+                    assert result.file_breakdown["unrecognized"] == 1  # XYZ
+
+                    # Verify technologies detected
+                    assert "SSIS" in result.detected_techs
+                    assert "SQL" in result.detected_techs
+
+                    # Verify file details
+                    ssis_files = [f for f in result.file_details if f.category == "MIGRATABLE"]
+                    assert len(ssis_files) == 3
+                    assert all(f.detected_tech == "SSIS" for f in ssis_files)
 
 
 @pytest.mark.asyncio
@@ -365,14 +369,18 @@ async def test_assess_with_llm_opinion(qa_service, mock_manifest):
     
     with patch('apps.api.services.quick_assessment_service.DiscoveryService') as mock_discovery:
         mock_discovery.generate_manifest.return_value = mock_manifest
-        
-        # Mock LLM returning opinion
+
         mock_llm_opinion = "This is a standard SSIS migration scenario. Low risk. Proceed with confidence."
-        with patch.object(qa_service, '_get_llm_opinion', return_value=mock_llm_opinion):
-            
-            result = await qa_service.assess("test-project-123")
-            
-            assert result.llm_opinion == mock_llm_opinion
+        with patch.object(qa_service.db, 'get_project_metadata', new_callable=AsyncMock) as mock_meta:
+            mock_meta.return_value = None
+            with patch.object(qa_service.db, 'get_project_settings', new_callable=AsyncMock) as mock_settings:
+                mock_settings.return_value = {}
+                with patch.object(qa_service, '_get_llm_opinion', new_callable=AsyncMock) as mock_llm:
+                    mock_llm.return_value = mock_llm_opinion
+
+                    result = await qa_service.assess("test-project-123")
+
+                    assert result.llm_opinion == mock_llm_opinion
 
 
 @pytest.mark.asyncio
@@ -380,13 +388,17 @@ async def test_assess_empty_folder(qa_service):
     """Test assessment when no files found (should raise ValueError)"""
     
     empty_manifest = {"file_inventory": []}
-    
+
     with patch('apps.api.services.quick_assessment_service.DiscoveryService') as mock_discovery:
         mock_discovery.generate_manifest.return_value = empty_manifest
-        
-        with pytest.raises(ValueError, match="No files found"):
-            await qa_service.assess("empty-project")
 
+        with patch.object(qa_service.db, 'get_project_metadata', new_callable=AsyncMock) as mock_meta:
+            mock_meta.return_value = None
+            with patch.object(qa_service.db, 'get_project_settings', new_callable=AsyncMock) as mock_settings:
+                mock_settings.return_value = {}
+
+                with pytest.raises(ValueError, match="No files found"):
+                    await qa_service.assess("empty-project")
 
 # ================================================================
 # RUN TESTS

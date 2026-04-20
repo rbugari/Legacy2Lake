@@ -1,5 +1,97 @@
 # Release Notes
 
+## Version 4.5.0 - Project Intelligence Assistant + Readiness Suite - 2026-04-16
+
+### 1. Project Intelligence Assistant — Chat History Persistence
+
+**New DB tables:** `utm_project_chat_threads` and `utm_project_chat_messages`  
+- Every question/answer pair is persisted with `role`, `intent`, `confidence` and `question`/`answer`
+- Thread versioning: each triage rerun increments `thread_version` — old context is preserved for audit, new chats go to a new thread
+- `ProjectAssistantService` gains: `_get_or_create_thread()`, `_persist_exchange()`, `get_history()`, `clear_history()`, `reset_for_triage_rerun()`
+- `chat()` method now persists automatically (non-blocking, does not fail the LLM call)
+
+**New API endpoints:**
+- `GET  /projects/{project_id}/assistant/history` — returns conversation pairs for the active thread
+- `DELETE /projects/{project_id}/assistant/history` — clears all messages and opens a fresh thread
+
+**Frontend — `ProjectAssistantModal.tsx`:**
+- History is loaded from the API on modal open (hydrates the chat window with previous exchanges)
+- "Clear History" button (Trash2 icon) calls the DELETE endpoint; disabled when empty or loading
+- `RefreshCw` icon replaced with `Trash2` for semantic clarity
+
+**Triage reset hook (`triage.py`):**
+- After a project reaches `TRIAGED` status, `reset_for_triage_rerun()` is called automatically
+- Injected with full import fallback; errors are logged but never fail the triage run
+
+---
+
+### 2. Traceability Review
+
+**New DB table:** `utm_asset_traceability` (from `v4.5_chat_history_and_traceability.sql`)
+
+**New service: `TraceabilityService`** (`apps/api/services/traceability_service.py`)
+- Builds a field-level and table-level traceability map per asset
+- Data sources: `utm_asset_columns`, `utm_table_impacts`, `utm_objects`, `utm_code_validations`
+- Status classification:
+  - `PRESERVED` — exact column/table match found in generated output
+  - `INFERRED`  — matched by substring or rename pattern
+  - `CHANGED`   — explicit transformation found in `understanding_payload`
+  - `UNRESOLVED` — no match in generated output
+- Computes overall asset status: `FULLY_MAPPED`, `MAPPED_WITH_CHANGES`, `MOSTLY_MAPPED`, `REQUIRES_REVIEW`, `NO_TARGET_OUTPUT`
+- Results cached in `utm_asset_traceability` for fast retrieval
+
+**New API endpoints:**
+- `GET /projects/{project_id}/traceability`             — list cached summaries for all assets
+- `GET /projects/{project_id}/traceability/{asset_id}` — build (or rebuild) traceability for one asset
+
+**Frontend — `TraceabilityPanel.tsx`:**
+- Lists all cached asset statuses with stacked progress bars (preserved/inferred/changed/unresolved)
+- Click an asset → slide-out modal with full column and table entry tables
+- PII column markers, note tooltips, collapsible section headers
+- Real-time recompute on click (always reads latest data)
+
+**GovernanceView.tsx:**
+- New sidebar section `"Traceability Review"` (stage 4) with `GitCompare` icon
+- Renders `TraceabilityPanel` at `activeSection === 'traceability'`
+
+---
+
+### 3. Gap Workspace (confirmed complete from v4.4 work)
+
+- `GapWorkspace.tsx` was already wired in `GovernanceView.tsx` at `activeSection === 'gaps'`
+- No changes needed — DoD item closed
+
+---
+
+### DB Migration
+
+File: `migrations/v4.5_chat_history_and_traceability.sql`
+
+Tables:
+- `utm_project_chat_threads` — thread versioning per project
+- `utm_project_chat_messages` — per-message persistence with role, intent, question, answer, confidence
+- `utm_asset_traceability` — cached traceability map per project + asset (UNIQUE key)
+
+All tables include RLS policies and GRANT statements consistent with prior migrations.
+
+---
+
+### DoD Status
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | DB migration: chat threads + messages + traceability | ✅ |
+| 2 | Backend: history persistence in ProjectAssistantService | ✅ |
+| 3 | Backend: GET/DELETE history endpoints | ✅ |
+| 4 | Backend: triage rerun resets chat thread | ✅ |
+| 5 | Frontend: history load on open + clear history button | ✅ |
+| 6 | Backend: TraceabilityService with 4-status classification | ✅ |
+| 7 | Backend: traceability router + main.py registration | ✅ |
+| 8 | Frontend: TraceabilityPanel + GovernanceView wiring | ✅ |
+| 9 | Release Notes v4.5 | ✅ |
+
+---
+
 ## Version 4.4.3 - DoD Closure: Frontend Tests + Prompt Reengineering Documentation - 2026-04-15
 
 ### Frontend Automated Coverage (DoD Item 1)

@@ -68,6 +68,27 @@ Use when:
 - testing direct outputs
 - checking end-to-end behavior against a real fixture
 
+### `run_project_target_matrix.py`
+
+Runs the same project against multiple target outputs using the live API and captures more than UI state:
+
+- resets downstream stages while preserving Triage files
+- updates both `target_tech` and registry `target_stack`
+- starts Drafting and waits on execution logs + project status
+- starts Refinement and waits on execution logs + project status
+- downloads the generated file tree from storage via `/projects/{id}/files`
+- downloads textual artifact contents via `/projects/{id}/files/content`
+- supports `drafting_delivery`, `structured_refinement`, and `intelligent_reengineering`
+- supports a boolean JSON matrix file to enable/disable target + mode combinations
+- downloads delivery/governance ZIP bundles per combination and packages the full run into one ZIP
+- writes per-target snapshots under `test_results/target_matrix/<timestamp>/`
+
+Use when:
+
+- comparing one project across many target cartridges
+- validating real generated artifacts in storage, not only logs
+- collecting evidence for Drafting + Refinement quality by target
+
 ## Workflow
 
 Typical prompt workflow:
@@ -84,6 +105,24 @@ Typical SSIS validation workflow:
 Or run a single end-to-end command:
 
 1. run `run_ssis_full_pipeline.py --tenant-id <tenant_uuid>`
+
+Target matrix workflow:
+
+1. ensure backend API is running
+2. choose a project with Triage already prepared
+3. run `run_project_target_matrix.py --project-id <project> --tenant-id <tenant_uuid> --targets snowflake_sql ms_fabric_sql bigquery pyspark`
+4. inspect `matrix_summary.json` plus each target folder under `test_results/target_matrix/`
+
+Matrix config workflow:
+
+1. copy `scripts/target_matrix_config.example.json`
+2. set `project_id`, activate `true/false` only for the canonical target ids from the catalog (`aws`, `databricks`, `dbt`, `gcp`, `ms_fabric`, `ms_fabric_sql`, `pyspark`, `salesforce`, `snowflake`, `snowflake_sql`), and toggle global post-drafting modes
+3. run `run_project_target_matrix.py --config-file scripts/target_matrix_config.example.json`
+4. download or inspect the final bundled ZIP stored under the run folder
+
+Detailed reference:
+
+1. see [docs/technical/target_matrix_tests.md](docs/technical/target_matrix_tests.md)
 
 ## Cleanup Policy
 

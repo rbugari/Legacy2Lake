@@ -402,6 +402,19 @@ class LibrarianService:
         
         logger.debug(f"Parsing with dialect: {dialect}", "Librarian")
 
+        # MySQL/MariaDB projects often include routines and DELIMITER blocks in the same
+        # files as CREATE TABLE statements. Parsing only CREATE TABLE statements first
+        # avoids noisy false parse errors while keeping schema extraction deterministic.
+        if dialect == "mysql":
+            recovered = self._parse_create_table_statements(ddl_content, dialect)
+            if recovered:
+                logger.debug(
+                    f"MySQL CREATE TABLE parser extracted {len(recovered)} table(s)",
+                    "Librarian",
+                )
+                tables.update(recovered)
+                return tables
+
         try:
             for expression in sqlglot.parse(ddl_content, read=dialect):
                 if isinstance(expression, exp.Create):
@@ -409,7 +422,7 @@ class LibrarianService:
                     if table_def:
                         tables[table_def["name"]] = table_def
         except Exception as e:
-            logger.error(f"SQLGlot Parse Error ({dialect}): {e}", "Librarian")
+            logger.warning(f"SQLGlot parse warning ({dialect}): {e}", "Librarian")
 
             # For MySQL/MariaDB mixed scripts (DDL + routines), salvage CREATE TABLE statements
             # individually so one invalid routine block does not drop all table metadata.

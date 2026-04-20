@@ -103,7 +103,7 @@ class QuickAssessmentService:
         project_name = project_id
         project_meta: Dict[str, Any] = {}
         if "-" in project_id:  # UUID format
-            project_meta = await self.db.get_project_metadata(project_id)
+            project_meta = await self.db.get_project_metadata(project_id) or {}
             if project_meta:
                 project_name = project_meta["name"]
                 logger.info(

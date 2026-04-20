@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import contextlib
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from langchain_openai import AzureChatOpenAI
@@ -132,6 +133,29 @@ class AgentCService:
                 base_url=config["endpoint"],
                 temperature=config.get("temperature", 0)
             )
+
+    async def _ainvoke_with_cancellation(self, llm, messages, project_id: Optional[str], poll_seconds: float = 2.0):
+        """Invoke LLM while polling cancellation flag so stop requests can interrupt long calls."""
+        if not project_id:
+            return await llm.ainvoke(messages)
+
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        invoke_task = asyncio.create_task(llm.ainvoke(messages))
+
+        try:
+            while True:
+                done, _ = await asyncio.wait({invoke_task}, timeout=poll_seconds)
+                if invoke_task in done:
+                    return invoke_task.result()
+
+                if await db.check_cancellation(project_id):
+                    invoke_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await invoke_task
+                    raise RuntimeError("Process cancelled by user")
+        finally:
+            if not invoke_task.done():
+                invoke_task.cancel()
 
     async def _load_prompt(self) -> str:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
@@ -330,6 +354,115 @@ class AgentCService:
                     return normalized
 
         return None
+
+    @staticmethod
+    def _build_parameter_aliases(
+        parameters_context: Optional[Dict[str, Any]],
+        execution_layer: str,
+    ) -> Dict[str, Any]:
+        """Expose flat aliases commonly used by cartridges/prompts.
+
+        This is a compatibility layer only: it does not alter source-of-truth
+        parameters, it only surfaces equivalent keys to improve template fill.
+        """
+        params = parameters_context or {}
+        layer = str(execution_layer or "direct").lower()
+
+        return {
+            "catalog": params.get("catalog_name", "main"),
+            "source_schema": params.get("bronze_schema", "bronze_raw"),
+            "target_schema": params.get(f"{layer}_schema", layer),
+            "bronze_schema": params.get("bronze_schema", "bronze_raw"),
+            "silver_schema": params.get("silver_schema", "silver_curated"),
+            "gold_schema": params.get("gold_schema", "gold_business"),
+            "bronze_path": params.get("bronze_path", "/mnt/datalake/bronze"),
+            "silver_path": params.get("silver_path", "/mnt/datalake/silver"),
+            "gold_path": params.get("gold_path", "/mnt/datalake/gold"),
+            "bronze_prefix": params.get("bronze_prefix", "raw_"),
+            "silver_prefix": params.get("silver_prefix", "stg_"),
+            "gold_prefix": params.get("gold_prefix", ""),
+            "tech_stack": params.get("tech_stack"),
+        }
+
+    @staticmethod
+    def _is_sql_target_engine(target_engine: Optional[str]) -> bool:
+        return AgentCService._resolve_target_output_family(target_engine) == "sql"
+
+    @staticmethod
+    def _is_pyspark_target_engine(target_engine: Optional[str]) -> bool:
+        return AgentCService._resolve_target_output_family(target_engine) == "pyspark"
+
+    @staticmethod
+    def _resolve_target_output_family(target_engine: Optional[str]) -> Optional[str]:
+        """Classify the target into the output family expected by cartridges/prompts."""
+        try:
+            from apps.api.services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+        except ImportError:
+            try:
+                from services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+            except ImportError:
+                from .refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+
+        contract = resolve_contract(target_engine)
+        if contract:
+            return "pyspark" if contract.sql_flavor == SQLFlavor.PYSPARK else "sql"
+
+        normalized = normalize_tech_stack(str(target_engine or "").lower()) or str(target_engine or "").lower()
+        if normalized in {"pyspark", "spark", "ms_fabric", "snowflake"}:
+            return "pyspark"
+        if normalized:
+            return "sql"
+        return None
+
+    @classmethod
+    def _extract_generated_code_for_target(
+        cls,
+        raw_result: Dict[str, Any],
+        target_engine: Optional[str],
+    ) -> tuple[str, str]:
+        """Prefer the target-matching code field and avoid cross-language ambiguity."""
+        if cls._is_sql_target_engine(target_engine):
+            if raw_result.get("sql_code"):
+                return raw_result.get("sql_code") or "", "sql_code"
+            if raw_result.get("code"):
+                return raw_result.get("code") or "", "code"
+            return raw_result.get("pyspark_code") or "", "pyspark_code"
+
+        if cls._is_pyspark_target_engine(target_engine):
+            if raw_result.get("pyspark_code"):
+                return raw_result.get("pyspark_code") or "", "pyspark_code"
+            if raw_result.get("code"):
+                return raw_result.get("code") or "", "code"
+            return raw_result.get("sql_code") or "", "sql_code"
+
+        for field_name in ("code", "pyspark_code", "sql_code"):
+            if raw_result.get(field_name):
+                return raw_result.get(field_name) or "", field_name
+        return "", "none"
+
+    @classmethod
+    def _normalize_generated_output_fields(
+        cls,
+        final_result: Dict[str, Any],
+        target_engine: Optional[str],
+    ) -> Dict[str, Any]:
+        """Keep only the language output that matches the resolved target."""
+        normalized_result = dict(final_result)
+        code_value = normalized_result.get("code")
+
+        if cls._is_pyspark_target_engine(target_engine):
+            if code_value and not normalized_result.get("pyspark_code"):
+                normalized_result["pyspark_code"] = code_value
+            normalized_result.pop("sql_code", None)
+            return normalized_result
+
+        if cls._is_sql_target_engine(target_engine):
+            if code_value and not normalized_result.get("sql_code"):
+                normalized_result["sql_code"] = code_value
+            normalized_result.pop("pyspark_code", None)
+            return normalized_result
+
+        return normalized_result
     
     def _extract_schema_from_code(self, code: str, table_name: str) -> Dict[str, Any]:
         """
@@ -690,7 +823,7 @@ class AgentCService:
                     
                     logger.info(
                         f"[AgentC Sprint9] ✅ Parameters extracted: "
-                        f"catalog={params.catalog_name}, tech={params.target_tech}",
+                        f"catalog={params.catalog_name}, tech={target_engine}",
                         "AgentC"
                     )
                 else:
@@ -990,8 +1123,11 @@ class AgentCService:
                         'layer': generation_layer,
                         'target_engine': target_engine,
                         'table_name': table_schema.table_name if hasattr(table_schema, 'table_name') else 'unknown',
-                        'columns': [col.__dict__ if hasattr(col, '__dict__') else col for col in table_schema.columns] if hasattr(table_schema, 'columns') else []
+                        'columns': [col.__dict__ if hasattr(col, '__dict__') else col for col in table_schema.columns] if hasattr(table_schema, 'columns') else [],
                     }
+
+                    # Top-level aliases used by prompt templates/cartridges
+                    context.update(self._build_parameter_aliases(parameters_context, layer))
                     
                     # Enrich context with formatted helpers
                     context = self.prompt_assembler.enrich_context(context)
@@ -1085,6 +1221,10 @@ class AgentCService:
                 if schema_context:
                     res_context.update(schema_context)
 
+                # Alias compatibility for cartridge placeholders
+                if parameters_context:
+                    res_context.update(self._build_parameter_aliases(parameters_context, layer))
+
                 # Common aliases used by direct cartridges
                 target_table = self._resolve_target_table_alias(node_data, schema_context)
                 source_table = (
@@ -1154,6 +1294,13 @@ IMPORTANT: Use the schema metadata and project parameters above to generate code
 ### FORENSIC GAPS & CONSTRAINTS ###
 {json.dumps(node_data.get('scout_assessment', {}).get('detected_gaps', []), indent=2, default=_json_serialize)}
 
+### SOURCE SCRIPT (COMPLETE ORIGINAL CODE - TRANSPILE THIS FAITHFULLY) ###
+This is the full original source code you MUST transpile. Do NOT generate a generic stub.
+Translate ALL logic: every column, every JOIN, every condition, every business rule.
+```
+{node_data.get('raw_content') or '(source code not available - use schema metadata and inputs/outputs above)'}
+```
+
 Current Task to Transpile:
 {json.dumps(node_data, indent=2, default=_json_serialize)}
 
@@ -1166,7 +1313,14 @@ Current Task to Transpile:
 Neighboring Context:
 {neighbor_context}
 
-Return the implementation in the requested JSON format (code, mapping_logic, audit_trail).
+OUTPUT CONTRACT:
+- If target is SQL, return the implementation in `sql_code` and do NOT return `pyspark_code`.
+- If target is PySpark, return the implementation in `pyspark_code` and do NOT return `sql_code`.
+- Include `code` only as a compatibility mirror of the primary implementation.
+- The implementation must faithfully transpile the provided SOURCE SCRIPT, not a 2-line generic stub.
+- Preserve procedures, temp tables, handlers, variables, joins, filters, hashes, SCD logic, control-table writes, and business transformations whenever present in the source.
+
+Return the implementation in the requested JSON format (mapping_logic, audit_trail, and the correct target-specific code field).
 """
 
         llm = await self._get_llm(project_id)
@@ -1197,12 +1351,16 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
             last_invoke_error = None
             for llm_attempt in range(1, llm_retry_attempts + 1):
                 try:
-                    response = await llm.ainvoke(messages)
+                    response = await self._ainvoke_with_cancellation(llm, messages, project_id)
                     break
                 except Exception as invoke_error:
                     last_invoke_error = invoke_error
                     error_name = type(invoke_error).__name__
                     error_text = str(invoke_error).lower()
+
+                    if "cancelled by user" in error_text:
+                        raise
+
                     is_transient = (
                         "connection error" in error_text
                         or "timeout" in error_text
@@ -1231,14 +1389,7 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
             
             try:
                 raw_result = json.loads(response.content.strip())
-                # Try multiple field names that cartridges might use
-                generated_code = (
-                    raw_result.get("code") or 
-                    raw_result.get("pyspark_code") or 
-                    raw_result.get("sql_code") or 
-                    ""
-                )
-                code_field_used = "code" if raw_result.get("code") else ("pyspark_code" if raw_result.get("pyspark_code") else ("sql_code" if raw_result.get("sql_code") else "none"))
+                generated_code, code_field_used = self._extract_generated_code_for_target(raw_result, target_engine)
                 logger.info(f"[AgentC DEBUG] Parsed as JSON, extracted '{code_field_used}' field: {len(generated_code)} chars", "AgentC")
             except Exception as e:
                 # Fallback for non-JSON responses
@@ -1539,12 +1690,35 @@ Return the implementation in the requested JSON format (code, mapping_logic, aud
                 logger.error(f"[AgentC Sprint13] Failed to persist visualization data: {e}", "AgentC")
         
         # Normalize output fields so downstream consumers always get a stable contract.
-        if final_result.get("code") and not final_result.get("pyspark_code") and target_engine in ["pyspark", "spark"]:
-            final_result["pyspark_code"] = final_result["code"]
-        if final_result.get("code") and not final_result.get("sql_code") and target_engine in ["sql", "tsql", "snowflake"]:
-            final_result["sql_code"] = final_result["code"]
+        # SQL Flavor Validation (v4.0 Contract Enforcement)
+        if generated_code and target_engine:
+            try:
+                from apps.api.services.refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+            except ImportError:
+                try:
+                    from services.refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+                except ImportError:
+                    from .refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+            
+            flavor_result = validate_sql_flavor_coverage(
+                tech_input=target_engine,
+                generated_code=generated_code,
+                layer=layer
+            )
+            
+            if flavor_result.get('issues'):
+                logger.warning(
+                    f"[AgentC v4.0] SQL Flavor Validation: {', '.join(flavor_result['issues'])}",
+                    "AgentC"
+                )
+            
+            final_result["flavor_validation"] = {
+                "flavor_expected": flavor_result.get("flavor_expected"),
+                "is_compliant": flavor_result.get("valid", False),
+                "issues": flavor_result.get("issues", [])
+            }
         
-        return final_result
+        return self._normalize_generated_output_fields(final_result, target_engine)
     # ================================================================
     # SPRINT 8.5: ORIGIN ANALYSIS HELPER METHODS
     # ================================================================

@@ -33,6 +33,7 @@ import GovernancePanel from '../GovernancePanel'; // Block 6 - Governance & Vers
 import ReactMarkdown from 'react-markdown';
 import { useConfirm } from '@/app/hooks/useConfirm';
 import ReadinessBadge from '../ReadinessBadge';
+import ProjectAssistantModal from '../ProjectAssistantModal';
 
 // Lazy mismatch badge for Grid rows
 function MismatchBadge({ projectId, objectId, onClickSchema }: { projectId: string; objectId: string; onClickSchema: () => void }) {
@@ -174,6 +175,7 @@ export default function TriageView({
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
     const [showSidebar, setShowSidebar] = useState(true);
+    const [showAssistant, setShowAssistant] = useState(false);
 
     // Release 1.1: Context State
     const [assetContexts, setAssetContexts] = useState<Record<string, StructuredContextEntry>>({});
@@ -1749,6 +1751,13 @@ export default function TriageView({
                 </div>
             </ReactFlowProvider>
             {ConfirmDialog}
+            {showAssistant && (
+                <ProjectAssistantModal
+                    projectId={projectId}
+                    projectName={projectName}
+                    onClose={() => setShowAssistant(false)}
+                />
+            )}
         </>
     );
 }

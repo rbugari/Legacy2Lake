@@ -49,7 +49,8 @@ class AgentAService:
                 azure_deployment=deployment,
                 openai_api_version=api_version,
                 api_key=key,
-                temperature=temperature
+                temperature=temperature,
+                timeout=300,
             )
         else:
             from langchain_openai import ChatOpenAI
@@ -57,7 +58,8 @@ class AgentAService:
                 model=deployment,
                 api_key=key,
                 base_url=endpoint,
-                temperature=temperature
+                temperature=temperature,
+                timeout=300,
             )
         
         

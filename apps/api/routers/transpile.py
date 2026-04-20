@@ -274,6 +274,11 @@ async def _run_orchestration_background(
         # Set status to DRAFTING before running so the orchestrator's status check passes
         await db.update_project_status(project_uuid, "DRAFTING")
         result = await orchestrator.run_full_migration(limit=limit)
+
+        if result.get("cancelled"):
+            await db.log_execution(project_uuid, "MIGRATION", "Process cancelled by user.", step="SYSTEM")
+            await db.update_project_status(project_uuid, "DRAFTING")
+            return
         
         await db.log_execution(project_uuid, "MIGRATION", f"Migration complete. Result: {result.get('status', 'success')}", step="SYSTEM")
         
@@ -281,7 +286,10 @@ async def _run_orchestration_background(
         await db.update_project_status(project_uuid, "DRAFTED")
         
     except Exception as e:
-        await db.log_execution(project_uuid, "MIGRATION", f"ERROR: {str(e)}", step="SYSTEM")
+        if "cancelled by user" in str(e).lower():
+            await db.log_execution(project_uuid, "MIGRATION", "Process cancelled by user.", step="SYSTEM")
+        else:
+            await db.log_execution(project_uuid, "MIGRATION", f"ERROR: {str(e)}", step="SYSTEM")
         await db.update_project_status(project_uuid, "DRAFTING")  # Revert on error
         # Do not re-raise from background task; keep API stable and rely on persisted logs/status.
         return
@@ -363,8 +371,15 @@ async def trigger_orchestration(
         )
     
     # === MAIN ORCHESTRATION LOGIC ===
-    # A fresh Drafting run invalidates the previous post-Drafting decision.
-    await db.clear_post_drafting_mode(project_id)
+    # Preserve post_drafting_mode by default so users can continue to Refinement
+    # after rerunning Drafting. Allow explicit reset when requested by payload.
+    reset_mode_raw = payload.get("reset_post_drafting_mode", False)
+    reset_post_drafting_mode = (
+        reset_mode_raw is True
+        or (isinstance(reset_mode_raw, str) and reset_mode_raw.strip().lower() in {"1", "true", "yes", "on"})
+    )
+    if reset_post_drafting_mode:
+        await db.clear_post_drafting_mode(project_id)
 
     # Set status to DRAFTING here synchronously so run_full_migration's status check passes
     await db.update_project_status(project_id, "DRAFTING")

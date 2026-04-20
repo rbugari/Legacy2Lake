@@ -36,11 +36,16 @@ If the execution context specifies `post_drafting_mode == "intelligent_reenginee
 **Objective**: Consolidate multiple drafted packages into reusable, target-native ELT-oriented assets. This is NOT layering—it is **architectural redesign with business entity discovery**.
 
 **Key Differences from Structured Refinement**:
-- **Consolidation Strategy**: Analyze drafted outputs across the entire project. Look for:
+
+### Consolidation Strategy
+
+Analyze drafted outputs across the entire project. Look for:
   - **Shared Dimensions**: Same logical entities (e.g., Customer, Product) appearing in multiple drafted packages → Consolidate into ONE reusable dimension.
   - **Repeated Transformations**: Same join patterns or business rules appearing in multiple packages → Extract into shared transformation modules.
   - **Common Ingestion Paths**: Multiple packages loading from the same legacy source → Consolidate into a single, optimized extraction layer.
-- **Manifest Traceability**: Every consolidated output MUST include source file traceability in comments. Example:
+### Manifest Traceability
+
+Every consolidated output MUST include source file traceability in comments. Example:
   ```
   -- REENGINEERED CONSOLIDATED ASSET
   -- Source Packages: sales_etl_2023.dtsx, sales_etl_2024.dtsx

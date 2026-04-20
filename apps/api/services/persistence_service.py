@@ -1946,6 +1946,12 @@ class SupabasePersistence:
             res = self.client.table("utm_code_validations").select("*").eq("project_id", resolved_id).order("created_at", desc=True).limit(limit).execute()
             return res.data if res.data else []
         except Exception as e:
+            err = str(e)
+            # Supabase PostgREST: table missing in schema cache.
+            # Treat as feature-not-enabled and keep UI responsive.
+            if "PGRST205" in err or "utm_code_validations" in err and "schema cache" in err:
+                print("[get_code_validations] utm_code_validations not available yet; returning empty validations")
+                return []
             print(f"Error getting code validations: {e}")
             return []
 

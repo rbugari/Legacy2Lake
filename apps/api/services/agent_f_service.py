@@ -1,5 +1,7 @@
 import os
 import json
+import asyncio
+import contextlib
 from typing import Dict, Any, List, Optional
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -61,6 +63,29 @@ class AgentFService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         return await db.get_prompt(prompt_id)
 
+    async def _ainvoke_with_cancellation(self, llm, messages, project_id: Optional[str], poll_seconds: float = 2.0):
+        """Invoke LLM while polling cancellation flag so stop requests can interrupt long calls."""
+        if not project_id:
+            return await llm.ainvoke(messages)
+
+        db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
+        invoke_task = asyncio.create_task(llm.ainvoke(messages))
+
+        try:
+            while True:
+                done, _ = await asyncio.wait({invoke_task}, timeout=poll_seconds)
+                if invoke_task in done:
+                    return invoke_task.result()
+
+                if await db.check_cancellation(project_id):
+                    invoke_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await invoke_task
+                    raise RuntimeError("Process cancelled by user")
+        finally:
+            if not invoke_task.done():
+                invoke_task.cancel()
+
     async def save_prompt(self, content: str):
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         await db.save_prompt("agent_f_critic", content)
@@ -83,19 +108,163 @@ class AgentFService:
         return normalized_layer
 
     @staticmethod
-    def _is_reasonably_executable_direct_code(generated_code: str, target_tech: str) -> bool:
+    def _resolve_target_output_family(target_tech: Optional[str]) -> Optional[str]:
+        try:
+            from apps.api.services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+        except ImportError:
+            try:
+                from services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+            except ImportError:
+                from .refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+
+        contract = resolve_contract(target_tech)
+        if contract:
+            return "pyspark" if contract.sql_flavor == SQLFlavor.PYSPARK else "sql"
+
+        normalized = normalize_tech_stack(target_tech) or str(target_tech or "").lower()
+        if normalized in {"pyspark", "spark", "ms_fabric", "snowflake"}:
+            return "pyspark"
+        if normalized:
+            return "sql"
+        return None
+
+    @classmethod
+    def _is_sql_target_family(cls, target_tech: Optional[str]) -> bool:
+        return cls._resolve_target_output_family(target_tech) == "sql"
+
+    @classmethod
+    def _is_pyspark_target_family(cls, target_tech: Optional[str]) -> bool:
+        return cls._resolve_target_output_family(target_tech) == "pyspark"
+
+    @classmethod
+    def _is_reasonably_executable_direct_code(cls, generated_code: str, target_tech: str) -> bool:
         """Use a narrow, tech-specific bar for drafting success in direct mode."""
-        normalized_target = normalize_tech_stack(target_tech) or str(target_tech or "").lower()
         code = generated_code or ""
 
-        if normalized_target != "pyspark":
+        if cls._is_pyspark_target_family(target_tech):
+            has_read = any(token in code for token in ["spark.read", ".read.table(", ".read.format(", ".read.parquet("])
+            has_write = any(token in code for token in [".write", "saveAsTable(", ".parquet(", ".save("])
+            has_config = "config.get(" in code or "globals().get(\"config\"" in code or "globals().get('config'" in code
+
+            return has_read and has_write and has_config
+
+        # SQL direct-mode drafting: accept minimally executable SQL skeletons.
+        if cls._is_sql_target_family(target_tech):
+            code_lower = code.lower()
+            has_statement = any(
+                token in code_lower
+                for token in [
+                    "create",
+                    "select",
+                    "insert",
+                    "merge",
+                    "update",
+                    "delete",
+                ]
+            )
+            has_from_or_target = " from " in code_lower or " into " in code_lower or "table" in code_lower
+            return has_statement and has_from_or_target
+
+        return False
+
+    @staticmethod
+    def _is_trivial_sql_stub(code: str) -> bool:
+        code_lower = " ".join((code or "").lower().split())
+        stub_markers = [
+            "create or replace table identifier($target_table) as select * from identifier($source_table)",
+            "create table identifier($target_table) as select * from identifier($source_table)",
+            "select * from identifier($source_table)",
+        ]
+        return any(marker in code_lower for marker in stub_markers)
+
+    @staticmethod
+    def _source_requires_procedural_fidelity(task_info: Optional[Dict[str, Any]]) -> bool:
+        raw_content = str((task_info or {}).get("raw_content") or "").lower()
+        if not raw_content:
             return False
 
-        has_read = any(token in code for token in ["spark.read", ".read.table(", ".read.format(", ".read.parquet("])
-        has_write = any(token in code for token in [".write", "saveAsTable(", ".parquet(", ".save("])
-        has_config = "config.get(" in code or "globals().get(\"config\"" in code or "globals().get('config'" in code
+        procedural_markers = [
+            "create procedure",
+            "begin",
+            "declare ",
+            "temporary table",
+            "exit handler",
+            "get diagnostics",
+            "md5(",
+            "row_count()",
+            "last_insert_id",
+            "fecha_inicio_vigencia",
+            "fecha_fin_vigencia",
+            "es_vigente",
+        ]
+        return any(marker in raw_content for marker in procedural_markers)
 
-        return has_read and has_write and has_config
+    @staticmethod
+    def _looks_like_json_envelope(text: str) -> bool:
+        candidate = str(text or "").strip()
+        if not candidate.startswith("{"):
+            return False
+
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            return False
+
+        if not isinstance(parsed, dict):
+            return False
+
+        envelope_keys = {"status", "critique", "optimized_code", "score", "raw_response", "flavor_validation"}
+        return bool(envelope_keys.intersection(parsed.keys()))
+
+    @classmethod
+    def _extract_valid_optimized_code(cls, candidate: Any, target_tech: str) -> Optional[str]:
+        if not isinstance(candidate, str):
+            return None
+
+        normalized = candidate.strip()
+        if not normalized:
+            return None
+
+        if cls._looks_like_json_envelope(normalized):
+            return None
+
+        if cls._is_sql_target_family(target_tech):
+            code_lower = normalized.lower()
+            if any(token in code_lower for token in ["select", "create", "insert", "merge", "update", "delete", "begin", "declare"]):
+                return normalized
+            return None
+
+        if cls._is_pyspark_target_family(target_tech):
+            code_lower = normalized.lower()
+            if any(token in code_lower for token in ["spark.read", "spark.sql", ".write", "from pyspark", "import pyspark", "def "]):
+                return normalized
+            return None
+
+        return normalized
+
+    @classmethod
+    def _sanitize_audit_report(cls, audit_report: Dict[str, Any], generated_code: str, target_tech: str) -> Dict[str, Any]:
+        sanitized = dict(audit_report or {})
+        critiques = sanitized.get("critique") or []
+        if isinstance(critiques, str):
+            critiques = [critiques]
+
+        candidate = sanitized.get("optimized_code")
+        valid_code = cls._extract_valid_optimized_code(candidate, target_tech)
+
+        if candidate and not valid_code:
+            critiques.append("Invalid optimized_code payload was ignored because it does not match the target code contract.")
+            sanitized["optimized_code"] = None
+        else:
+            sanitized["optimized_code"] = valid_code
+
+        if sanitized.get("status") == "IMPROVED" and not sanitized.get("optimized_code"):
+            fallback_code = cls._extract_valid_optimized_code(generated_code, target_tech)
+            if fallback_code:
+                sanitized["optimized_code"] = fallback_code
+
+        sanitized["critique"] = critiques
+        return sanitized
 
     @staticmethod
     def _is_soft_drafting_direct_critique(critique_text: str) -> bool:
@@ -187,8 +356,58 @@ class AgentFService:
             "does not read",
             "does not write",
             "unresolved placeholder",
+            "cannot compile",
+            "compile-time",
+            "invalid snowflake sql syntax",
+            "not self-contained or executable",
+            "not executable as written",
+            "not directly executable as written",
+            "not executable as a standalone",
+            "breaks the transpilation",
+            "prevents execution in the target platform",
+            "hard failure for direct mode",
+            "fails direct translation functional equivalence and runtime compliance",
+            "not valid in snowflake",
+            "not valid for snowflake",
+            "invalid for snowflake sql",
+            "invalid in snowflake",
+            "not a valid procedure signature",
+            "not provided through a valid snowflake sql procedure signature",
+            "not defined in the procedure signature",
+            "undefined identifier",
+            "last_insert_id",
         ]
         return any(p in text for p in structural_blockers)
+
+    @staticmethod
+    def _is_deferred_layer_critique(critique_text: str) -> bool:
+        """In drafting-direct mode, layer-modernization requirements are deferred to refinement."""
+        text = str(critique_text or "").lower()
+        deferred_patterns = [
+            "layer metadata",
+            "silver layer",
+            "gold layer",
+            "bronze layer",
+            "medallion",
+            "scd_2",
+            "scd2",
+            "merge",
+            "audit columns",
+            "idempotent",
+            "history preservation",
+        ]
+        return any(p in text for p in deferred_patterns)
+
+    @classmethod
+    def _sanitize_drafting_direct_critiques(cls, critiques: List[str]) -> List[str]:
+        """Keep critiques relevant to direct drafting and drop modernization-by-layer objections."""
+        cleaned = [
+            item for item in (critiques or [])
+            if not cls._is_deferred_layer_critique(item)
+        ]
+        return cleaned or [
+            "Direct drafting accepted as executable baseline; modernization requirements are deferred to refinement."
+        ]
 
     @classmethod
     def _normalize_drafting_direct_review(
@@ -198,6 +417,7 @@ class AgentFService:
         target_tech: str,
         review_layer: str,
         post_drafting_mode: Optional[str],
+        task_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Keep drafting permissive: promote REJECTED→IMPROVED when the code is
         structurally executable, contains no hardcoded literal table/schema names,
@@ -211,6 +431,12 @@ class AgentFService:
 
         if not cls._is_reasonably_executable_direct_code(generated_code, target_tech):
             return audit_report
+
+        if cls._is_sql_target_family(target_tech):
+            if cls._is_trivial_sql_stub(generated_code):
+                return audit_report
+            if cls._is_trivial_sql_stub(generated_code) and cls._source_requires_procedural_fidelity(task_info):
+                return audit_report
 
         # Code-level check: real hardcoded literals block promotion (not critique text analysis)
         if cls._code_has_literal_hardcodes(generated_code):
@@ -228,7 +454,7 @@ class AgentFService:
         normalized["status"] = "IMPROVED"
         normalized["score"] = max(int(normalized.get("score") or 0), 7)
         normalized.setdefault("optimized_code", generated_code)
-        normalized["critique"] = list(critiques) + [
+        normalized["critique"] = cls._sanitize_drafting_direct_critiques(list(critiques)) + [
             "Drafting direct normalization applied: code is executable and remaining objections are deferred to refinement."
         ]
         return normalized
@@ -296,8 +522,8 @@ class AgentFService:
         except Exception as e:
             logger.error(f"[AgentF] DB prompt load failed for {cartridge_prompt_id}: {e}. No mock will be used.", "AgentF")
         
-        # Detect code language for markdown block
-        code_lang = "sql" if any(x in target_tech for x in ["sql", "snowflake", "dbt", "bigquery", "redshift"]) else "python"
+        # Detect code language from the canonical target contract instead of string heuristics.
+        code_lang = "python" if self._is_pyspark_target_family(target_tech) else "sql"
 
         human_content = f"""
         COMPLIANCE CONTEXT:
@@ -342,7 +568,7 @@ class AgentFService:
         ]
  
         llm = await self._get_llm(project_id)
-        response = await llm.ainvoke(messages)
+        response = await self._ainvoke_with_cancellation(llm, messages, project_id)
         content = response.content.strip()
  
         if "```json" in content:
@@ -352,26 +578,65 @@ class AgentFService:
  
         try:
             parsed = json.loads(content)
-            return self._normalize_drafting_direct_review(
+
+            # Apply flavor validation to normalized audit report
+            audit_report = self._normalize_drafting_direct_review(
                 parsed,
                 generated_code,
                 target_tech,
                 review_layer,
                 post_drafting_mode,
+                task_info=task_info,
             )
+
+            # Validate SQL flavor compliance (v4.0 Contract Enforcement)
+            try:
+                from apps.api.services.refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+            except ImportError:
+                try:
+                    from services.refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+                except ImportError:
+                    from .refinement.cartridges.tech_stack_contracts import validate_sql_flavor_coverage
+
+            if generated_code and target_tech:
+                flavor_result = validate_sql_flavor_coverage(
+                    tech_input=target_tech,
+                    generated_code=generated_code,
+                    layer=review_layer,
+                )
+
+                audit_report["flavor_validation"] = {
+                    "flavor_expected": flavor_result.get("flavor_expected"),
+                    "is_compliant": flavor_result.get("valid", False),
+                    "issues": flavor_result.get("issues", []),
+                }
+
+                if flavor_result.get("issues"):
+                    existing_critiques = audit_report.get("critique", [])
+                    if isinstance(existing_critiques, str):
+                        existing_critiques = [existing_critiques]
+                    audit_report["critique"] = existing_critiques + flavor_result.get("issues", [])
+                    logger.warning(
+                        f"[AgentF v4.0] SQL Flavor Validation: {', '.join(flavor_result['issues'])}",
+                        "AgentF",
+                    )
+
+            return self._sanitize_audit_report(audit_report, generated_code, target_tech)
         except json.JSONDecodeError:
             recovered = self._recover_json_object(content)
             if recovered is not None:
-                return self._normalize_drafting_direct_review(
+                normalized = self._normalize_drafting_direct_review(
                     recovered,
                     generated_code,
                     target_tech,
                     review_layer,
                     post_drafting_mode,
+                    task_info=task_info,
                 )
+                return self._sanitize_audit_report(normalized, generated_code, target_tech)
 
             # Fallback: model returned plain optimized code instead of JSON contract.
-            inferred_code = content
+            inferred_code = self._extract_valid_optimized_code(content, target_tech)
             if inferred_code.lower().startswith("python\n"):
                 inferred_code = inferred_code.split("\n", 1)[1].strip()
 
@@ -384,10 +649,10 @@ class AgentFService:
                     "raw_response": content
                 }
 
-            return {
+            return self._sanitize_audit_report({
                 "error": "Failed to parse Agent F response as JSON",
                 "raw_response": content
-            }
+            }, generated_code, target_tech)
 
     def _recover_json_object(self, text: str) -> Optional[Dict[str, Any]]:
         """Best-effort extraction when the model wraps JSON with extra text."""
@@ -417,7 +682,7 @@ class AgentFService:
         post_drafting_mode = await db.get_post_drafting_mode(project_id) if project_id else None
         refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
         target_tech = task_info.get("tech_id", task_info.get("target_tech", "pyspark")).lower()
-        code_lang = "sql" if any(x in target_tech for x in ["sql", "snowflake", "dbt", "bigquery", "redshift"]) else "python"
+        code_lang = "python" if self._is_pyspark_target_family(target_tech) else "sql"
         
         human_content = f"""
         Please apply the following SPECIFIC optimizations to the code below:
@@ -440,7 +705,7 @@ class AgentFService:
         ]
  
         llm = await self._get_llm(project_id)
-        response = await llm.ainvoke(messages)
+        response = await self._ainvoke_with_cancellation(llm, messages, project_id)
         content = response.content.strip()
  
         if "```json" in content:

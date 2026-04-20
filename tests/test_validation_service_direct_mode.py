@@ -86,3 +86,26 @@ df.write.mode("overwrite").parquet(target_path)
 
     assert result.is_valid is False
     assert any(issue.check_name == "direct_no_hardcode" for issue in result.issues)
+
+
+def test_direct_mode_allows_format_mode_type_defaults_in_config_get():
+    """Regression: config.get("source_format", "table") must NOT be flagged as hardcode.
+    The key suffix _format/_mode/_type indicates an operational setting, not a DB object name."""
+    code = '''
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+config = globals().get("config", {})
+
+def execute_task(spark, config):
+    df = spark.read.format(config.get("source_format", "table")).load(config.get("source_path"))
+    load_mode = config.get("load_mode", "overwrite")
+    source_type = config.get("source_type", "jdbc")
+    df.write.mode(load_mode).saveAsTable(config.get("target_table"))
+    return {"status": "ok"}
+'''
+
+    validator = ValidationService()
+    result = asyncio.run(validator.validate_code(code=code, tech_id="pyspark", layer="direct"))
+
+    assert not any(issue.check_name == "direct_no_hardcode" for issue in result.issues)

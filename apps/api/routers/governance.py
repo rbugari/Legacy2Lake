@@ -222,7 +222,12 @@ async def start_refinement(
         mode = await db.get_post_drafting_mode(project_id)
         if mode == 'drafting_delivery':
             # Project chose terminal Drafting path - cannot proceeding to refinement
-            await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                "Refinement blocked: project is in drafting_delivery mode. Select a refinement-enabled mode to continue.",
+                step="SYSTEM"
+            )
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -242,7 +247,12 @@ async def start_refinement(
             pass  # Will proceed to refinement orchestration below
         elif mode is None:
             # Not yet decided - cannot proceed
-            await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                "Refinement blocked: post-drafting mode is not selected.",
+                step="SYSTEM"
+            )
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -259,7 +269,12 @@ async def start_refinement(
             )
         else:
             # Invalid mode value
-            await lock_service.release_lock(lock_id=lock_id, user_id=owner_user_id)
+            await db.log_execution(
+                project_id,
+                "REFINEMENT",
+                f"Refinement blocked: invalid post-drafting mode '{mode}'.",
+                step="SYSTEM"
+            )
             raise HTTPException(
                 status_code=400,
                 detail={

@@ -77,14 +77,23 @@ export default function CartridgePromptsEditor({ projectId }: CartridgePromptsEd
     };
 
     const getNormalizedTechId = (tech: string) => {
-        const t = tech.toLowerCase();
+        const t = tech.toLowerCase().trim();
+
+        // Match the actual cartridge families before generic labels.
+        if (t.includes('snowpark')) return 'snowflake_snowpark';
+        if (t.includes('snowflake') && (t.includes('sql') || t.includes('native'))) return 'snowflake_sql';
+        if (t.includes('snowflake')) return 'snowflake_snowpark';
+
+        if (t.includes('fabric') && (t.includes('sql') || t.includes('warehouse'))) return 'ms_fabric_sql';
+        if (t.includes('fabric')) return 'microsoft_fabric';
+
         if (t.includes('databricks')) return 'databricks';
-        if (t.includes('snowflake')) return 'snowflake';
-        if (t.includes('fabric')) return 'fabric';
         if (t.includes('bigquery')) return 'bigquery';
-        if (t.includes('redshift')) return 'redshift';
-        if (t.includes('glue')) return 'aws_glue';
+        if (t.includes('redshift')) return 'aws';
+        if (t.includes('glue')) return 'aws';
+        if (t.includes('cloudera')) return 'cloudera';
         if (t.includes('pyspark')) return 'pyspark';
+
         return t.replace(/[^a-z0-9_]/g, '_');
     };
 

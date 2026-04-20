@@ -125,6 +125,58 @@ class MigrationOrchestrator:
 
         return "direct"
 
+    @staticmethod
+    def _is_sql_target(target_tech: Optional[str]) -> bool:
+        try:
+            from apps.api.services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+        except ImportError:
+            try:
+                from services.refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+            except ImportError:
+                from .refinement.cartridges.tech_stack_contracts import SQLFlavor, resolve_contract
+
+        contract = resolve_contract(target_tech)
+        if contract:
+            return contract.sql_flavor != SQLFlavor.PYSPARK
+
+        normalized = str(target_tech or "").lower().replace(" ", "_")
+        return normalized not in {"", "pyspark", "spark", "databricks", "ms_fabric", "snowflake"}
+
+    @staticmethod
+    def _artifact_base_name(package_name: str) -> str:
+        return os.path.splitext(package_name or "")[0]
+
+    @staticmethod
+    def _get_valid_optimized_content(audit_report: Dict[str, Any], target_tech: Optional[str]) -> Optional[str]:
+        return AgentFService._extract_valid_optimized_code(
+            (audit_report or {}).get("optimized_code"),
+            str(target_tech or ""),
+        )
+
+    @classmethod
+    def _primary_artifact_filename(cls, package_name: str, target_tech: Optional[str]) -> str:
+        base_name = cls._artifact_base_name(package_name)
+        suffix = ".sql" if cls._is_sql_target(target_tech) else ".py"
+        return f"{base_name}{suffix}"
+
+    @classmethod
+    def _split_generated_content(
+        cls,
+        code_result: Dict[str, Any],
+        target_tech: Optional[str],
+    ) -> tuple[str, str, str]:
+        """Route generated output to the correct artifact lane based on target tech."""
+        generic_code = code_result.get("code", "") or ""
+        sql_code = code_result.get("sql_code", "") or ""
+        pyspark_code = code_result.get("pyspark_code", "") or ""
+
+        if cls._is_sql_target(target_tech):
+            sql_content = sql_code or generic_code
+            return "", sql_content, sql_content
+
+        notebook_content = pyspark_code or generic_code
+        return notebook_content, "", notebook_content
+
     async def _log_persistence(self, message: str, step: str = "SYSTEM"):
         """Persists a message to the database log and cloud storage log."""
         # Use UUID for DB logging if possible
@@ -353,6 +405,7 @@ class MigrationOrchestrator:
                     "business_entity": asset_meta.get("business_entity"),
                     "target_name": asset_meta.get("target_name"),
                     "metadata": asset_meta.get("metadata", {}), # Extracted XML metadata
+                    "raw_content": asset_meta.get("raw_content", ""),  # Full source script body
                     "support_intelligence": support_intel,
                     "scout_assessment": scout_assessment,
                     "source_tech": source_tech, 
@@ -368,12 +421,10 @@ class MigrationOrchestrator:
                 set_context = package_metadatas if len(package_metadatas) < 50 else [] # Limit size for tokens
                 code_result = await self.agent_c.transpile_task(task_def, set_context=set_context)
                 
-                notebook_content = code_result.get("pyspark_code", "") or code_result.get("code", "")
-                sql_content = code_result.get("sql_code", "") or code_result.get("code", "")
-                
-                # Determine which content Agent C produced and use that for Agent F
-                # Agent C returns pyspark_code for PySpark targets and sql_code for SQL targets
-                generated_code_for_review = notebook_content or sql_content
+                notebook_content, sql_content, generated_code_for_review = self._split_generated_content(
+                    code_result,
+                    tech_id_normalized,
+                )
                 
                 if not generated_code_for_review:
                     reason = code_result.get("error") or code_result.get("reason", "Empty code response")
@@ -403,14 +454,14 @@ class MigrationOrchestrator:
                 logger.info(f"Audit Status: {status} (Score: {audit_report.get('score', 0)})", "Compliance")
                 
                 # Save Artifacts
-                clean_name = pkg_name.replace(".dtsx", "")
+                clean_name = self._artifact_base_name(pkg_name)
                 if notebook_content:
                     self._save_artifact(f"{clean_name}.py", notebook_content)
                 if sql_content:
                     self._save_artifact(f"{clean_name}.sql", sql_content)
                 # If Agent F improved the code, update the relevant content
-                if status == "IMPROVED" and audit_report.get("optimized_code"):
-                    optimized = audit_report["optimized_code"]
+                optimized = self._get_valid_optimized_content(audit_report, tech_id_normalized)
+                if status == "IMPROVED" and optimized:
                     if notebook_content:
                         notebook_content = optimized
                         self._save_artifact(f"{clean_name}.py", notebook_content)
@@ -490,8 +541,9 @@ class MigrationOrchestrator:
                 # Collect sample transformations and audits
                 sample_transformations = []
                 for pkg_name in results["succeeded"][:3]:  # Sample first 3 successful packages
-                    clean_name = pkg_name.replace(".dtsx", "")
-                    code_key = f"{self.output_path.rstrip('/')}/{clean_name}.py"
+                    clean_name = self._artifact_base_name(pkg_name)
+                    code_filename = self._primary_artifact_filename(pkg_name, target_tech)
+                    code_key = f"{self.output_path.rstrip('/')}/{code_filename}"
                     audit_key = f"{self.output_path.rstrip('/')}/{clean_name}_audit.json"
                     
                     try:
@@ -579,8 +631,8 @@ class MigrationOrchestrator:
         # Calculate total lines generated
         total_lines = 0
         for pkg_name in results["succeeded"]:
-            clean_name = pkg_name.replace(".dtsx", "")
-            code_key = f"{self.output_path.rstrip('/')}/{clean_name}.py"
+            code_filename = self._primary_artifact_filename(pkg_name, target_tech)
+            code_key = f"{self.output_path.rstrip('/')}/{code_filename}"
             try:
                 code_content = self.storage.read_file(code_key)
                 if code_content:

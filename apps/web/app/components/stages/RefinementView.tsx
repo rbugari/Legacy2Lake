@@ -102,6 +102,8 @@ export default function RefinementView({
     const [isFetchingLogs, setIsFetchingLogs] = useState(false); // True while fetching logs
     const isFetchingLogsRef = useRef(false); // Prevent overlapping poll requests
     const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null);
+    const [isSavingMode, setIsSavingMode] = useState(false);
+    const [modeError, setModeError] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [profile, setProfile] = useState<any>(null);
     const [manifestSummary, setManifestSummary] = useState<any>(null);
@@ -288,6 +290,15 @@ export default function RefinementView({
 
 
     const handleRunRefinement = async () => {
+        if (!postDraftingMode) {
+            setLogs([
+                '[SYSTEM] Refinement blocked: post-drafting mode is not selected.',
+                '[SYSTEM] Open Configuration > Execution Mode and set a mode before running refinement.'
+            ]);
+            onSectionChange('mode');
+            return;
+        }
+
         if (postDraftingMode === 'drafting_delivery') {
             setLogs([
                 '[SYSTEM] Refinement unavailable for this project.',
@@ -570,6 +581,53 @@ export default function RefinementView({
 
     const canAdvanceWithoutRefinement = postDraftingMode === 'drafting_delivery';
 
+    const modeOptions = [
+        {
+            id: 'drafting_delivery',
+            title: 'Drafting Delivery',
+            subtitle: 'Terminal path to Governance',
+            details: 'Skip refinement and continue directly to certification/governance.',
+            color: 'emerald'
+        },
+        {
+            id: 'structured_refinement',
+            title: 'Structured Refinement',
+            subtitle: 'Bounded medallion optimization',
+            details: 'Refine with consistent Bronze → Silver → Gold patterns and guardrails.',
+            color: 'amber'
+        },
+        {
+            id: 'intelligent_reengineering',
+            title: 'Intelligent Reengineering',
+            subtitle: 'Advanced optimization',
+            details: 'Apply deeper architecture improvements and consolidation decisions.',
+            color: 'purple'
+        },
+    ] as const;
+
+    const handleSavePostDraftingMode = async (mode: string) => {
+        setIsSavingMode(true);
+        setModeError(null);
+        try {
+            const response = await fetchWithAuth(`projects/${projectId}/set-post-drafting-mode`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode }),
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to save post-drafting mode');
+            }
+
+            setPostDraftingMode(mode);
+        } catch (e: any) {
+            setModeError(e?.message || 'Failed to save mode');
+        } finally {
+            setIsSavingMode(false);
+        }
+    };
+
     useEffect(() => {
         if (!isFinished && logs.some(l => l.toUpperCase().includes("PIPELINE COMPLETE") || l.toUpperCase().includes("COMPLETED"))) {
             setIsFinished(true);
@@ -681,7 +739,72 @@ export default function RefinementView({
                                     >
                                         Design Settings
                                     </button>
+                                    <button
+                                        onClick={() => onSectionChange('mode')}
+                                        className="px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-white/10"
+                                    >
+                                        Execution Mode
+                                    </button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeSection === 'mode' && (
+                        <div className="max-w-7xl mx-auto h-full overflow-auto p-1">
+                            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 mb-6">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-blue-400">Configuration</p>
+                                <h3 className="mt-2 text-lg font-black text-white">Post-Drafting Execution Mode</h3>
+                                <p className="mt-2 text-sm text-gray-300">
+                                    Define how this project should behave before running refinement. You can change this anytime from this panel.
+                                </p>
+                                <p className="mt-3 text-xs text-gray-400">Current mode: <span className="font-semibold text-gray-200">{postDraftingMode || 'not selected'}</span></p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {modeOptions.map((mode) => {
+                                    const selected = postDraftingMode === mode.id;
+                                    const borderColor = mode.color === 'emerald'
+                                        ? 'border-emerald-500/40'
+                                        : mode.color === 'amber'
+                                            ? 'border-amber-500/40'
+                                            : 'border-purple-500/40';
+
+                                    const selectedRing = selected ? 'ring-2 ring-offset-2 ring-offset-[var(--background)] ring-white/40' : '';
+
+                                    return (
+                                        <button
+                                            key={mode.id}
+                                            onClick={() => handleSavePostDraftingMode(mode.id)}
+                                            disabled={isSavingMode || isRefinementRunning}
+                                            className={`text-left p-5 rounded-xl border bg-white/5 hover:bg-white/10 transition-all ${borderColor} ${selectedRing} disabled:opacity-50`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-black text-white">{mode.title}</p>
+                                                    <p className="mt-1 text-xs font-semibold text-gray-300">{mode.subtitle}</p>
+                                                </div>
+                                                {selected && <CheckCircle size={18} className="text-emerald-400 shrink-0" />}
+                                            </div>
+                                            <p className="mt-3 text-xs text-gray-400 leading-relaxed">{mode.details}</p>
+                                            <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                                                {selected ? 'Selected' : 'Click to apply'}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {modeError && (
+                                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                                    {modeError}
+                                </div>
+                            )}
+
+                            <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
+                                <p className="text-xs text-gray-400">
+                                    Tip: if you are going to execute refinement now, choose Structured Refinement or Intelligent Reengineering.
+                                </p>
                             </div>
                         </div>
                     )}
@@ -976,7 +1099,7 @@ export default function RefinementView({
 
                     {/* Code Comparison */}
                     {(activeSection === 'diff' || activeSection === 'comparison') && (
-                        <div className="flex h-full gap-4">
+                        <div className="flex h-full gap-4 min-w-0">
                             <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
                                     <h3 className="font-bold text-sm uppercase text-gray-400">Refined Files</h3>
@@ -1013,12 +1136,12 @@ export default function RefinementView({
                                 </div>
                             </div>
 
-                            <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
-                                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
-                                    <h3 className="font-bold text-sm flex items-center gap-2">
+                            <div className="flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
+                                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-3 bg-gray-50 dark:bg-gray-900/50 min-w-0">
+                                    <h3 className="font-bold text-sm flex items-center gap-2 min-w-0">
                                         <FileText size={16} className="text-purple-500" />
                                         {selectedFile ? (
-                                            <span className="flex items-center gap-2">
+                                            <span className="flex items-center gap-2 min-w-0 truncate">
                                                 {selectedFile.split(/[\\/]/).pop()}
                                                 {selectedFile.toLowerCase().includes("bronze") && <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800">🟠 BRONZE</span>}
                                                 {selectedFile.toLowerCase().includes("silver") && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600">⚪ SILVER</span>}
@@ -1026,14 +1149,14 @@ export default function RefinementView({
                                             </span>
                                         ) : "Select a file"}
                                     </h3>
-                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[300px]">{selectedFile}</span>}
+                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[300px] shrink-0">{selectedFile}</span>}
                                 </div>
 
-                                <div className="flex-1 overflow-auto relative">
+                                <div className="flex-1 min-w-0 overflow-hidden relative">
                                     {isLoadingFile ? (
                                         <div className="flex items-center justify-center h-full text-gray-500">Loading content...</div>
                                     ) : selectedFile ? (
-                                        <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+                                        <div className="h-full w-full min-w-0 overflow-auto bg-[#1e1e1e]">
                                             <SyntaxHighlighter
                                                 language={(() => {
                                                     if (selectedFile.endsWith('.py')) return 'python';
@@ -1043,9 +1166,15 @@ export default function RefinementView({
                                                     return 'text';
                                                 })()}
                                                 style={vscDarkPlus}
-                                                customStyle={{ margin: 0, padding: '1.5rem', background: 'transparent', fontSize: '13px', lineHeight: '1.5' }}
+                                                customStyle={{ margin: 0, padding: '1rem 1.25rem', background: 'transparent', fontSize: '14px', lineHeight: '1.6', minWidth: '100%', overflowX: 'auto' }}
                                                 showLineNumbers={true}
-                                                wrapLines={true}
+                                                wrapLines={false}
+                                                codeTagProps={{
+                                                    style: {
+                                                        fontFamily: 'var(--font-mono), Consolas, Monaco, "Courier New", monospace',
+                                                        whiteSpace: 'pre'
+                                                    }
+                                                }}
                                             >
                                                 {fileContent}
                                             </SyntaxHighlighter>

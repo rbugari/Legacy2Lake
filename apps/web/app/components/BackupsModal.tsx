@@ -62,7 +62,7 @@ export default function BackupsModal({ isOpen, onClose, projectId, projectName }
                 method: "DELETE"
             });
             
-            if (!res.ok) {
+            if (!res.ok && res.status !== 404) {
                 throw new Error("Failed to delete backup");
             }
             

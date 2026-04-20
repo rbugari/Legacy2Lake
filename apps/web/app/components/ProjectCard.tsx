@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Github, FolderPlus, Settings, Trash2, RefreshCw, AlertCircle, FileText, Package, Archive, Database, FolderArchive } from "lucide-react";
+import { Github, FolderPlus, Settings, Trash2, RefreshCw, AlertCircle, FileText, Package, Archive, Database, FolderArchive, Bot } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import BackupsModal from "./BackupsModal";
+import ProjectAssistantModal from "./ProjectAssistantModal";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -33,6 +34,7 @@ interface ProjectCardProps {
 
 export default function ProjectCard({ project, onDelete, onReset }: ProjectCardProps) {
     const [showBackupsModal, setShowBackupsModal] = useState(false);
+    const [showAssistant, setShowAssistant] = useState(false);
     
     const stageMap: { [key: string]: { label: string; color: string; emoji: string } } = {
         "1": { label: "DISCOVERY", color: "from-slate-500 to-slate-600", emoji: "🔭" },
@@ -203,6 +205,13 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
 
                     <div className="flex items-center gap-1">
                         <button
+                            onClick={(e) => { e.preventDefault(); setShowAssistant(true); }}
+                            className="p-2 text-[var(--text-tertiary)] hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all"
+                            title="Source Assistant"
+                        >
+                            <Bot size={18} />
+                        </button>
+                        <button
                             onClick={(e) => onReset(e, project.id)}
                             className="p-2 text-[var(--text-tertiary)] hover:text-cyan-500 hover:bg-cyan-500/10 rounded-lg transition-all"
                             title="Reset Project"
@@ -241,6 +250,14 @@ export default function ProjectCard({ project, onDelete, onReset }: ProjectCardP
                 projectId={project.id}
                 projectName={project.name}
             />
+            {/* Source Assistant Modal */}
+            {showAssistant && (
+                <ProjectAssistantModal
+                    projectId={project.id}
+                    projectName={project.name}
+                    onClose={() => setShowAssistant(false)}
+                />
+            )}
 
             <style jsx>{`
                 @keyframes shimmer {
