@@ -570,6 +570,7 @@ class SupabasePersistence:
 
             select_extended = "project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary, understanding_generated_at, understanding_version, understanding_payload"
             select_legacy = "project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active, quick_assessment, readiness_summary"
+            select_minimal = "project_id, tenant_id, name, repo_url, status, stage, prompt, settings, config, is_active"
 
             res = None
             if self._supports_understanding_columns is not False:
@@ -585,19 +586,33 @@ class SupabasePersistence:
                         "understanding_generated_at" in message
                         or "understanding_version" in message
                         or "understanding_payload" in message
+                        or "readiness_summary" in message
                     ):
                         type(self)._supports_understanding_columns = False
                     else:
                         raise
 
             if res is None:
-                query = self.client.table("utm_projects").select(select_legacy).eq("project_id", resolved_id)
-                if self.tenant_id and self.role != "ADMIN":
-                    query = query.eq("tenant_id", self.tenant_id)
-                res = query.execute()
+                try:
+                    query = self.client.table("utm_projects").select(select_legacy).eq("project_id", resolved_id)
+                    if self.tenant_id and self.role != "ADMIN":
+                        query = query.eq("tenant_id", self.tenant_id)
+                    res = query.execute()
+                except Exception as exc:
+                    message = str(exc).lower()
+                    if "readiness_summary" in message or "quick_assessment" in message:
+                        query = self.client.table("utm_projects").select(select_minimal).eq("project_id", resolved_id)
+                        if self.tenant_id and self.role != "ADMIN":
+                            query = query.eq("tenant_id", self.tenant_id)
+                        res = query.execute()
+                    else:
+                        raise
+
             if res.data:
                 item = res.data[0]
                 item["id"] = item["project_id"]
+                item.setdefault("quick_assessment", None)
+                item.setdefault("readiness_summary", None)
                 
                 # Enrich with Tech Stack for easy access
                 settings = item.get("settings") or {}
