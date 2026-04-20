@@ -23,7 +23,7 @@ try:
     # v4.0: Zero-Hardcode Core (Database-driven prompts)
     from apps.api.services.prompts.prompt_service import PromptService
     from apps.api.services.prompts.prompt_assembler import PromptAssembler
-    from apps.api.prompts.catalog import build_cartridge_prompt_id
+    from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
     # Sprint 10: Schema Evolution
     from apps.api.services.schema_version_service import SchemaVersionService
     from apps.api.services.migration_generator_service import MigrationGeneratorService, Platform
@@ -50,7 +50,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from services.prompts.prompt_service import PromptService
         from services.prompts.prompt_assembler import PromptAssembler
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
         # Sprint 10: Schema Evolution
         from services.schema_version_service import SchemaVersionService
         from services.migration_generator_service import MigrationGeneratorService, Platform
@@ -76,7 +76,7 @@ except ImportError:
         # v4.0: Zero-Hardcode Core (Database-driven prompts)
         from .prompts.prompt_service import PromptService
         from .prompts.prompt_assembler import PromptAssembler
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
         # Sprint 10: Schema Evolution
         from .schema_version_service import SchemaVersionService
         from .migration_generator_service import MigrationGeneratorService, Platform

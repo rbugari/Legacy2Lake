@@ -10,20 +10,20 @@ try:
     from apps.api.services.persistence_service import SupabasePersistence
     from apps.api.services.knowledge_service import KnowledgeService
     from apps.api.services.prompts.prompt_service import PromptService
-    from apps.api.prompts.catalog import build_cartridge_prompt_id
+    from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
 except ImportError:
     try:
         from utils.logger import logger
         from services.persistence_service import SupabasePersistence
         from services.knowledge_service import KnowledgeService
         from services.prompts.prompt_service import PromptService
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
     except ImportError:
         from ..utils.logger import logger
         from .persistence_service import SupabasePersistence
         from .knowledge_service import KnowledgeService
         from .prompts.prompt_service import PromptService
-        from apps.api.prompts.catalog import build_cartridge_prompt_id
+        from apps.api.prompts.catalog import build_cartridge_prompt_id, normalize_tech_stack
 
 
 class AgentFService:
