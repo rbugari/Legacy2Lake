@@ -286,6 +286,7 @@ class PersistenceService:
 
 class SupabasePersistence:
     _supports_understanding_columns: Optional[bool] = None
+    _supports_post_drafting_mode_columns: Optional[bool] = None
 
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None, role: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
@@ -969,6 +970,28 @@ class SupabasePersistence:
         except Exception:
             return False
 
+    async def _update_post_drafting_mode_in_config(self, resolved_id: str, mode: Optional[str], set_at: Optional[str]) -> bool:
+        query = self.client.table("utm_projects").select("config").eq("project_id", resolved_id)
+        if self.tenant_id and self.role != "ADMIN":
+            query = query.eq("tenant_id", self.tenant_id)
+
+        res = query.execute()
+        current = (res.data[0].get("config") if res.data else {}) or {}
+        updated = dict(current)
+
+        if mode is None:
+            updated.pop("post_drafting_mode", None)
+            updated.pop("post_drafting_mode_set_at", None)
+        else:
+            updated["post_drafting_mode"] = mode
+            updated["post_drafting_mode_set_at"] = set_at
+
+        update_query = self.client.table("utm_projects").update({"config": updated}).eq("project_id", resolved_id)
+        if self.tenant_id and self.role != "ADMIN":
+            update_query = update_query.eq("tenant_id", self.tenant_id)
+        update_query.execute()
+        return True
+
     # [Sprint 2] Post-Drafting Mode Branching
     async def set_post_drafting_mode(self, project_id: str, mode: str) -> bool:
         """
@@ -987,10 +1010,25 @@ class SupabasePersistence:
         try:
             from datetime import datetime, timezone
             now_iso = datetime.now(timezone.utc).isoformat()
-            self.client.table("utm_projects").update({
-                "post_drafting_mode": mode,
-                "post_drafting_mode_set_at": now_iso
-            }).eq("project_id", resolved_id).execute()
+            if self._supports_post_drafting_mode_columns is not False:
+                try:
+                    query = self.client.table("utm_projects").update({
+                        "post_drafting_mode": mode,
+                        "post_drafting_mode_set_at": now_iso
+                    }).eq("project_id", resolved_id)
+                    if self.tenant_id and self.role != "ADMIN":
+                        query = query.eq("tenant_id", self.tenant_id)
+                    query.execute()
+                    type(self)._supports_post_drafting_mode_columns = True
+                    return True
+                except Exception as e:
+                    message = str(e).lower()
+                    if "post_drafting_mode" in message or "schema cache" in message:
+                        type(self)._supports_post_drafting_mode_columns = False
+                    else:
+                        raise
+
+            await self._update_post_drafting_mode_in_config(resolved_id, mode, now_iso)
             return True
         except Exception as e:
             print(f"Error setting post_drafting_mode for {project_id}: {e}")
@@ -1003,9 +1041,30 @@ class SupabasePersistence:
             return None
         
         try:
-            res = self.client.table("utm_projects").select("post_drafting_mode").eq("project_id", resolved_id).execute()
+            if self._supports_post_drafting_mode_columns is not False:
+                try:
+                    query = self.client.table("utm_projects").select("post_drafting_mode").eq("project_id", resolved_id)
+                    if self.tenant_id and self.role != "ADMIN":
+                        query = query.eq("tenant_id", self.tenant_id)
+                    res = query.execute()
+                    type(self)._supports_post_drafting_mode_columns = True
+                    if res.data:
+                        return res.data[0].get("post_drafting_mode")
+                    return None
+                except Exception as e:
+                    message = str(e).lower()
+                    if "post_drafting_mode" in message or "schema cache" in message:
+                        type(self)._supports_post_drafting_mode_columns = False
+                    else:
+                        raise
+
+            query = self.client.table("utm_projects").select("config").eq("project_id", resolved_id)
+            if self.tenant_id and self.role != "ADMIN":
+                query = query.eq("tenant_id", self.tenant_id)
+            res = query.execute()
             if res.data:
-                return res.data[0].get("post_drafting_mode")
+                config = (res.data[0].get("config") or {})
+                return config.get("post_drafting_mode")
             return None
         except Exception as e:
             print(f"Error getting post_drafting_mode for {project_id}: {e}")
@@ -1018,10 +1077,25 @@ class SupabasePersistence:
             return False
 
         try:
-            self.client.table("utm_projects").update({
-                "post_drafting_mode": None,
-                "post_drafting_mode_set_at": None,
-            }).eq("project_id", resolved_id).execute()
+            if self._supports_post_drafting_mode_columns is not False:
+                try:
+                    query = self.client.table("utm_projects").update({
+                        "post_drafting_mode": None,
+                        "post_drafting_mode_set_at": None,
+                    }).eq("project_id", resolved_id)
+                    if self.tenant_id and self.role != "ADMIN":
+                        query = query.eq("tenant_id", self.tenant_id)
+                    query.execute()
+                    type(self)._supports_post_drafting_mode_columns = True
+                    return True
+                except Exception as e:
+                    message = str(e).lower()
+                    if "post_drafting_mode" in message or "schema cache" in message:
+                        type(self)._supports_post_drafting_mode_columns = False
+                    else:
+                        raise
+
+            await self._update_post_drafting_mode_in_config(resolved_id, None, None)
             return True
         except Exception as e:
             print(f"Error clearing post_drafting_mode for {project_id}: {e}")
