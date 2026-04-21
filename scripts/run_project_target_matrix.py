@@ -32,6 +32,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tenant-id", required=False, help="Tenant UUID valido para la API.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL de la API.")
     parser.add_argument(
+        "--role",
+        default="ADMIN",
+        choices=["COLLABORATOR", "MANAGER", "ADMIN", "VIEWER"],
+        help="Rol enviado en X-Role para ejecutar fases.",
+    )
+    parser.add_argument("--user-id", default=None, help="X-User-ID opcional.")
+    parser.add_argument("--client-id", default="target-matrix", help="X-Client-ID opcional.")
+    parser.add_argument(
         "--targets",
         nargs="*",
         default=DEFAULT_TARGETS,
@@ -147,6 +155,9 @@ def main() -> int:
         base_url=args.base_url,
         tenant_id=tenant_id,
         request_timeout_seconds=args.request_timeout_seconds,
+        role=args.role,
+        user_id=args.user_id,
+        client_id=args.client_id,
     )
     summary = runner.run_config(
         project_id=project_id,

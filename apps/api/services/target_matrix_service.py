@@ -65,6 +65,9 @@ class ApiClient:
     base_url: str
     tenant_id: str
     timeout: int
+    role: str = "ADMIN"
+    user_id: Optional[str] = None
+    client_id: Optional[str] = None
 
     def json_request(
         self,
@@ -98,7 +101,12 @@ class ApiClient:
         headers = {
             "Accept": accept,
             "X-Tenant-ID": self.tenant_id,
+            "X-Role": self.role,
         }
+        if self.user_id:
+            headers["X-User-ID"] = self.user_id
+        if self.client_id:
+            headers["X-Client-ID"] = self.client_id
         data = None
         if payload is not None:
             headers["Content-Type"] = "application/json"
@@ -633,8 +641,23 @@ def create_run_bundle(run_root: Path, bundle_name: Optional[str] = None) -> Path
 
 
 class TargetMatrixRunner:
-    def __init__(self, base_url: str, tenant_id: str, request_timeout_seconds: int = 120):
-        self.client = ApiClient(base_url=base_url.rstrip("/"), tenant_id=tenant_id, timeout=request_timeout_seconds)
+    def __init__(
+        self,
+        base_url: str,
+        tenant_id: str,
+        request_timeout_seconds: int = 120,
+        role: str = "ADMIN",
+        user_id: Optional[str] = None,
+        client_id: Optional[str] = None,
+    ):
+        self.client = ApiClient(
+            base_url=base_url.rstrip("/"),
+            tenant_id=tenant_id,
+            timeout=request_timeout_seconds,
+            role=role,
+            user_id=user_id,
+            client_id=client_id,
+        )
 
     def _project_root(self, project_id: str, run_label: Optional[str] = None) -> Path:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
