@@ -287,6 +287,7 @@ class PersistenceService:
 class SupabasePersistence:
     _supports_understanding_columns: Optional[bool] = None
     _supports_post_drafting_mode_columns: Optional[bool] = None
+    _supports_object_category_column: Optional[bool] = None
 
     def __init__(self, tenant_id: Optional[str] = None, client_id: Optional[str] = None, user_id: Optional[str] = None, role: Optional[str] = None):
         url = os.getenv("SUPABASE_URL", "").strip()
@@ -707,7 +708,7 @@ class SupabasePersistence:
             
         insert_data = []
         for asset in assets:
-            insert_data.append({
+            row = {
                 "project_id": resolved_id,
                 "source_name": asset["filename"],
                 "raw_content": asset.get("content"),
@@ -724,15 +725,30 @@ class SupabasePersistence:
                 "masking_rule": asset.get("masking_rule"),
                 "business_entity": asset.get("business_entity"),
                 "target_name": asset.get("target_name"),
-                # Sprint 14: File classification
-                "category": asset.get("category")  # migrable, soporte, documentacion, no_reconocido
-            })
+            }
+            if self._supports_object_category_column is not False:
+                row["category"] = asset.get("category")
+            insert_data.append(row)
             # [v3.9] Only tenant_id for isolation (object ownership tracked via project)
             if self.tenant_id: 
                 insert_data[-1]["tenant_id"] = self.tenant_id
             
         try:
-            res = self.client.table("utm_objects").upsert(insert_data, on_conflict="project_id, source_path").execute()
+            try:
+                res = self.client.table("utm_objects").upsert(insert_data, on_conflict="project_id, source_path").execute()
+                type(self)._supports_object_category_column = True
+            except Exception as e:
+                message = str(e).lower()
+                if "utm_objects_category_check" in message or "category" in message:
+                    retry_data = []
+                    for row in insert_data:
+                        fallback_row = dict(row)
+                        fallback_row.pop("category", None)
+                        retry_data.append(fallback_row)
+                    res = self.client.table("utm_objects").upsert(retry_data, on_conflict="project_id, source_path").execute()
+                    type(self)._supports_object_category_column = False
+                else:
+                    raise
             if res.data:
                 for item in res.data:
                     item["id"] = item["object_id"]
