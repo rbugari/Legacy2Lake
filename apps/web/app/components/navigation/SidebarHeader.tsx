@@ -4,6 +4,8 @@ import React, { useMemo } from 'react';
 import { Home, Search, Code, RefreshCw, Package, ShieldCheck } from 'lucide-react';
 import { SidebarMetrics } from '@/app/hooks/useSidebarMetrics';
 
+const RUNNING_STATUSES = ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING', 'GOVERNANCE', 'DOCUMENTING', 'CERTIFYING'];
+
 interface SidebarHeaderProps {
     stage: number;
     metrics: SidebarMetrics;
@@ -22,9 +24,6 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
     const stageInfo = STAGE_INFO[stage as keyof typeof STAGE_INFO] || STAGE_INFO[0];
     const StageIcon = stageInfo.icon;
 
-    // DEBUG: Log what we're receiving
-    console.log('[SidebarHeader] Stage:', stage, 'Metrics:', metrics);
-
     // Determine if stage has been executed (has data)
     const hasData = useMemo(() => {
         let result = false;
@@ -32,22 +31,20 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
         if (stage === 1) result = (metrics.assetCount || 0) > 0 || metrics.quickAssessment !== undefined;
         if (stage === 2) result = (metrics.filesGenerated || 0) > 0;
         if (stage === 3) result = metrics.issueCount !== undefined || metrics.qualityDelta !== undefined;
-        if (stage === 4) result = !!(metrics.docsGenerated);
-        if (stage === 5) result = !!(metrics.bundleReady);
-
-        console.log('[SidebarHeader] hasData calculation:', {
-            stage,
-            assetCount: metrics.assetCount,
-            quickAssessment: metrics.quickAssessment,
-            filesGenerated: metrics.filesGenerated,
-            result
-        });
+        if (stage === 4) result = !!(metrics.docsGenerated || metrics.bundleReady);
+        if (stage === 5) result = !!(metrics.bundleReady || metrics.docsGenerated);
 
         return result;
     }, [stage, metrics]);
 
+    const emptyStateMessage = useMemo(() => {
+        if (stage === 4) return 'No governance artifacts yet - Run governance first';
+        if (stage === 5) return 'No handover bundle yet - Finish governance or export a bundle';
+        return 'No data yet - Run pipeline first';
+    }, [stage]);
+
     const isRunning = metrics.executionStatus &&
-        ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING'].includes(metrics.executionStatus);
+        RUNNING_STATUSES.includes(metrics.executionStatus);
 
     return (
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
@@ -64,7 +61,7 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
                 <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                            ⚠️ No data yet - Run pipeline first
+                            ⚠️ {emptyStateMessage}
                         </span>
                     </div>
                 </div>
@@ -165,6 +162,23 @@ export default function SidebarHeader({ stage, metrics }: SidebarHeaderProps) {
                         <span className="text-gray-600 dark:text-gray-400">COP Bundle</span>
                         <span className={`font-bold ${metrics.bundleReady ? 'text-green-600' : 'text-gray-400'}`}>
                             {metrics.bundleReady ? '✓ Ready' : '⏳ Pending'}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {stage === 5 && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-400">Delivery Bundle</span>
+                        <span className={`font-bold ${metrics.bundleReady ? 'text-green-600' : 'text-gray-400'}`}>
+                            {metrics.bundleReady ? '✓ Export Ready' : '⏳ Pending'}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-400">Governance Docs</span>
+                        <span className={`font-bold ${metrics.docsGenerated ? 'text-green-600' : 'text-gray-400'}`}>
+                            {metrics.docsGenerated ? '✓ Available' : '⏳ Pending'}
                         </span>
                     </div>
                 </div>

@@ -1,19 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Zap, BookOpen, Loader } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
 
 interface PostDraftingDecisionGateProps {
     projectId: string;
     onModeSelected: (mode: string) => void;
+    initialSelectedMode?: string | null;
 }
 
 export default function PostDraftingDecisionGate({
     projectId,
-    onModeSelected
+    onModeSelected,
+    initialSelectedMode = null,
 }: PostDraftingDecisionGateProps) {
-    const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    const [selectedMode, setSelectedMode] = useState<string | null>(initialSelectedMode);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setSelectedMode(initialSelectedMode);
+    }, [initialSelectedMode]);
 
     const modes = [
         {
@@ -83,7 +89,9 @@ export default function PostDraftingDecisionGate({
             <div className="px-6 py-4 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-2xl">
                 <h3 className="text-lg font-black text-white mb-2">What's Next?</h3>
                 <p className="text-sm text-gray-400">
-                    Your drafting is complete. Choose how to proceed with these assets.
+                    {initialSelectedMode
+                        ? 'Drafting is complete. Your current post-drafting path is preselected below, and you can keep it or change it before continuing.'
+                        : 'Your drafting is complete. Choose how to proceed with these assets.'}
                 </p>
             </div>
 
@@ -163,7 +171,7 @@ export default function PostDraftingDecisionGate({
                     ) : (
                         <>
                             <ArrowRight size={16} />
-                            Confirm Choice
+                            {initialSelectedMode ? 'Update Choice' : 'Confirm Choice'}
                         </>
                     )}
                 </button>

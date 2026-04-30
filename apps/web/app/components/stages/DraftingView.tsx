@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Play, X, Code, CheckCircle } from "lucide-react";
+import { Play, X, Code, CheckCircle, ArrowRight } from "lucide-react";
 import { fetchWithAuth } from "../../lib/auth-client";
 import UnifiedLogViewer from "../UnifiedLogViewer";
 import UnifiedFileExplorer from "../UnifiedFileExplorer";
@@ -21,6 +21,34 @@ const DRAFTING_AGENTS = [
     { id: 'F', name: 'The Framework Generator', role: 'Framework boilerplate & helpers' },
     { id: 'G', name: 'The Governor', role: 'Governance metadata injection' },
 ];
+
+function getPostDraftingRecommendation(mode: string | null) {
+    switch (mode) {
+        case 'structured_refinement':
+            return {
+                title: 'Recommended Next Step: Refinement',
+                description: 'Structured Refinement is selected. Continue to Stage 3 to apply medallion optimization, consistency rules, and governance-oriented improvements.',
+                actionLabel: 'Open Refinement',
+                targetStage: 3,
+            };
+        case 'intelligent_reengineering':
+            return {
+                title: 'Recommended Next Step: Refinement',
+                description: 'Intelligent Reengineering is selected. Continue to Stage 3 to apply deeper architectural improvements before governance.',
+                actionLabel: 'Open Refinement',
+                targetStage: 3,
+            };
+        case 'drafting_delivery':
+            return {
+                title: 'Recommended Next Step: Governance',
+                description: 'Drafting Delivery is selected. Refinement is intentionally skipped, so the next recommended stage is Governance.',
+                actionLabel: 'Open Governance',
+                targetStage: 4,
+            };
+        default:
+            return null;
+    }
+}
 
 // Helper: Extract generated files from drafting folder
 function extractDraftingFiles(children: any[]): any[] {
@@ -101,6 +129,7 @@ export default function DraftingView({
     const [isApproving, setIsApproving] = useState(false);
     const [assets, setAssets] = useState<any[]>([]); // Objects/assets for SchemaViewer
     const pollInFlightRef = useRef(false);
+    const postDraftingRecommendation = getPostDraftingRecommendation(postDraftingMode);
 
     // Keep ref in sync with state
     useEffect(() => { isOrchestrationRunningRef.current = isOrchestrationRunning; }, [isOrchestrationRunning]);
@@ -148,7 +177,6 @@ export default function DraftingView({
                 setIsDraftingComplete(true);
                 setProgress(100);
                 if (isOrchestrationRunningRef.current) {
-                    console.log("[DraftingView] Orchestration complete, stopping polling");
                     setIsOrchestrationRunning(false);
                 }
             }
@@ -216,7 +244,6 @@ export default function DraftingView({
 
                 // Extract files from drafting folder
                 const extractedAssets = extractDraftingFiles(filesData.children || []);
-                console.log('[DraftingView] Loaded generated files:', extractedAssets.length);
                 setAssets(extractedAssets);
             } catch (err) {
                 console.warn('[DraftingView] Could not load generated files:', err);
@@ -262,7 +289,6 @@ export default function DraftingView({
     const prevOrchestrationRunning = useRef(false);
     useEffect(() => {
         if (prevOrchestrationRunning.current === true && isOrchestrationRunning === false && progress === 100) {
-            console.log("[DraftingView] Orchestration completed, calling onCompletion");
             if (onCompletion) onCompletion(true);
         }
         prevOrchestrationRunning.current = isOrchestrationRunning;
@@ -290,6 +316,46 @@ export default function DraftingView({
 
     const handlePostDraftingModeSelected = (mode: string) => {
         setPostDraftingMode(mode);
+    };
+
+    const renderPostDraftingDecision = () => {
+        if (!isDraftingComplete || isOrchestrationRunning) {
+            return null;
+        }
+
+        return (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <PostDraftingDecisionGate
+                    projectId={projectId}
+                    onModeSelected={handlePostDraftingModeSelected}
+                    initialSelectedMode={postDraftingMode && postDraftingMode !== "unset" ? postDraftingMode : null}
+                />
+
+                {postDraftingRecommendation && (
+                    <div className="flex items-center justify-between gap-4 px-6 py-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl shrink-0">
+                        <div className="flex items-start gap-3 min-w-0">
+                            <CheckCircle size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                                <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
+                                <p className="text-xs text-gray-300 mt-1 font-semibold">
+                                    {postDraftingRecommendation.title}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                    {postDraftingRecommendation.description}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => handleRecommendedStageAdvance(postDraftingRecommendation.targetStage)}
+                            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                        >
+                            <ArrowRight size={14} />
+                            {postDraftingRecommendation.actionLabel}
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     // --- Tab 1: Execution Handlers ---
@@ -402,6 +468,30 @@ export default function DraftingView({
         }
     };
 
+    const handleRecommendedStageAdvance = async (targetStage: number) => {
+        setIsApproving(true);
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/stage`, {
+                method: "POST",
+                headers: {
+                    ...(activeTenantId ? { "X-Tenant-ID": activeTenantId } : {})
+                },
+                body: JSON.stringify({ stage: String(targetStage) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                onStageChange(targetStage);
+            } else {
+                setLogs(prev => [...prev, `[ERROR] Failed to advance to stage ${targetStage}.`]);
+                setIsApproving(false);
+            }
+        } catch (e) {
+            console.error("Failed to update stage", e);
+            setLogs(prev => [...prev, `[ERROR] Failed to advance to stage ${targetStage}: ${e}`]);
+            setIsApproving(false);
+        }
+    };
+
     const handleCancelMigration = async () => {
         const cancelOk = await confirm({ variant: 'danger', title: 'Cancel migration?', description: 'The running pipeline will be stopped. Partial files already generated will remain.', confirmLabel: 'Yes, cancel', cancelLabel: 'Keep running' });
         if (!cancelOk) return;
@@ -486,6 +576,8 @@ export default function DraftingView({
                             </div>
                         </div>
 
+                        {renderPostDraftingDecision()}
+
                         <div className="rounded-3xl border border-white/10 bg-black/20 p-8">
                             <h2 className="text-xl font-black text-white">Stage Home</h2>
                             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-400">
@@ -545,24 +637,7 @@ export default function DraftingView({
                         )}
 
                         {/* ── Completion Banner + Decision Gate ── */}
-                        {isDraftingComplete && !isOrchestrationRunning && (
-                            postDraftingMode === null || postDraftingMode === "unset" ? (
-                                // [Sprint 2] Show Decision Gate
-                                <PostDraftingDecisionGate
-                                    projectId={projectId}
-                                    onModeSelected={handlePostDraftingModeSelected}
-                                />
-                            ) : (
-                                // Mode already selected - show confirmation banner
-                                <div className="flex items-center gap-3 px-6 py-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                                    <CheckCircle size={18} className="text-emerald-400 shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-black text-emerald-400 uppercase tracking-wide">Drafting Complete</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">All assets processed successfully — review the output or use the <strong className="text-gray-400">Next Phase</strong> button above to proceed.</p>
-                                    </div>
-                                </div>
-                            )
-                        )}
+                        {renderPostDraftingDecision()}
 
                         {!isDraftingComplete && !isOrchestrationRunning && (
                             <div className="flex items-center justify-between gap-3 px-6 py-4 bg-sky-500/10 border border-sky-500/30 rounded-2xl shrink-0">

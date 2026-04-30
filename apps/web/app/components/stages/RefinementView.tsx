@@ -102,6 +102,7 @@ export default function RefinementView({
     const [isFetchingLogs, setIsFetchingLogs] = useState(false); // True while fetching logs
     const isFetchingLogsRef = useRef(false); // Prevent overlapping poll requests
     const [postDraftingMode, setPostDraftingMode] = useState<string | null>(null);
+    const [isLoadingPostDraftingMode, setIsLoadingPostDraftingMode] = useState(true);
     const [isSavingMode, setIsSavingMode] = useState(false);
     const [modeError, setModeError] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
@@ -111,23 +112,46 @@ export default function RefinementView({
 
     // Workbench State
     const [fileTree, setFileTree] = useState<any[]>([]);
+    const [isLoadingFileTree, setIsLoadingFileTree] = useState(false);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [fileContent, setFileContent] = useState<string>("");
     const [originalContent, setOriginalContent] = useState<string>("");
     const [isLoadingFile, setIsLoadingFile] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
+    const [fileTreePaneWidth, setFileTreePaneWidth] = useState(320);
+    const isResizingFileTree = useRef(false);
+
+    useEffect(() => {
+        const savedWidth = localStorage.getItem(`refinement-file-tree-width-${projectId}`);
+        if (savedWidth) {
+            const parsed = parseInt(savedWidth, 10);
+            if (!Number.isNaN(parsed)) {
+                setFileTreePaneWidth(parsed);
+            }
+        }
+    }, [projectId]);
+
+    const loadPostDraftingMode = useCallback(async (): Promise<string | null> => {
+        setIsLoadingPostDraftingMode(true);
+        try {
+            const modeRes = await fetchWithAuth(`projects/${projectId}/get-post-drafting-mode`);
+            const modeData = await modeRes.json();
+            const nextMode = modeData.post_drafting_mode || null;
+            setPostDraftingMode(nextMode);
+            return nextMode;
+        } catch (err) {
+            console.warn('[RefinementView] Could not load post-drafting mode:', err);
+            return null;
+        } finally {
+            setIsLoadingPostDraftingMode(false);
+        }
+    }, [projectId]);
 
     // State Restoration on Mount
     useEffect(() => {
         const fetchState = async () => {
             try {
-                try {
-                    const modeRes = await fetchWithAuth(`projects/${projectId}/get-post-drafting-mode`);
-                    const modeData = await modeRes.json();
-                    setPostDraftingMode(modeData.post_drafting_mode || null);
-                } catch (err) {
-                    console.warn('[RefinementView] Could not load post-drafting mode:', err);
-                }
+                await loadPostDraftingMode();
 
                 // Check project status first to decide whether to load old logs
                 const REFINED_OR_BEYOND = ['REFINED', 'CERTIFYING', 'CERTIFIED', 'GOVERNED', 'DELIVERED'];
@@ -137,7 +161,6 @@ export default function RefinementView({
                     const { status } = await statusRes.json();
                     currentStatus = status;
                     if (REFINED_OR_BEYOND.includes(status)) {
-                        console.log('[RefinementView] Restoring isFinished=true from status:', status);
                         setIsFinished(true);
                     }
                 } catch (err) {
@@ -176,7 +199,6 @@ export default function RefinementView({
 
                     // Extract files from drafting and refinement folders
                     const extractedAssets = extractGeneratedFiles(filesData.children || []);
-                    console.log('[RefinementView] Loaded generated files:', extractedAssets.length);
                     setAssets(extractedAssets);
                 } catch (err) {
                     console.warn('[RefinementView] Could not load generated files:', err);
@@ -186,7 +208,7 @@ export default function RefinementView({
             }
         };
         fetchState();
-    }, [projectId]);
+    }, [projectId, loadPostDraftingMode]);
 
     // Keep ref in sync with state
     useEffect(() => { isRefinementRunningRef.current = isRefinementRunning; }, [isRefinementRunning]);
@@ -208,7 +230,6 @@ export default function RefinementView({
 
                 // Only update if we have logs from backend (avoid overwriting initial messages)
                 if (logLines.length > 0) {
-                    console.log(`[RefinementView] Fetched ${logLines.length} log lines`);
                     setLogs(logLines);
                 }
             }
@@ -224,7 +245,6 @@ export default function RefinementView({
             if (REFINED_OR_BEYOND.includes(statusData.status)) {
                 setIsFinished(true);
                 if (isRefinementRunningRef.current) {
-                    console.log("[RefinementView] Refinement complete, stopping polling");
                     setIsRefinementRunning(false);
                 }
                 return;
@@ -240,7 +260,6 @@ export default function RefinementView({
         let interval: NodeJS.Timeout;
         if (isRefinementRunning) {
             // Auto-navigate to logs section when refinement starts
-            console.log("[RefinementView] Refinement started, auto-navigating to logs");
             onSectionChange('logs');
 
             // Add initial log message
@@ -278,7 +297,6 @@ export default function RefinementView({
         };
 
         if (prevRefinementRunning.current === true && isRefinementRunning === false) {
-            console.log("[RefinementView] Refinement completed, reloading profile data");
             reloadProfileData();
         }
         prevRefinementRunning.current = isRefinementRunning;
@@ -290,7 +308,9 @@ export default function RefinementView({
 
 
     const handleRunRefinement = async () => {
-        if (!postDraftingMode) {
+        const resolvedMode = postDraftingMode ?? await loadPostDraftingMode();
+
+        if (!resolvedMode) {
             setLogs([
                 '[SYSTEM] Refinement blocked: post-drafting mode is not selected.',
                 '[SYSTEM] Open Configuration > Execution Mode and set a mode before running refinement.'
@@ -299,7 +319,7 @@ export default function RefinementView({
             return;
         }
 
-        if (postDraftingMode === 'drafting_delivery') {
+        if (resolvedMode === 'drafting_delivery') {
             setLogs([
                 '[SYSTEM] Refinement unavailable for this project.',
                 '[SYSTEM] The selected post-Drafting mode is Drafting Delivery (terminal path).',
@@ -416,14 +436,54 @@ export default function RefinementView({
         }
     };
 
+    const loadComparisonFileTree = useCallback(async () => {
+        setIsLoadingFileTree(true);
+        try {
+            const res = await fetchWithAuth(`projects/${projectId}/files`);
+            const data = await res.json();
+            setFileTree(data.children || []);
+        } catch (err) {
+            console.error("Failed to load file tree", err);
+            setFileTree([]);
+        } finally {
+            setIsLoadingFileTree(false);
+        }
+    }, [projectId]);
+
     useEffect(() => {
         if (activeSection === 'diff' || activeSection === 'comparison') {
-            fetchWithAuth(`projects/${projectId}/files`)
-                .then(res => res.json())
-                .then(data => setFileTree(data.children || []))
-                .catch(err => console.error("Failed to load file tree", err));
+            loadComparisonFileTree();
         }
-    }, [activeSection, projectId, logs]);
+    }, [activeSection, loadComparisonFileTree]);
+
+    const handleFileTreeResize = useCallback((event: MouseEvent) => {
+        if (!isResizingFileTree.current) return;
+        const container = document.getElementById(`refinement-comparison-${projectId}`);
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const nextWidth = event.clientX - rect.left;
+        if (nextWidth >= 260 && nextWidth <= 560) {
+            setFileTreePaneWidth(nextWidth);
+        }
+    }, [projectId]);
+
+    const stopFileTreeResize = useCallback(() => {
+        isResizingFileTree.current = false;
+        document.removeEventListener('mousemove', handleFileTreeResize);
+        document.removeEventListener('mouseup', stopFileTreeResize);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem(`refinement-file-tree-width-${projectId}`, String(fileTreePaneWidth));
+    }, [fileTreePaneWidth, handleFileTreeResize, projectId]);
+
+    const startFileTreeResize = useCallback(() => {
+        isResizingFileTree.current = true;
+        document.addEventListener('mousemove', handleFileTreeResize);
+        document.addEventListener('mouseup', stopFileTreeResize);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, [handleFileTreeResize, stopFileTreeResize]);
 
     const findLegacyFile = (nodes: any[], targetBaseName: string): string | null => {
         for (const node of nodes) {
@@ -716,10 +776,10 @@ export default function RefinementView({
                                 <div className="mt-6 flex flex-wrap gap-3">
                                     <button
                                         onClick={() => onSectionChange('run-refinement')}
-                                        disabled={isRefinementRunning || !activeConfig.allowRefinement}
+                                        disabled={isRefinementRunning || isLoadingPostDraftingMode || !activeConfig.allowRefinement}
                                         className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-500 disabled:opacity-50"
                                     >
-                                        {!activeConfig.allowRefinement ? 'Refinement Disabled' : isRefinementRunning ? 'Refining...' : activeConfig.actionLabel}
+                                        {!activeConfig.allowRefinement ? 'Refinement Disabled' : isLoadingPostDraftingMode ? 'Loading mode...' : isRefinementRunning ? 'Refining...' : activeConfig.actionLabel}
                                     </button>
                                     <button
                                         onClick={() => onSectionChange('summary')}
@@ -1099,20 +1159,28 @@ export default function RefinementView({
 
                     {/* Code Comparison */}
                     {(activeSection === 'diff' || activeSection === 'comparison') && (
-                        <div className="flex h-full gap-4 min-w-0">
-                            <div className="w-1/4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+                        <div id={`refinement-comparison-${projectId}`} className="flex h-full gap-4 min-w-0 relative">
+                            <div
+                                className="shrink-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
+                                style={{ width: `${fileTreePaneWidth}px`, minWidth: `${fileTreePaneWidth}px`, maxWidth: `${fileTreePaneWidth}px` }}
+                            >
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
                                     <h3 className="font-bold text-sm uppercase text-gray-400">Refined Files</h3>
                                     <button
-                                        onClick={() => fetchWithAuth(`projects/${projectId}/files`).then(res => res.json()).then(data => setFileTree(data.children || []))}
+                                        onClick={loadComparisonFileTree}
                                         className="text-gray-400 hover:text-primary"
                                         title="Refresh"
                                     >
-                                        <RefreshCw size={14} />
+                                        <RefreshCw size={14} className={isLoadingFileTree ? 'animate-spin' : ''} />
                                     </button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2">
-                                    {fileTree.length === 0 ? (
+                                    {isLoadingFileTree ? (
+                                        <div className="h-full min-h-[220px] flex flex-col items-center justify-center gap-3 text-gray-400">
+                                            <RefreshCw size={24} className="animate-spin text-purple-400" />
+                                            <p className="text-sm font-medium">Loading files...</p>
+                                        </div>
+                                    ) : fileTree.length === 0 ? (
                                         <div className="text-center py-10 px-4">
                                             <div className="mx-auto w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-3">
                                                 <FolderOpen size={24} className="text-gray-400" />
@@ -1136,6 +1204,15 @@ export default function RefinementView({
                                 </div>
                             </div>
 
+                            <div
+                                onMouseDown={startFileTreeResize}
+                                className="absolute top-0 bottom-0 z-20 w-2 cursor-col-resize"
+                                style={{ left: `${fileTreePaneWidth}px`, marginLeft: '4px' }}
+                                title="Drag to resize file list"
+                            >
+                                <div className="mx-auto h-full w-1 rounded-full bg-white/8 hover:bg-purple-500/40 transition-colors" />
+                            </div>
+
                             <div className="flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-lg">
                                 <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center gap-3 bg-gray-50 dark:bg-gray-900/50 min-w-0">
                                     <h3 className="font-bold text-sm flex items-center gap-2 min-w-0">
@@ -1149,14 +1226,14 @@ export default function RefinementView({
                                             </span>
                                         ) : "Select a file"}
                                     </h3>
-                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[300px] shrink-0">{selectedFile}</span>}
+                                    {selectedFile && <span className="text-xs text-gray-400 font-mono truncate max-w-[40%] text-right shrink-0">{selectedFile}</span>}
                                 </div>
 
                                 <div className="flex-1 min-w-0 overflow-hidden relative">
                                     {isLoadingFile ? (
                                         <div className="flex items-center justify-center h-full text-gray-500">Loading content...</div>
                                     ) : selectedFile ? (
-                                        <div className="h-full w-full min-w-0 overflow-auto bg-[#1e1e1e]">
+                                        <div className="h-full w-full min-w-0 max-w-full overflow-auto bg-[#1e1e1e]">
                                             <SyntaxHighlighter
                                                 language={(() => {
                                                     if (selectedFile.endsWith('.py')) return 'python';
@@ -1166,13 +1243,28 @@ export default function RefinementView({
                                                     return 'text';
                                                 })()}
                                                 style={vscDarkPlus}
-                                                customStyle={{ margin: 0, padding: '1rem 1.25rem', background: 'transparent', fontSize: '14px', lineHeight: '1.6', minWidth: '100%', overflowX: 'auto' }}
+                                                customStyle={{
+                                                    margin: 0,
+                                                    padding: '1rem 1.25rem',
+                                                    background: 'transparent',
+                                                    fontSize: '14px',
+                                                    lineHeight: '1.6',
+                                                    width: '100%',
+                                                    maxWidth: '100%',
+                                                    whiteSpace: 'pre-wrap',
+                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'anywhere',
+                                                    overflowX: 'hidden'
+                                                }}
                                                 showLineNumbers={true}
-                                                wrapLines={false}
+                                                wrapLines={true}
+                                                wrapLongLines={true}
                                                 codeTagProps={{
                                                     style: {
                                                         fontFamily: 'var(--font-mono), Consolas, Monaco, "Courier New", monospace',
-                                                        whiteSpace: 'pre'
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-word',
+                                                        overflowWrap: 'anywhere'
                                                     }
                                                 }}
                                             >

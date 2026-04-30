@@ -6,6 +6,8 @@ import { SidebarSection as SidebarSectionType, SidebarItem as SidebarItemTypeImp
 import { SidebarMetrics, formatBadgeValue } from '@/app/hooks/useSidebarMetrics';
 import SidebarItem from './SidebarItem';
 
+const RUNNING_STATUSES = ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING', 'GOVERNANCE', 'DOCUMENTING', 'CERTIFYING'];
+
 interface SidebarSectionProps {
     section: SidebarSectionType;
     activeSection: string;
@@ -24,7 +26,7 @@ function getSectionStatus(section: SidebarSectionType, metrics: SidebarMetrics):
         // Check if any files have been generated (Drafting)
         if (metrics.filesGenerated && metrics.filesGenerated > 0) return 'green';
         // Check if execution is in progress
-        if (metrics.executionStatus && ['PROCESSING', 'ORCHESTRATING', 'GENERATING'].includes(metrics.executionStatus)) return 'yellow';
+        if (metrics.executionStatus && RUNNING_STATUSES.includes(metrics.executionStatus)) return 'yellow';
         return 'yellow';
     }
     

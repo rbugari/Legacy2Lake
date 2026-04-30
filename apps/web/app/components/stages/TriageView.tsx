@@ -147,6 +147,7 @@ export default function TriageView({
     // Data State
     const [assets, setAssets] = useState<any[]>([]);
     const [isInitialLoading, setIsInitialLoading] = useState(true); // Only for initial load
+    const [backendStatus, setBackendStatus] = useState<string>('');
     const { confirm, ConfirmDialog } = useConfirm();
     const [isTriageRunning, setIsTriageRunning] = useState(false); // For active triage/regenerate processes
     const [isTriageComplete, setIsTriageComplete] = useState(false); // True once triage finishes successfully
@@ -185,6 +186,26 @@ export default function TriageView({
     const [assetNote, setAssetNote] = useState("");
     const [isApproving, setIsApproving] = useState(false);
     const [schemaInitialTab, setSchemaInitialTab] = useState<'schema' | 'mapping'>('schema');
+    const triageLockedStatuses = new Set([
+        'TRIAGE_APPROVED', 'DRAFTING', 'ORCHESTRATING', 'DRAFTED',
+        'REFINEMENT', 'REFINING', 'REFINED',
+        'GOVERNANCE', 'DOCUMENTING', 'GOVERNED', 'CERTIFYING',
+        'CERTIFIED', 'COMPLETED', 'DELIVERED'
+    ]);
+
+    const getTriageLockedMessage = useCallback((status?: string) => {
+        const effectiveStatus = (status || backendStatus || '').toUpperCase();
+
+        if (effectiveStatus && triageLockedStatuses.has(effectiveStatus)) {
+            return `Project is in ${effectiveStatus} mode. Triage is locked until the project is reset or moved back to TRIAGE.`;
+        }
+
+        if (isReadOnly) {
+            return 'Triage is read-only because the project is already in a later stage.';
+        }
+
+        return '';
+    }, [backendStatus, isReadOnly]);
 
     const handleDeleteNode = useCallback((id: string) => {
         if (isReadOnly) return;
@@ -344,12 +365,10 @@ export default function TriageView({
     // Initialization
     const fetchProject = useCallback(async () => {
         try {
-            console.log('[TriageView fetchProject] Starting fetch for projectId:', projectId);
-
             // Check Status first
             const statusRes = await fetchWithAuth(`discovery/status/${projectId}`);
             const statusData = await statusRes.json();
-            console.log('[TriageView fetchProject] Status response:', statusData);
+            setBackendStatus(statusData.status || '');
 
             // Allow loading for any post-discovery status
             const validStatuses = ['COMPLETED', 'TRIAGED', 'TRIAGE', 'DRAFTING', 'DRAFTED', 'REFINING', 'REFINED', 'DELIVERED'];
@@ -362,12 +381,6 @@ export default function TriageView({
                 }
                 const projectRes = await fetchWithAuth(`discovery/project/${projectId}`);
                 const projectData = await projectRes.json();
-                console.log('[TriageView fetchProject] Project data:', {
-                    assetsCount: projectData.assets?.length || 0,
-                    assets: projectData.assets,
-                    source_tech: projectData.source_tech,
-                    target_tech: projectData.target_tech
-                });
 
                 // Filter out system assets like LAYOUT from the UI list if needed, 
                 // or just rely on the pending filter.
@@ -636,8 +649,6 @@ export default function TriageView({
 
             // If status changed to TRIAGED, stop polling
             if (statusData.status === "TRIAGED" && isTriageRunning) {
-                console.log("DEBUG: Triage completed, stopping polling...");
-
                 // Stop polling - data will reload via useEffect when isTriageRunning changes
                 setIsTriageRunning(false);
                 setIsTriageComplete(true);
@@ -672,7 +683,6 @@ export default function TriageView({
     useEffect(() => {
         // Only reload if we just finished running (transition from true to false)
         if (prevTriageRunning.current === true && isTriageRunning === false) {
-            console.log("DEBUG: Triage just completed, reloading project data...");
             fetchProject();
             fetchLayout();
         }
@@ -681,8 +691,19 @@ export default function TriageView({
 
     // Legacy files loading code removed - now using UnifiedFileExplorer
 
-    async function handleRunTriage() {
-        console.log("DEBUG: handleRunTriage called for projectId:", projectId);
+    async function handleRunTriage(options: { interactive?: boolean } = {}) {
+        const { interactive = true } = options;
+        const lockedMessage = getTriageLockedMessage();
+        if (lockedMessage) {
+            if (activeSection === 'run-triage') {
+                onSectionChange('logs');
+            }
+            setTriageLog(prev => prev ? `${prev}\n[INFO] ${lockedMessage}` : `[INFO] ${lockedMessage}`);
+            if (interactive) {
+                alert(lockedMessage);
+            }
+            return;
+        }
 
         // Check if re-executing a previous stage (rollback warning)
         const CURRENT_STAGE = 1; // Triage is stage 1
@@ -713,13 +734,12 @@ export default function TriageView({
         if (!runOk) return;
 
         if (!projectId || projectId === 'undefined' || projectId === '') {
-            console.error("DEBUG: Invalid projectId in handleRunTriage:", projectId);
+            console.error("Invalid projectId in handleRunTriage:", projectId);
             alert("Error: Invalid Project ID. Returning to dashboard...");
             window.location.href = '/dashboard';
             return;
         }
 
-        console.log("DEBUG: Starting Triage process...");
         setIsTriageRunning(true);
         setIsTriageComplete(false);
         onSectionChange('logs'); // Show logs initially to see progress
@@ -732,7 +752,7 @@ export default function TriageView({
                 const settings = await settingsRes.json();
                 preClassification = settings?.pre_classification || {};
             } catch (settingsError) {
-                console.warn("DEBUG: Could not load pre-classification settings:", settingsError);
+                console.warn("Could not load pre-classification settings:", settingsError);
             }
 
             const contextSummary = buildContextSummary(userContext, assetContexts, preClassification);
@@ -746,10 +766,21 @@ export default function TriageView({
                 })
             });
             const data = await res.json();
-            console.log("DEBUG: Triage API response received:", data);
 
             if (!res.ok) {
                 const message = data?.detail?.message || data?.detail?.error || data?.message || data?.error || 'Unable to start triage.';
+                if (res.status === 409 && (data?.detail?.error === 'triage_locked' || data?.detail?.status)) {
+                    console.warn("Triage API reported locked state:", data);
+                    setBackendStatus(data?.detail?.status || backendStatus);
+                    setTriageLog(prev => prev ? `${prev}\n[INFO] ${message}` : `[INFO] ${message}`);
+                    setIsTriageRunning(false);
+                    await fetchProject();
+                    await fetchLayout();
+                    if (interactive) {
+                        alert(message);
+                    }
+                    return;
+                }
                 console.error("Triage API rejected the request:", data);
                 alert(message);
                 setIsTriageRunning(false);
@@ -765,12 +796,10 @@ export default function TriageView({
 
             // NEW: Background task started, polling will handle progress
             if (data.status === "RUNNING") {
-                console.log("DEBUG: Triage started in background, polling for progress...");
                 setTriageLog(`✅ ${data.message || "Triage process started in background"}\n\nFetching logs...`);
                 // Polling is active via useEffect, will auto-reload when status changes to TRIAGED
             } else if (data.status === "COMPLETED" || data.assets) {
                 // Fallback: synchronous response (backward compatibility)
-                console.log("DEBUG: Received synchronous triage response");
                 if (data.assets) setAssets(data.assets);
                 if (data.nodes) setNodes(enrichNodes(data.nodes));
                 if (data.edges) setEdges(data.edges);
@@ -843,12 +872,12 @@ export default function TriageView({
     useEffect(() => {
         if (activeSection === 'run-triage') {
             if (!isTriageRunning) {
-                handleRunTriage();
+                handleRunTriage({ interactive: false });
             }
             // Divert back to logs or origin to show progress
             onSectionChange('logs');
         }
-    }, [activeSection, isTriageRunning, onSectionChange]);
+    }, [activeSection, isTriageRunning, onSectionChange, getTriageLockedMessage]);
 
     return (
         <>
@@ -1328,7 +1357,6 @@ export default function TriageView({
                                             {(() => {
                                                 // Filter out LAYOUT type (system assets)
                                                 const displayAssets = assets.filter(a => a.type !== 'LAYOUT');
-                                                console.log('[TriageView Grid] assets:', assets.length, 'displayAssets:', displayAssets.length);
                                                 return displayAssets.map(asset => (
                                                     <tr
                                                         key={asset.id}

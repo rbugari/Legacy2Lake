@@ -89,7 +89,6 @@ export default function GovernanceView({
             const statusRes = await fetchWithAuth(`discovery/status/${projectId}`, { headers });
             const statusData = await statusRes.json();
             if (statusData.status === 'CERTIFIED' && isGovernanceRunningRef.current) {
-                console.log('[GovernanceView] Certification complete, stopping polling');
                 setIsGovernanceRunning(false);
                 setIsGovernanceComplete(true);
                 fetchReport();

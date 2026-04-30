@@ -92,7 +92,7 @@ function WorkspaceContent() {
                 : ['overview', 'grid', 'graph', 'logs', 'context'],
             2: normalized === 'DRAFTING'
                 ? ['overview', 'progress', 'logs', 'code', 'files']
-                : ['overview', 'code', 'files', 'cartridge', 'progress', 'logs'],
+                : ['progress', 'overview', 'code', 'files', 'cartridge', 'logs'],
             3: normalized === 'REFINING'
                 ? ['overview', 'logs', 'status', 'summary', 'comparison']
                 : ['overview', 'summary', 'comparison', 'status', 'logs'],
@@ -152,13 +152,6 @@ function WorkspaceContent() {
         fetchWithAuth(`projects/${id}`)
             .then(res => res.json())
             .then(data => {
-                console.log('[WorkspacePage] Project data loaded:', {
-                    projectId: id,
-                    stage: data.stage,
-                    status: data.status,
-                    name: data.name
-                });
-
                 if (data.name) setProjectName(data.name);
                 if (data.repo_url) setRepoUrl(data.repo_url);
                 if (data.status) setProjectStatus(data.status);
@@ -282,7 +275,6 @@ function WorkspaceContent() {
             console.error("[Workspace] Missing project ID for stage update");
             return;
         }
-        console.log(`[Workspace] Attempting to transition to stage ${targetStage} for project ${id}`);
 
         try {
             const res = await fetchWithAuth(`projects/${id}/stage`, {
@@ -290,12 +282,9 @@ function WorkspaceContent() {
                 body: JSON.stringify({ stage: targetStage.toString() })
             });
 
-            console.log(`[Workspace] Stage update response status: ${res.status}`);
             const data = await res.json();
-            console.log("[Workspace] Stage update response data:", data);
 
             if (data.success) {
-                console.log("[Workspace] Transition successful. Updating local state.");
                 setProjectStage(targetStage);
                 setActiveView(targetStage);
                 if (data.status) setProjectStatus(data.status);

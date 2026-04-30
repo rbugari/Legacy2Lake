@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { fetchWithAuth } from '../lib/auth-client';
 
+const RUNNING_STATUSES = ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING', 'GOVERNANCE', 'DOCUMENTING', 'CERTIFYING'];
+
 export interface SidebarMetrics {
     // Stage 0 (Discovery)
     fileCount?: number;
@@ -74,13 +76,7 @@ export function useSidebarMetrics(projectId: string, stage: number, enabled: boo
                 }
 
                 const data = await response.json();
-                
-                console.log('[useSidebarMetrics] Fetched metrics:', {
-                    stage,
-                    data,
-                    endpoint: `/projects/${projectId}/sidebar-metrics?stage=${stage}`
-                });
-                
+
                 if (isMounted) {
                     setMetrics(data);
                     setError(null);
@@ -89,7 +85,7 @@ export function useSidebarMetrics(projectId: string, stage: number, enabled: boo
 
                 // Auto-refresh if process is running
                 if (data.executionStatus && 
-                    ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING'].includes(data.executionStatus)) {
+                    RUNNING_STATUSES.includes(data.executionStatus)) {
                     if (!interval && isMounted) {
                         interval = setInterval(fetchMetrics, 10000); // 10 seconds
                     }

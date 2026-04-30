@@ -189,6 +189,30 @@ export default function ReadinessBadge({
 
     // ── Loading skeleton ──
     if (loading) {
+        if (variant === "card") {
+            return (
+                <div className={`rounded-lg border border-sky-500/20 bg-sky-500/5 p-4 space-y-3 ${className}`}>
+                    <div className="flex items-center gap-2">
+                        <RefreshCw size={14} className="text-sky-400 animate-spin" />
+                        <span className="text-sm font-bold uppercase tracking-widest text-sky-300">
+                            Computing Readiness
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-full w-1/3 rounded-full bg-sky-500/70 animate-pulse" />
+                        </div>
+                        <span className="text-xs font-mono text-white/40 min-w-[5rem] text-right">
+                            loading
+                        </span>
+                    </div>
+                    <p className="text-xs text-white/65 leading-relaxed">
+                        Reviewing current project signals in the background. This summary will appear here as soon as the readiness report is available.
+                    </p>
+                </div>
+            );
+        }
+
         return (
             <div className={`flex items-center gap-1.5 opacity-40 ${className}`}>
                 <Circle size={12} className="text-white/30 animate-pulse" />

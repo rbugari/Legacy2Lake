@@ -27,9 +27,6 @@ export default function StageSidebar({
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
     const sections = getSectionsForStage(stage);
 
-    // DEBUG: Log what stage we're receiving
-    console.log('[StageSidebar] Rendering with stage:', stage, 'projectId:', projectId);
-
     // Fetch metrics with auto-refresh
     const { metrics, isLoading, error } = useSidebarMetrics(projectId, stage, true);
 
@@ -158,9 +155,7 @@ export default function StageSidebar({
                         section={section}
                         activeSection={activeSection}
                         onSectionChange={(id) => {
-                            console.log('Sidebar section clicked:', id);
                             if (id === 'quick-info') {
-                                console.log('Opening Help Modal');
                                 setIsHelpModalOpen(true);
                             } else {
                                 onSectionChange(id);

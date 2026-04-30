@@ -1,24 +1,24 @@
-# Documentation Index - Legacy2Lake v4.4
+# Documentation Index - Legacy2Lake v4.5
 
-> Last Updated: 2026-04-15
-> Architecture Version: v4.4 (stable)
-> Status: Production - v4.4 stable release
+> Last Updated: 2026-04-30
+> Architecture Version: v4.5 (stable)
+> Status: Production - v4.5 stable release with late-April QA polish
 
 This index points to the documents that describe the current operating model of the platform. Historical sprint and planning documents remain in the repo, but the files listed here are the ones that should be treated as authoritative for the present state.
 
 ## Canonical Docs
 
-- [README](C:\proyectos_dev\UTM\README.md)
-- [Business Summary v4.0 -> v4.4](C:\proyectos_dev\UTM\docs\BUSINESS_SUMMARY_V4_0_TO_V4_4.md)
-- [Introduction](C:\proyectos_dev\UTM\docs\INTRODUCTION.md)
-- [Installation](C:\proyectos_dev\UTM\docs\INSTALL.md)
-- [Environment Vs Database](C:\proyectos_dev\UTM\docs\ENV_VS_DATABASE.md)
-- [Release Notes](C:\proyectos_dev\UTM\docs\RELEASE_NOTES.md)
-- [Roles And Onboarding](C:\proyectos_dev\UTM\docs\ROLES_AND_ONBOARDING.md)
-- [System Architecture](C:\proyectos_dev\UTM\docs\SYSTEM_ARCHITECTURE.md)
-- [AI Infrastructure](C:\proyectos_dev\UTM\docs\technical\ai_infrastructure.md)
-- [System Prompts And Agents](C:\proyectos_dev\UTM\docs\technical\system_prompts_and_agents.md)
-- [Cartridge Manual](C:\proyectos_dev\UTM\docs\technical\cartridge_manual.md)
+- [README](../README.md)
+- [Business Summary v4.0 -> v4.4](BUSINESS_SUMMARY_V4_0_TO_V4_4.md)
+- [Introduction](INTRODUCTION.md)
+- [Installation](INSTALL.md)
+- [Environment Vs Database](ENV_VS_DATABASE.md)
+- [Release Notes](RELEASE_NOTES.md)
+- [Roles And Onboarding](ROLES_AND_ONBOARDING.md)
+- [System Architecture](SYSTEM_ARCHITECTURE.md)
+- [AI Infrastructure](technical/ai_infrastructure.md)
+- [System Prompts And Agents](technical/system_prompts_and_agents.md)
+- [Cartridge Manual](technical/cartridge_manual.md)
 
 ## Current Platform Summary
 
@@ -30,33 +30,48 @@ This index points to the documents that describe the current operating model of 
   - `48` prompts total
   - `7` agent prompts
   - `1` shared standards prompt
-  - `40` cartridge prompts
+  - `40` cartridge prompts (`10` tech stacks x `4` layers)
 - Active LLM agent roster:
   - `agent-qa`, `agent-s`, `agent-a`, `agent-c`, `agent-f`, `agent-g`, `agent-d`
 - Deterministic engines still active:
   - `agent-p`, `agent-r`, `agent-o`
+- v4.5 services added:
+  - `ProjectAssistantService` (chat history persistence with thread versioning per triage rerun)
+  - `TraceabilityService` (per-asset field/table mapping with PRESERVED/INFERRED/CHANGED/UNRESOLVED status)
 - Real E2E validations:
   - Drafting validation executed on `2026-04-13` for project `1051e4b0-570d-443a-9412-0430a6ac3040` with 7/7 accepted packages
-  - Full lifecycle validation executed on `2026-04-15` for project `1051e4b0-570d-443a-9412-0430a6ac3040` (Triage -> Drafting -> Refinement -> Governance -> Handover)
+  - Full lifecycle validation executed on `2026-04-15` for project `1051e4b0-570d-443a-9412-0430a6ac3040` (Triage -> Drafting -> Refinement -> Governance(CERTIFIED, score 82) -> Handover)
+  - v4.5 chat history + traceability validated and shipped on `2026-04-16`
+  - Manual workspace QA polish applied on `2026-04-30` (Drafting recommendation gate, readiness loading clarity, reports catalog wiring, Governance/Handover sidebar status)
   - Latest E2E report: `test_results/e2e_workspace_1051e4b0-570d-443a-9412-0430a6ac3040.json`
 
 ## Core Workflow
 
-1. [Stage 1: Discovery](C:\proyectos_dev\UTM\docs\stages\STAGE_1_DISCOVERY.md)
-2. [Stage 2: Triage](C:\proyectos_dev\UTM\docs\stages\STAGE_2_TRIAGE.md)
-3. [Stage 3: Drafting](C:\proyectos_dev\UTM\docs\stages\STAGE_3_DRAFTING.md)
-4. [Stage 4: Refinement](C:\proyectos_dev\UTM\docs\stages\STAGE_4_REFINEMENT.md)
-5. [Stage 5: Certification](C:\proyectos_dev\UTM\docs\stages\STAGE_5_CERTIFICATION.md)
-6. [Stage 6: Handover](C:\proyectos_dev\UTM\docs\stages\STAGE_6_HANDOVER.md)
+Note: `Certification` is the terminal output of the `Governance` stage (status `CERTIFIED` with score), not a separate runtime stage. The legacy `STAGE_5_CERTIFICATION.md` file is preserved for the certification artifact contract.
+
+1. [Stage 1: Discovery](stages/STAGE_1_DISCOVERY.md)
+2. [Stage 2: Triage](stages/STAGE_2_TRIAGE.md)
+3. [Stage 3: Drafting](stages/STAGE_3_DRAFTING.md)
+4. [Stage 4: Refinement](stages/STAGE_4_REFINEMENT.md) (skipped when `post_drafting_mode = drafting_delivery`)
+5. [Stage 5: Governance + Certification](stages/STAGE_5_CERTIFICATION.md)
+6. [Stage 6: Handover](stages/STAGE_6_HANDOVER.md)
 
 ## Planning Material
 
 Planning is intentionally kept small. If you need the current product thinking, use:
 
-- [`docs/planning`](C:\proyectos_dev\UTM\docs\planning)
-- [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](C:\proyectos_dev\UTM\docs\planning\V4_3_POST_DRAFTING_EXECUTION_MODES.md)
-- [`docs/planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md`](C:\proyectos_dev\UTM\docs\planning\V4_4_INTELLIGENT_REENGINEERING_MVP.md)
-- [`docs/planning/V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md`](C:\proyectos_dev\UTM\docs\planning\V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md)
+- [`docs/planning`](planning)
+- [`docs/planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md`](planning/V4_3_POST_DRAFTING_EXECUTION_MODES.md)
+- [`docs/planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md`](planning/V4_4_INTELLIGENT_REENGINEERING_MVP.md)
+- [`docs/planning/V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md`](planning/V4_5_PROJECT_INTELLIGENCE_ASSISTANT_AND_READINESS_SUITE.md)
+
+## v4.5 Final Implementation Status
+
+Released on `2026-04-16`. See [Release Notes v4.5.0](RELEASE_NOTES.md#version-450---project-intelligence-assistant--readiness-suite---2026-04-16).
+
+1. **Project Intelligence Assistant** - Chat history persisted (`utm_project_chat_threads`, `utm_project_chat_messages`); thread versioning per triage rerun; new endpoints `GET/DELETE /projects/{id}/assistant/history`; `ProjectAssistantModal` hydrates from API.
+2. **Traceability Review** - `TraceabilityService` produces field/table mapping with statuses `PRESERVED | INFERRED | CHANGED | UNRESOLVED` and asset-level rollup `FULLY_MAPPED | MAPPED_WITH_CHANGES | MOSTLY_MAPPED | REQUIRES_REVIEW | NO_TARGET_OUTPUT`; `TraceabilityPanel` integrated in `GovernanceView` (sidebar `traceability`).
+3. **Gap Workspace** - `GapWorkspace.tsx` wired in `GovernanceView` (closed in v4.4 work).
 
 ## v4.4 Final Implementation Status
 

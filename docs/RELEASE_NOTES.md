@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version 4.5.1 - Workspace QA And Operator Visibility Polish - 2026-04-30
+
+### Frontend Workflow Polish
+
+- Restored the full post-Drafting decision experience in `DraftingView.tsx`: when Drafting completes, the user now sees the three post-Drafting paths again, with the persisted selection preselected and the recommended next stage still available as a direct CTA.
+- Improved readiness visibility in `ReadinessBadge.tsx`: card-mode readiness now renders an explicit loading state while background computation is still running, instead of silently appearing later.
+- Wired `ReportsCatalogModal.tsx` to the real report/export endpoints instead of mock zero-count data. The catalog now exposes Triage analysis PDF, certification/delivery PDF, governance ZIP, and handover ZIP according to stage availability.
+- Corrected Governance/Handover sidebar readiness state via `projects.py`, `SidebarHeader.tsx`, and `useSidebarMetrics.ts`: later-stage statuses such as `CERTIFIED`, `GOVERNED`, and `DELIVERED` now resolve to the expected stage and no longer leave the UI stuck on a generic “No data yet” warning.
+
+### Repo Hygiene
+
+- Removed noisy debug `console.log` traces from the sidebar metrics and Drafting sidebar flow touched during this QA pass.
+- Updated core documentation timestamps and index links to use repository-relative paths so the docs remain portable when published outside the original local machine.
+
+### Notes
+
+- No schema migration was required for this patch.
+- This patch is focused on operator-facing UX and repository readiness for publication after manual QA.
+
 ## Version 4.5.0 - Project Intelligence Assistant + Readiness Suite - 2026-04-16
 
 ### 1. Project Intelligence Assistant — Chat History Persistence

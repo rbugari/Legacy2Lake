@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { SidebarItem as SidebarItemType } from '@/app/config/sidebar-sections';
 import { SidebarMetrics, formatBadgeValue } from '@/app/hooks/useSidebarMetrics';
 
+const RUNNING_STATUSES = ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING', 'GOVERNANCE', 'DOCUMENTING', 'CERTIFYING'];
+
 interface SidebarItemProps {
     item: SidebarItemType;
     isActive: boolean;
@@ -23,7 +25,7 @@ export default function SidebarItem({
     const Icon = item.icon;
     const badgeValue = item.badge ? formatBadgeValue(metrics, item.badge) : null;
     const isRunning = item.status && metrics.executionStatus &&
-        ['PROCESSING', 'ORCHESTRATING', 'REFINING', 'GENERATING'].includes(metrics.executionStatus);
+        RUNNING_STATUSES.includes(metrics.executionStatus);
 
     return (
         <button
