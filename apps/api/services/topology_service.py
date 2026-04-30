@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from typing import Dict, Any, List
 from apps.utm.cartridges.ssis.parser import SSISCartridge
 try:
@@ -69,177 +70,160 @@ class TopologyService:
         self.output_path = f"{self.base_path.rstrip('/')}/{PersistenceService.STAGE_DRAFTING}"
         logger.info(f"Topology resolved inbound path to: {self.inbound_path}", "Topology")
 
-    def build_orchestration_plan(self) -> Dict[str, Any]:
-        """Scans all .dtsx files and constructs the dependency graph."""
-        logger.info(f"Building orchestration plan for {self.project_id}...", "Topology")
-        
-        # 1. Inventory Packages & Extract Metadata via Storage
-        package_metadatas = []
-        # 1. Scan SSIS Packages via Storage (from inbound_path only)
+    def _resolve_task_extensions(self, filenames: List[str] | None = None) -> set[str]:
+        valid_extensions = {".dtsx", ".sql"}
+        if filenames and any(name.lower().endswith(".dtsx") for name in filenames):
+            return {".dtsx"}
+        return valid_extensions
+
+    def _resolve_project_uuid(self) -> str:
+        candidate = str(self.project_id or "").strip()
+        if not candidate:
+            return candidate
+
         try:
-            items = self.storage.list_files(self.inbound_path, recursive=True)
-            def get_all_files(nodes):
-                files = []
-                for n in nodes:
-                    if n["type"] == "folder" and n.get("children"):
-                        files.extend(get_all_files(n["children"]))
-                    elif n["type"] == "file":
-                        files.append(n)
-                return files
-            
-            # Find migrable task files (.dtsx for SSIS, .sql for DB logic)
-            all_files = get_all_files(items)
-            
-            # De-duplicate task files by path AND name to prevent multiple entries for same file
-            seen_task_paths = set()
-            seen_task_names = set()
-            task_files = []
-            valid_extensions = {".dtsx", ".sql"}
-            
-            for f in all_files:
-                f_name_lower = f["name"].lower()
-                ext = os.path.splitext(f_name_lower)[1]
-                
-                if ext in valid_extensions and f["path"] not in seen_task_paths and f_name_lower not in seen_task_names:
-                    # [Exception] Ignore DDL files if they are just schema definitions
-                    if "ddl" in f_name_lower:
-                        continue
-                        
-                    task_files.append(f)
-                    seen_task_paths.add(f["path"])
-                    seen_task_names.add(f_name_lower)
+            return str(uuid.UUID(candidate))
+        except ValueError:
+            pass
+
+        query = self.persistence.client.table("utm_projects").select("project_id").eq("name", candidate)
+        if self.tenant_id:
+            query = query.eq("tenant_id", self.tenant_id)
+
+        res = query.limit(1).execute()
+        if res.data:
+            return res.data[0].get("project_id") or candidate
+        return candidate
+
+    def _load_selected_assets(self) -> List[Dict[str, Any]]:
+        project_uuid = self._resolve_project_uuid()
+        query = self.persistence.client.table("utm_objects").select(
+            "object_id, source_name, source_path, raw_content, type, selected, metadata"
+        ).eq("project_id", project_uuid).eq("selected", True)
+        if self.tenant_id:
+            query = query.eq("tenant_id", self.tenant_id)
+
+        rows = query.execute().data or []
+        assets = []
+        seen_paths = set()
+        for row in rows:
+            source_name = (row.get("source_name") or "").strip()
+            source_path = (row.get("source_path") or source_name).strip()
+            asset_type = str(row.get("type") or "").upper()
+
+            if not source_name or asset_type == "LAYOUT":
+                continue
+            if source_path in seen_paths:
+                continue
+
+            seen_paths.add(source_path)
+            assets.append({
+                "object_id": row.get("object_id"),
+                "name": source_name,
+                "path": source_path,
+                "type": asset_type,
+                "selected": True,
+                "raw_content": row.get("raw_content") or "",
+                "metadata": row.get("metadata") or {},
+                "extension": os.path.splitext(source_name.lower())[1],
+            })
+        return assets
+
+    def _read_asset_content(self, asset: Dict[str, Any]) -> str:
+        raw_content = asset.get("raw_content")
+        if raw_content:
+            return raw_content
+
+        source_path = asset.get("path") or asset.get("name")
+        try:
+            content = self.storage.read_file(source_path)
+            if isinstance(content, bytes):
+                return content.decode("utf-8", errors="ignore")
+            return content or ""
         except Exception as e:
-            logger.error(f"Error listing packages for topology: {e}", "Topology")
-        
-        logger.info(f"Found {len(task_files)} unique task files (migration assets) in storage.", "Topology")
+            logger.warning(f"Failed to read source for {source_path}: {e}", "Topology")
+            return ""
 
-        # Storage can be empty for older/imported projects where assets live in DB only.
-        # In that case, build a minimal package inventory from utm_objects.
-        if not task_files:
+    def _extract_asset_metadata(self, asset: Dict[str, Any], content: str) -> Dict[str, Any]:
+        pkg_name = asset["name"]
+        extension = asset.get("extension") or os.path.splitext(pkg_name.lower())[1]
+        metadata = asset.get("metadata") or {}
+        inputs = list(set(metadata.get("inputs") or []))
+        outputs = list(set(metadata.get("outputs") or []))
+        lookups = list(set(metadata.get("lookups") or []))
+        complexity = metadata.get("complexity") or ("MEDIUM" if content else "LOW")
+
+        if extension == ".dtsx" and content:
+            parser = SSISCartridge()
+            parsed = parser.parse_legacy(content, name=pkg_name)
+            data_flow = parsed.components
+
+            inputs = []
+            outputs = []
+            lookups = []
+            complexity = "LOW"
+
+            for comp in data_flow:
+                logic = comp.get("raw_properties", {})
+                table_ref = logic.get("OpenRowset") or logic.get("TableOrViewName")
+                sql_command = logic.get("SqlCommand")
+                if not table_ref and sql_command:
+                    table_ref = f"QUERY: {sql_command}"
+
+                intent = comp.get("original_intent", "UNKNOWN")
+                if intent == "SOURCE" and table_ref:
+                    inputs.append(table_ref)
+                elif intent == "DESTINATION" and table_ref:
+                    outputs.append(table_ref)
+                elif intent == "LOOKUP" and table_ref:
+                    lookups.append(table_ref)
+
+            if len(lookups) > 2:
+                complexity = "HIGH"
+
+        elif extension == ".sql" and content:
+            import re
+            upper_sql = content.upper()
+            outputs = re.findall(r'(?:INSERT\s+INTO|MERGE\s+INTO|UPDATE|CREATE\s+TABLE|CREATE\s+VIEW)\s+([a-zA-Z0-9_$.]+)', upper_sql)
+            inputs = re.findall(r'(?:FROM|JOIN)\s+([a-zA-Z0-9_$.]+)', upper_sql)
+            lookups = list(set(lookups))
+            if len(inputs) > 3 or len(content.splitlines()) > 50:
+                complexity = "MEDIUM"
+            if len(content.splitlines()) > 200:
+                complexity = "HIGH"
+
+        return {
+            "asset_id": asset.get("object_id"),
+            "package_name": pkg_name,
+            "path": asset.get("path") or pkg_name,
+            "source_type": asset.get("type") or "OTHER",
+            "source_extension": extension,
+            "inputs": list(set(inputs)),
+            "outputs": list(set(outputs)),
+            "lookups": list(set(lookups)),
+            "complexity": complexity,
+            "raw_content": content,
+        }
+
+    def build_orchestration_plan(self) -> Dict[str, Any]:
+        """Build the dependency graph from the assets selected in Triage."""
+        logger.info(f"Building orchestration plan for {self.project_id}...", "Topology")
+        package_metadatas = []
+        selected_assets = self._load_selected_assets()
+        logger.info(f"Found {len(selected_assets)} selected task assets from triage.", "Topology")
+
+        if not selected_assets:
+            logger.warning("Topology did not find selected assets in utm_objects.", "Topology")
+
+        for asset in selected_assets:
             try:
-                query = self.persistence.client.table("utm_objects").select("source_name, metadata")
-                query = query.eq("project_id", self.project_id)
-                if self.tenant_id:
-                    query = query.eq("tenant_id", self.tenant_id)
-
-                db_rows = (query.execute().data or [])
-                seen_names = set()
-
-                for row in db_rows:
-                    source_name = (row.get("source_name") or "").strip()
-                    if not source_name:
-                        continue
-
-                    source_name_lower = source_name.lower()
-                    ext = os.path.splitext(source_name_lower)[1]
-                    if ext not in {".dtsx", ".sql"}:
-                        continue
-                    if source_name_lower in seen_names:
-                        continue
-
-                    seen_names.add(source_name_lower)
-                    md = row.get("metadata") or {}
-                    task_files.append({
-                        "name": source_name,
-                        "path": source_name,
-                        "type": "file",
-                        "from_db_fallback": True,
-                        "metadata": md
-                    })
-
-                logger.info(
-                    f"Topology DB fallback discovered {len(task_files)} task files from utm_objects.",
+                content = self._read_asset_content(asset)
+                package_metadatas.append(self._extract_asset_metadata(asset, content))
+            except Exception as e:
+                logger.warning(
+                    f"Could not derive detailed metadata for selected asset {asset.get('path') or asset.get('name')}: {e}. Skipping this asset in the current orchestration pass.",
                     "Topology"
                 )
-            except Exception as e:
-                logger.warning(f"Topology DB fallback failed: {e}", "Topology")
-
-        for f_node in task_files:
-            p_path = f_node["path"]
-            try:
-                if f_node.get("from_db_fallback"):
-                    pkg_name = f_node["name"]
-                    md = f_node.get("metadata") or {}
-
-                    # Preserve known dependency hints if they were persisted in metadata.
-                    inputs = md.get("inputs") or []
-                    outputs = md.get("outputs") or []
-                    lookups = md.get("lookups") or []
-
-                    package_metadatas.append({
-                        "package_name": pkg_name,
-                        "path": p_path,
-                        "inputs": list(set(inputs)),
-                        "outputs": list(set(outputs)),
-                        "lookups": list(set(lookups)),
-                        "complexity": md.get("complexity") or "MEDIUM"
-                    })
-                    continue
-
-                # Read content instead of passing path
-                content = self.storage.read_file(p_path)
-                if isinstance(content, bytes):
-                    content = content.decode("utf-8", errors="ignore")
-                
-                pkg_name = os.path.basename(p_path)
-                inputs = []
-                outputs = []
-                lookups = []
-                complexity = "LOW"
-
-                if pkg_name.lower().endswith(".dtsx"):
-                    parser = SSISCartridge()
-                    metadata = parser.parse(content, name=f_node["name"])
-                    data_flow = metadata.components
-                    
-                    for comp in data_flow:
-                        logic = comp.get("raw_properties", {})
-                        table_ref = logic.get("OpenRowset") or logic.get("TableOrViewName")
-                        sql_command = logic.get("SqlCommand")
-                        
-                        if not table_ref and sql_command:
-                            table_ref = f"QUERY: {sql_command}"
-                            
-                        intent = comp.get("original_intent", "UNKNOWN")
-
-                        if intent == "SOURCE":
-                            if table_ref: inputs.append(table_ref)
-                        elif intent == "DESTINATION":
-                            if table_ref: outputs.append(table_ref)
-                        elif intent == "LOOKUP":
-                            if table_ref: lookups.append(table_ref)
-                            
-                    if len(lookups) > 2: complexity = "HIGH"
-                
-                elif pkg_name.lower().endswith(".sql"):
-                     # Basic SQL Dependency Parsing
-                     import re
-                     upper_sql = content.upper()
-                     
-                     # Heuristic for Outputs: INSERT INTO, MERGE INTO, UPDATE, CREATE TABLE/VIEW
-                     # Regex matches: INSERT INTO [schema.]table
-                     out_matches = re.findall(r'(?:INSERT\s+INTO|MERGE\s+INTO|UPDATE|CREATE\s+TABLE|CREATE\s+VIEW)\s+([a-zA-Z0-9_$.]+)', upper_sql)
-                     outputs.extend(out_matches)
-                     
-                     # Heuristic for Inputs: FROM, JOIN
-                     in_matches = re.findall(r'(?:FROM|JOIN)\s+([a-zA-Z0-9_$.]+)', upper_sql)
-                     inputs.extend(in_matches)
-                     
-                     if len(inputs) > 3 or len(content.splitlines()) > 50:
-                         complexity = "MEDIUM"
-                     if len(content.splitlines()) > 200:
-                         complexity = "HIGH"
-
-                package_metadatas.append({
-                    "package_name": pkg_name,
-                    "path": p_path,
-                    "inputs": list(set(inputs)),
-                    "outputs": list(set(outputs)),
-                    "lookups": list(set(lookups)),
-                    "complexity": complexity
-                })
-            except Exception as e:
-                logger.error(f"Failed to parse {p_path}: {e}", "Topology")
 
         # 2. Build DAG (Naive Approach: Layers)
         # Rule 1: Bronze = No Lookups, or lookups to static config. Reads from Flat File/Source.

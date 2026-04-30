@@ -1,10 +1,10 @@
 # Legacy2Lake UTM - System Architecture
 
-> Version: v4.4 (in progress)
-> Last Updated: 2026-04-15
+> Version: v4.5 (stable)
+> Last Updated: 2026-04-16
 > Status: Production
 
-This document describes the current architecture after v4.0 stabilization and the active v4.4 execution-mode evolution.
+This document describes the current architecture after v4.0 stabilization, the v4.4 execution-mode evolution, and the v4.5 Project Intelligence Assistant + Readiness Suite.
 
 ## 1. Core Principles
 
@@ -43,8 +43,10 @@ The production flow is organized as:
 2. Triage
 3. Drafting
 4. Refinement
-5. Certification
+5. Governance (terminal output: `Certification` artifact, status `CERTIFIED` with score)
 6. Handover
+
+Note on Certification: in v4.5, `Certification` is the terminal output of the `Governance` stage rather than a separate runtime stage. The status `CERTIFIED` is emitted by Governance when scoring and audit complete successfully (validated example: project `1051e4b0-...` reached `CERTIFIED` with score `82` on `2026-04-15`). The legacy `STAGE_5_CERTIFICATION.md` file is preserved as the certification artifact contract.
 
 ### Post-Drafting Execution Modes
 
@@ -76,6 +78,8 @@ Important supporting services in that flow include:
 - `TopologyService`
 - `PromptService`
 - `ValidationService`
+- `ProjectAssistantService` (v4.5 - chat history with thread versioning per triage rerun)
+- `TraceabilityService` (v4.5 - per-asset field/table mapping)
 
 ## 4. Agent Architecture
 
@@ -140,7 +144,8 @@ Agents do not own hardcoded models. They resolve provider and deployment dynamic
 Recent validation checkpoints:
 
 - `2026-04-13`: drafting-focused compliance run reached 7/7 accepted outputs for project `1051e4b0-570d-443a-9412-0430a6ac3040`
-- `2026-04-15`: full lifecycle run (Triage -> Drafting -> Refinement -> Governance -> Handover) completed successfully for project `1051e4b0-570d-443a-9412-0430a6ac3040`
+- `2026-04-15`: full lifecycle run (Triage -> Drafting -> Refinement -> Governance(CERTIFIED, score 82) -> Handover(DELIVERED)) completed successfully for project `1051e4b0-570d-443a-9412-0430a6ac3040` with `overall_ok=true`
+- `2026-04-16`: v4.5 Project Intelligence Assistant chat history persistence + Traceability Review released and validated
 
 Validated outcomes:
 

@@ -1541,7 +1541,7 @@ async def get_sidebar_metrics(
 ):
     """
     Returns stage-specific metrics for the sidebar navigation.
-    Stages: 0=Discovery, 1=Triage, 2=Drafting, 3=Refinement, 4=Governance
+    Stages: 0=Discovery, 1=Triage, 2=Drafting, 3=Refinement, 4=Governance, 5=Handover
     """
     try:
         # Get project metadata
@@ -1551,6 +1551,10 @@ async def get_sidebar_metrics(
         
         # Use provided stage or detect from project status
         current_stage = stage if stage is not None else _detect_stage_from_status(project.get("status", "DISCOVERY"))
+        project_status = (project.get("status") or "DISCOVERY").upper()
+        settings = project.get("settings") or {}
+        governance_ready_statuses = {"CERTIFIED", "GOVERNED", "COMPLETED", "DELIVERED"}
+        bundle_ready_statuses = {"CERTIFIED", "GOVERNED", "COMPLETED", "DELIVERED"}
         
         metrics = {}
         
@@ -1656,13 +1660,27 @@ async def get_sidebar_metrics(
         # Stage 4: Governance
         elif current_stage == 4:
             # Documentation Status
+            docs_generated = bool(settings.get("governance_report"))
             try:
-                governance_files = await db.get_governance_files(project_id)
-                metrics["docsGenerated"] = len(governance_files) > 0
+                if not docs_generated:
+                    governance_files = await db.get_governance_files(project_id)
+                    docs_generated = len(governance_files) > 0
             except Exception as e:
                 logger.warning(f"[SidebarMetrics] Governance files failed: {e}", "ProjectsRouter")
-                metrics["docsGenerated"] = False
-            metrics["bundleReady"] = project.get("status") == "COMPLETED"
+            metrics["docsGenerated"] = docs_generated or project_status in governance_ready_statuses
+            metrics["bundleReady"] = project_status in bundle_ready_statuses
+
+        # Stage 5: Handover
+        elif current_stage == 5:
+            docs_generated = bool(settings.get("governance_report"))
+            try:
+                if not docs_generated:
+                    governance_files = await db.get_governance_files(project_id)
+                    docs_generated = len(governance_files) > 0
+            except Exception as e:
+                logger.warning(f"[SidebarMetrics] Handover governance files failed: {e}", "ProjectsRouter")
+            metrics["docsGenerated"] = docs_generated or project_status in governance_ready_statuses
+            metrics["bundleReady"] = metrics["docsGenerated"] or project_status in bundle_ready_statuses
         
         # Common metrics (all stages)
         metrics["executionStatus"] = project.get("status", "DISCOVERY")
@@ -1687,7 +1705,8 @@ def _detect_stage_from_status(status: str) -> int:
         "TRIAGE_APPROVED": 2,
         "DRAFTING": 2, "ORCHESTRATING": 2, "DRAFTED": 2,
         "REFINEMENT": 3, "REFINING": 3, "REFINED": 3,
-        "GOVERNANCE": 4, "DOCUMENTING": 4, "COMPLETED": 4
+        "GOVERNANCE": 4, "DOCUMENTING": 4, "CERTIFYING": 4, "CERTIFIED": 4, "GOVERNED": 4,
+        "COMPLETED": 5, "DELIVERED": 5,
     }
     return status_to_stage.get(status.upper(), 0)
 

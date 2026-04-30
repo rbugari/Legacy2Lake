@@ -2,10 +2,20 @@
 
 ## 🎯 CRITICAL COMPLIANCE REQUIREMENTS (Zero-Hardcode Policy)
 
+### 0. NON-NEGOTIABLE OUTPUT CONTRACT
+- Return runnable Python code inside the JSON `pyspark_code` field.
+- The code MUST define `execute_task(spark, config)` and place all logic inside that function or helper functions called by it.
+- The first artifact lines MUST include the exact L2L modernization trace header shown below: `# L2L MODERNIZATION TRACE: GOLD - {{asset_name}}`.
+- All catalogs, schemas, table names, dimension references, grain definitions, paths, keys, and write modes MUST come from `config`.
+- Do NOT use the source package filename (`*.dtsx`) as a physical table name. Use `config['source_table_name']` and `config['target_table_name']`.
+- Do NOT emit unconditional `OPTIMIZE`, `VACUUM`, `ZORDER`, `dbutils`, `/mnt/...`, or other platform-specific operations for generic PySpark.
+- FACT outputs must implement explicit fact-style business logic using configured joins/measures or clear source-derived computations; do not merely project raw columns.
+- Gold outputs MUST add `_aggregated_at` and `_grain_level` audit/governance columns.
+
 ### 1. MANDATORY L2L MODERNIZATION TRACE HEADER
 ```python
 # ================================================================
-# L2L MODERNIZATION TRACE: Gold Layer - {{asset_name}}
+# L2L MODERNIZATION TRACE: GOLD - {{asset_name}}
 # ================================================================
 # Source Asset: {{source_asset_name}}
 # Source Technology: {{source_tech}}
@@ -185,7 +195,9 @@ elif model_type == 'FACT':
         elif func == 'coalesce_zero':
             df_fact = df_fact.withColumn(alias, F.coalesce(F.col(col), F.lit(0)))
 
-    df_fact = df_fact.withColumn("gold_created_at", F.current_timestamp())
+    df_fact = df_fact \
+        .withColumn("_aggregated_at", F.current_timestamp()) \
+        .withColumn("_grain_level", F.lit(config.get('grain_level', 'fact')))
 
     fact_mode = config.get('fact_write_mode', 'append')
     df_fact.write.format(table_format).mode(fact_mode).saveAsTable(gold_full)
@@ -248,8 +260,8 @@ elif model_type == 'AGGREGATE':
             df_agg = df_agg.withColumn(alias, F.sum(F.col(w_def['measure_col'])).over(win_spec))
 
     df_agg = df_agg \
-        .withColumn("gold_created_at", F.current_timestamp()) \
-        .withColumn("aggregate_date",  F.current_date())
+        .withColumn("_aggregated_at", F.current_timestamp()) \
+        .withColumn("_grain_level", F.lit(config.get('grain_level', 'aggregate')))
 
     # Aggregates always overwrite
     df_agg.write.format(table_format).mode("overwrite").saveAsTable(gold_full)

@@ -1,9 +1,9 @@
-# System Prompts And Agents (v4.0 Stabilized)
+# System Prompts And Agents (v4.5 Stabilized)
 
-> Last Updated: 2026-04-15
+> Last Updated: 2026-04-16
 > Status: Current operating model
 
-This document describes the real agent roster, the prompt architecture in production, and how prompt resolution works after the v4.0 prompt consolidation.
+This document describes the real agent roster, the prompt architecture in production, and how prompt resolution works after the v4.0 prompt consolidation. v4.4 introduced post-drafting execution modes and the `ms_fabric` / `ms_fabric_sql` cartridges. v4.5 added `ProjectAssistantService` (chat history with thread versioning) and `TraceabilityService` (per-asset field/table mapping); these services do not introduce new agent prompts.
 
 ## 1. Agent Roster
 

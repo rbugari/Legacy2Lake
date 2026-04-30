@@ -182,7 +182,7 @@ class AgentAService:
                         
                     return parsed
                 except Exception as ex:
-                    logger.error(f"YAML Parsing fallback failed: {ex}", "Agent A")
+                    logger.warning(f"YAML parsing fallback unavailable: {ex}. Trying next response parser.", "Agent A")
             
             # 3. Last resort fallback
             if "```json" in content:
@@ -192,7 +192,10 @@ class AgentAService:
             return json.loads(content) # Final attempt (might raise exception)
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Agent A response: {e}. Raw content length: {len(content)}", "Agent A")
+            logger.warning(
+                f"Agent A returned a non-parseable response: {e}. Falling back to auto-inferred graph. Raw content length: {len(content)}",
+                "Agent A"
+            )
             
             # Diagnostic info
             file_count = len(manifest.get("file_inventory", []))
@@ -208,11 +211,11 @@ class AgentAService:
                 "mesh_graph": {"nodes": [], "edges": []}
             }
         except Exception as e:
-             logger.error(f"Agent A Analysis error: {e}", "Agent A")
-             return {
-                 "error": str(e),
-                 "mesh_graph": {"nodes": [], "edges": []}
-             }
+            logger.warning(f"Agent A analysis unavailable: {e}. Falling back to auto-inferred graph.", "Agent A")
+            return {
+                "error": str(e),
+                "mesh_graph": {"nodes": [], "edges": []}
+            }
     @logger.llm_debug("Agent A (Package Analysis)")
     async def analyze_package(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """Analyzes a single SSIS package summary (legacy/individual ingest)."""

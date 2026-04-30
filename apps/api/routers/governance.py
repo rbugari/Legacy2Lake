@@ -543,7 +543,7 @@ async def generate_governance(payload: DocumentRequest):
     
     transformations = []
     if asset_id:
-        res = db.client.table("transformations").select("target_code").eq("asset_id", asset_id).execute()
+        res = db.client.table("utm_transformations").select("target_code").eq("asset_id", asset_id).execute()
         transformations = res.data
 
     # 2. Invoke Agent G

@@ -279,6 +279,11 @@ async def _run_orchestration_background(
             await db.log_execution(project_uuid, "MIGRATION", "Process cancelled by user.", step="SYSTEM")
             await db.update_project_status(project_uuid, "DRAFTING")
             return
+
+        if result.get("error"):
+            await db.log_execution(project_uuid, "MIGRATION", f"ERROR: {result['error']}", step="SYSTEM")
+            await db.update_project_status(project_uuid, "DRAFTING")
+            return
         
         await db.log_execution(project_uuid, "MIGRATION", f"Migration complete. Result: {result.get('status', 'success')}", step="SYSTEM")
         

@@ -2,10 +2,19 @@
 
 ## 🎯 CRITICAL COMPLIANCE REQUIREMENTS (Zero-Hardcode Policy)
 
+### 0. NON-NEGOTIABLE OUTPUT CONTRACT
+- Return runnable Python code inside the JSON `pyspark_code` field.
+- The code MUST define `execute_task(spark, config)` and place all logic inside that function or helper functions called by it.
+- The first artifact lines MUST include the exact L2L modernization trace header shown below: `# L2L MODERNIZATION TRACE: SILVER - {{asset_name}}`.
+- All catalogs, schemas, table names, paths, keys, watermarks, masking columns, and write options MUST come from `config`.
+- Do NOT use the source package filename (`*.dtsx`) as a physical table name. Use `config['source_table_name']` and `config['target_table_name']`.
+- Do NOT emit unconditional `OPTIMIZE`, `VACUUM`, `ZORDER`, `dbutils`, or mount paths for generic PySpark.
+- Do NOT blanket-hash all fields. Mask only `config.get('pii_columns', [])` or columns with explicit masking rules.
+
 ### 1. MANDATORY L2L MODERNIZATION TRACE HEADER
 ```python
 # ================================================================
-# L2L MODERNIZATION TRACE: {{layer}} Layer - {{asset_name}}
+# L2L MODERNIZATION TRACE: SILVER - {{asset_name}}
 # ================================================================
 # Source Asset: {{source_asset_name}}
 # Source Technology: {{source_tech}}
@@ -137,19 +146,19 @@ logger.warning(f"Data quality: {invalid_count} incomplete records detected")
 
 **A. Add SCD Columns**
 ```python
-# Add SCD Type 2 tracking columns
+# Add SCD Type 2 tracking columns required by Agent-F
 df_scd = df_quality.withColumn(
-    "valid_from", F.current_timestamp()
+    "_valid_from", F.current_timestamp()
 ).withColumn(
-    "valid_until", F.lit(None).cast("timestamp")  # NULL = currently active
+    "_valid_to", F.lit(None).cast("timestamp")  # NULL = currently active
 ).withColumn(
-    "is_current", F.lit(True)
+    "_is_current", F.lit(True)
 ).withColumn(
-    "record_version", F.lit(1)
+    "_record_version", F.lit(1)
 ).withColumn(
-    "silver_created_at", F.current_timestamp()
+    "_created_at", F.current_timestamp()
 ).withColumn(
-    "silver_updated_at", F.current_timestamp()
+    "_updated_at", F.current_timestamp()
 )
 ```
 
@@ -181,13 +190,13 @@ if output_format == 'delta':
     # Step 1: Close out old records (set valid_until, is_current=False)
     delta_table.alias("target").merge(
         df_scd.alias("source"),
-        f"{merge_condition} AND target.is_current = true"
+        f"{merge_condition} AND target._is_current = true"
     ).whenMatchedUpdate(
         condition="target.contact_name != source.contact_name OR target.city != source.city",  # Detect changes
         set={
-            "valid_until": "source.valid_from",
-            "is_current": "false",
-            "silver_updated_at": "current_timestamp()"
+            "_valid_to": "source._valid_from",
+            "_is_current": "false",
+            "_updated_at": "current_timestamp()"
         }
     ).execute()
 
@@ -259,7 +268,7 @@ def execute_task(spark, config):
         # [LOAD WITH SCD TYPE 2]
         # ... merge logic ...
         
-        silver_count = spark.table(silver_table).filter("is_current = true").count()
+        silver_count = spark.table(silver_table).filter("_is_current = true").count()
         
         logger.info(f"Silver transformation completed: {silver_count} active records")
         
@@ -305,6 +314,7 @@ if quality_rate < config.get('quality_threshold', 0.95):
 - Add `# [EXTRACT FROM BRONZE]`, `# [TRANSFORM]`, `# [LOAD TO SILVER]` section markers
 - Comment optimization opportunities (broadcast hints for lookups, partitioning on business keys)
 - Use descriptive variable names: `df_deduped`, `df_typed`, `df_scd`
+- Add Silver governance columns exactly as `_updated_at`, `_is_current`, `_valid_from`, `_valid_to`.
 
 ## 🎯 OUTPUT REQUIREMENTS
 1. Return ONLY valid PySpark code (no markdown, no explanations embedded)
@@ -315,3 +325,4 @@ if quality_rate < config.get('quality_threshold', 0.95):
 6. No `main()` function - only `execute_task(spark, config)`
 7. SCD Type 2 pattern for historical tracking (unless disabled in config)
 8. Data quality validation (mark issues, don't block)
+9. Silver governance columns present with exact names: `_updated_at`, `_is_current`, `_valid_from`, `_valid_to`

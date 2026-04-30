@@ -100,6 +100,17 @@ class AgentFService:
         }.get(post_drafting_mode, "Default review path. Enforce layer-aware constraints from the task metadata.")
 
     @staticmethod
+    def _normalize_source_tech(source_tech: Optional[str]) -> str:
+        return str(source_tech or "mssql").upper()
+
+    @staticmethod
+    def _normalize_target_tech(target_tech: Optional[str]) -> str:
+        normalized = normalize_tech_stack(target_tech)
+        if normalized:
+            return str(normalized).lower().replace(" ", "_")
+        return str(target_tech or "pyspark").lower().replace(" ", "_")
+
+    @staticmethod
     def _resolve_review_layer(layer: str, post_drafting_mode: Optional[str]) -> str:
         """Drafting delivery evaluates functional equivalence even if execution layer is medallion-tagged."""
         normalized_layer = str(layer or "direct").lower()
@@ -121,7 +132,7 @@ class AgentFService:
         if contract:
             return "pyspark" if contract.sql_flavor == SQLFlavor.PYSPARK else "sql"
 
-        normalized = normalize_tech_stack(target_tech) or str(target_tech or "").lower()
+        normalized = AgentFService._normalize_target_tech(target_tech)
         if normalized in {"pyspark", "spark", "ms_fabric", "snowflake"}:
             return "pyspark"
         if normalized:
@@ -483,11 +494,11 @@ class AgentFService:
         review_layer = self._resolve_review_layer(layer, post_drafting_mode)
         
         # Extract Technologies
-        source_tech = task_info.get("source_tech", "mssql").upper()
+        source_tech = self._normalize_source_tech(task_info.get("source_tech"))
         
         # Consistent with Agent C: Use tech_id if available, fallback to target_tech
-        target_tech_raw = task_info.get("tech_id", task_info.get("target_tech", "pyspark"))
-        target_tech = str(target_tech_raw).lower().replace(" ", "_")
+        target_tech_raw = task_info.get("tech_id") or task_info.get("target_tech") or "pyspark"
+        target_tech = self._normalize_target_tech(target_tech_raw)
 
         cartridge_rules = ""
         # CRITICAL FIX: Load cartridge rules based on REVIEW_LAYER, not execution layer
@@ -680,7 +691,7 @@ class AgentFService:
         db = SupabasePersistence(tenant_id=self.tenant_id, client_id=self.client_id)
         post_drafting_mode = await db.get_post_drafting_mode(project_id) if project_id else None
         refinement_strategy = self._resolve_refinement_strategy(post_drafting_mode)
-        target_tech = task_info.get("tech_id", task_info.get("target_tech", "pyspark")).lower()
+        target_tech = self._normalize_target_tech(task_info.get("tech_id") or task_info.get("target_tech") or "pyspark")
         code_lang = "python" if self._is_pyspark_target_family(target_tech) else "sql"
         
         human_content = f"""

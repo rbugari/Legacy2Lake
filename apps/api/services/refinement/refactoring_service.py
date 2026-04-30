@@ -74,13 +74,18 @@ class RefactoringService:
             content = content.decode("utf-8")
             
         # Optimization Logic
-        if stack == "snowflake":
-            optimization_note = "# [Refactoring Agent] Optimization: Consider CLUSTER BY on high cardinality columns for pruning.\n"
-            sec_note = "# [Refactoring Agent] Security: Ensure usage of 'Config.get_session()' to avoid hardcoded creds.\n"
+        normalized_stack = (stack or "pyspark").lower().strip()
+        comment_prefix = "--" if file_key.lower().endswith(".sql") else "#"
+
+        if normalized_stack in {"snowflake", "snowflake_sql"}:
+            optimization_note = f"{comment_prefix} [Refactoring Agent] Optimization: Consider CLUSTER BY on high cardinality columns for pruning when configured.\n"
+            sec_note = f"{comment_prefix} [Refactoring Agent] Security: Use Snowflake roles, integrations, or external secrets managed outside generated SQL.\n"
+        elif normalized_stack in {"databricks", "azure_databricks"}:
+            optimization_note = f"{comment_prefix} [Refactoring Agent] Optimization: Consider Databricks OPTIMIZE/ZORDER only when enabled by deployment config.\n"
+            sec_note = f"{comment_prefix} [Refactoring Agent] Security: Resolve secrets through runtime configuration or approved workspace secret scopes.\n"
         else:
-            # Default Spark
-            optimization_note = "# [Refactoring Agent] Optimization: Ensure Z-ORDERING on high cardinality columns for performance.\n"
-            sec_note = "# [Refactoring Agent] Security: All hardcoded credentials have been replaced with dbutils.secrets.get calls (simulated).\n"
+            optimization_note = f"{comment_prefix} [Refactoring Agent] Optimization: Keep generic Spark tuning portable; use partitioning/caching only when configured.\n"
+            sec_note = f"{comment_prefix} [Refactoring Agent] Security: Resolve credentials through injected config or environment-backed secret providers.\n"
 
         filename = file_key.split("/")[-1]
         if log: self._log(log, f"  > {filename}: Added Optimization hint for {stack}")

@@ -27,6 +27,11 @@ class PySparkCartridge(Cartridge):
     def get_file_extension(self) -> str:
         return ".py"
 
+    def _is_databricks_runtime(self) -> bool:
+        paths = self.registry.get("paths", {}) if isinstance(self.registry, dict) else {}
+        target_stack = str(paths.get("target_stack") or self.registry.get("target_stack") or "pyspark").lower()
+        return target_stack in {"databricks", "azure_databricks"}
+
     def generate_scaffolding(self) -> Dict[str, str]:
         """Generates config.py and utils.py"""
         naming = self.registry.get("naming", {})
@@ -36,15 +41,15 @@ class PySparkCartridge(Cartridge):
         s_silver = naming.get("silver_schema", "silver_curated")
         s_gold = naming.get("gold_schema", "gold_business")
         
-        p_bronze = paths.get("bronze_path", "/mnt/datalake/bronze")
-        p_silver = paths.get("silver_path", "/mnt/datalake/silver")
-        p_gold = paths.get("gold_path", "/mnt/datalake/gold")
+        p_bronze = paths.get("bronze_path", "./data/bronze")
+        p_silver = paths.get("silver_path", "./data/silver")
+        p_gold = paths.get("gold_path", "./data/gold")
         
         config_content = f"""# Medallion Architecture Configuration
 import os
 
 class Config:
-    CATALOG = "main_catalog"
+    CATALOG = os.getenv("L2L_CATALOG", "main")
     
     # Schemas
     SCHEMA_BRONZE = "{s_bronze}"
@@ -57,8 +62,8 @@ class Config:
     PATH_GOLD = "{p_gold}"
     
     @staticmethod
-    def get_jdbc_url(secret_scope, secret_key):
-        return dbutils.secrets.get(scope=secret_scope, key=secret_key)
+    def get_secret(name, default=None):
+        return os.getenv(name, default)
 """
 
         utils_content = """# Common Utility Functions
@@ -248,6 +253,24 @@ print(f"Gold Layer updated: {{target_gold_table}}")
     def generate_orchestration(self, tables_metadata: List[Dict[str, Any]]) -> str:
         """Generates an Airflow DAG for Databricks/PySpark orchestration."""
         project_id = self.project_id
+        if not self._is_databricks_runtime():
+            tasks = [str(table.get('table_name') or table.get('source_path') or 'unknown') for table in tables_metadata]
+            task_lines = "\n".join([f'    "{task}",' for task in tasks])
+            return f'''"""Portable PySpark orchestration manifest for project {project_id}.
+
+This file intentionally avoids Databricks-only operators. Wire these tasks into
+the scheduler used by the target platform and call each generated layer script
+with injected runtime configuration.
+"""
+
+TASK_ORDER = [
+{task_lines}
+]
+
+
+def get_task_order():
+    return list(TASK_ORDER)
+'''
         
         dag_content = f"""from airflow import DAG
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator

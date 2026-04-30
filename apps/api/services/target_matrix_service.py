@@ -235,6 +235,14 @@ def reset_project(client: ApiClient, project_id: str) -> Dict[str, Any]:
     return client.json_request("POST", f"/projects/{project_id}/reset", query={"backup": "false"})
 
 
+def start_triage(client: ApiClient, project_id: str) -> Dict[str, Any]:
+    return client.json_request(
+        "POST",
+        f"/projects/{project_id}/triage",
+        payload={"system_prompt": None, "user_context": None, "pre_classification": None},
+    )
+
+
 def approve_project(client: ApiClient, project_id: str) -> Dict[str, Any]:
     return client.json_request("POST", f"/projects/{project_id}/approve")
 
@@ -765,6 +773,21 @@ class TargetMatrixRunner:
 
         if do_reset:
             lifecycle.append({"step": "reset", "at": utc_now(), "result": reset_project(self.client, project_id)})
+            lifecycle.append({"step": "start_triage", "at": utc_now(), "result": start_triage(self.client, project_id)})
+            lifecycle.append({
+                "step": "triage_complete",
+                "at": utc_now(),
+                "result": wait_for_phase(
+                    client=self.client,
+                    project_id=project_id,
+                    phase_type="triage",
+                    desired_statuses=["TRIAGED", "TRIAGE_APPROVED", "DRAFTING", "ORCHESTRATING", "DRAFTED"],
+                    output_dir=combo_dir,
+                    timeout_seconds=timeout_seconds,
+                    poll_seconds=poll_seconds,
+                    in_progress_statuses=["TRIAGE"],
+                )
+            })
 
         lifecycle.append({"step": "update_target", "at": utc_now(), "target": target})
         update_target(self.client, project_id, target)

@@ -608,6 +608,7 @@ class ValidationService:
     def _validate_placeholders(self, code: str) -> List[ValidationIssue]:
         """Detect unresolved placeholders like {variable} or {{variable}} in code"""
         issues = []
+        code_for_placeholder_scan = self._mask_python_f_string_expressions(code)
         
         # In PySpark and Python, f"{variable}" is perfectly valid syntax.
         # We only want to catch specific template placeholders that the LLM forgot to resolve.
@@ -627,11 +628,11 @@ class ValidationService:
         
         found_placeholders = []
         for pattern in patterns:
-            for match in re.finditer(pattern, code):
+            for match in re.finditer(pattern, code_for_placeholder_scan):
                 var_name = match.group(1)
                 full_match = match.group(0)
-                line = code[:match.start()].splitlines()[-1] if code[:match.start()].splitlines() else ""
-                line += code[match.start():].splitlines()[0] if code[match.start():].splitlines() else ""
+                line = code_for_placeholder_scan[:match.start()].splitlines()[-1] if code_for_placeholder_scan[:match.start()].splitlines() else ""
+                line += code_for_placeholder_scan[match.start():].splitlines()[0] if code_for_placeholder_scan[match.start():].splitlines() else ""
 
                 # Allow Python f-strings such as f"{silver_schema}.{silver_prefix}table"
                 # because those are runtime interpolations, not unresolved template placeholders.
@@ -656,6 +657,36 @@ class ValidationService:
             ))
             
         return issues
+
+    def _mask_python_f_string_expressions(self, code: str) -> str:
+        """Mask brace expressions inside Python f-strings before placeholder checks."""
+        def mask_braces(text: str) -> str:
+            return re.sub(r'\{[^{}]+\}', lambda match: ' ' * len(match.group(0)), text)
+
+        masked_lines = []
+        in_multiline_fstring: Optional[str] = None
+        fstring_prefix = r'(?i)(?:^|[^a-zA-Z0-9_])(?:[rub]*f|f[rub]*)("""|\'\'\')'
+
+        for line in code.splitlines(keepends=True):
+            if in_multiline_fstring:
+                masked_lines.append(mask_braces(line))
+                if in_multiline_fstring in line:
+                    in_multiline_fstring = None
+                continue
+
+            start = re.search(fstring_prefix, line)
+            if start:
+                delimiter = start.group(1)
+                prefix = line[:start.start(1)]
+                body = line[start.start(1):]
+                masked_lines.append(prefix + mask_braces(body))
+                if body.count(delimiter) % 2 == 1:
+                    in_multiline_fstring = delimiter
+                continue
+
+            masked_lines.append(line)
+
+        return ''.join(masked_lines)
     
     
     def _get_tech_type(self, tech_id: str) -> TechnologyType:

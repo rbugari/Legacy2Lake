@@ -28,6 +28,36 @@ router = APIRouter(tags=["Triage & Discovery"])
 logger = logging.getLogger(__name__)
 
 
+def _resolve_triage_asset_category(
+    file_name: str,
+    file_category: str,
+    file_preclassification: Optional[Dict[str, Any]],
+    agent_node: Dict[str, Any],
+    raw_content: Optional[str],
+) -> str:
+    if file_preclassification:
+        return file_preclassification.get("classification", "CORE")
+
+    if agent_node:
+        return agent_node.get("category", "IGNORED")
+
+    normalized_name = (file_name or "").strip().lower()
+    normalized_content = (raw_content or "").lower()
+    looks_like_sql_routine = normalized_name.endswith(".sql") and "ddl" not in normalized_name and (
+        "create procedure" in normalized_content
+        or "create or replace procedure" in normalized_content
+        or "create function" in normalized_content
+        or normalized_name.startswith("sp_")
+        or re.match(r"^\d+_sp_", normalized_name) is not None
+    )
+
+    if file_category == "migrable" or looks_like_sql_routine:
+        return "CORE"
+    if file_category == "soporte":
+        return "SUPPORT"
+    return "IGNORED"
+
+
 # --- Helper Functions for Origin Analysis Extraction (Sprint 8.5) ---
 
 async def _extract_origin_from_medulla(medulla: Dict[str, Any], connections: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -925,14 +955,14 @@ async def _run_triage_background(
             rf_nodes = []
             rf_edges = []
 
-        # Auto-Promotion Fallback: Ensure CORE-likely physical assets are in the graph
+        # Auto-Promotion Fallback: Ensure migrable package files are in the graph
         for item in manifest["file_inventory"]:
             if item["name"].lower() in ['triage.log', 'thumbs.db', '.ds_store', 'desktop.ini']:
                 continue
 
             if not any(n["id"] == item["path"] for n in rf_nodes):
                 ext = item["name"].split('.')[-1].lower() if '.' in item["name"] else ''
-                if ext in ['dtsx', 'sql', 'py', 'spark', 'scala']:
+                if ext in ['dtsx', 'dsx', 'kjb', 'ktr', 'pmx']:
                     rf_nodes.append({
                         "id": item["path"],
                         "label": item["name"],
@@ -988,21 +1018,18 @@ async def _run_triage_background(
             
             # Find matching agent node for metadata enrichment
             agent_node = next((n for n in rf_nodes if n["id"] == item["path"]), {})
-            
-            # Use pre-assigned classification if available, otherwise auto-detect
-            if file_preclassification:
-                # Usuario ajustó la clasificación en Discovery
-                category = file_preclassification.get("classification", "CORE")
-            else:
-                # Fallback: lógica anterior (backward compatible)
-                category = agent_node.get("category", "IGNORED") 
-                if not agent_node:
-                    category = DiscoveryService._map_extension_to_type(
-                        item["name"].split('.')[-1].lower() if '.' in item["name"] else 'none'
-                    )
-            
+
             # Classify file for category field (Sprint 14)
             file_category, detected_tech = qa_service._classify_file(item)
+
+            # Use pre-assigned classification if available, otherwise auto-detect
+            category = _resolve_triage_asset_category(
+                file_name=item["name"],
+                file_category=file_category,
+                file_preclassification=file_preclassification,
+                agent_node=agent_node,
+                raw_content=item.get("content"),
+            )
 
             # Extract metadata from Agent A (Detected Architecture)
             # Sprint 12: Ensure load_strategy, criticality, etc are persisted

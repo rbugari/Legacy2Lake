@@ -56,16 +56,17 @@ export default function UnifiedFileExplorer({
 
     // UI Logic for Resizing and Toggling
     const [isTreeVisible, setIsTreeVisible] = useState(true);
-    const [treeWidth, setTreeWidth] = useState(variant === 'compact' ? 200 : 300); // px
+    const defaultTreeWidth = variant === 'compact' ? 240 : 320;
+    const [treeWidth, setTreeWidth] = useState(defaultTreeWidth); // px
     const isResizing = useRef(false);
 
     // Persist tree width & visibility
     useEffect(() => {
-        const saved = localStorage.getItem(`tree-width-${projectId}`);
+        const saved = localStorage.getItem(`tree-width-${projectId}-${variant}`);
         if (saved) setTreeWidth(parseInt(saved));
         const visible = localStorage.getItem(`tree-visible-${projectId}`);
         if (visible !== null) setIsTreeVisible(visible === 'true');
-    }, [projectId]);
+    }, [projectId, variant]);
 
     const handleToggleTree = () => {
         const next = !isTreeVisible;
@@ -89,8 +90,8 @@ export default function UnifiedFileExplorer({
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         document.body.classList.remove('resizing');
-        localStorage.setItem(`tree-width-${projectId}`, String(treeWidth));
-    }, [projectId, treeWidth]);
+        localStorage.setItem(`tree-width-${projectId}-${variant}`, String(treeWidth));
+    }, [projectId, treeWidth, variant]);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!isResizing.current) return;
@@ -98,7 +99,7 @@ export default function UnifiedFileExplorer({
         if (container) {
             const rect = container.getBoundingClientRect();
             const newWidth = e.clientX - rect.left;
-            if (newWidth > 150 && newWidth < 800) {
+            if (newWidth > 240 && newWidth < 560) {
                 setTreeWidth(newWidth);
             }
         }
@@ -246,12 +247,12 @@ export default function UnifiedFileExplorer({
                     </div>
                     <div className="flex items-center gap-2">
                         {/* File Type Filter */}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 shrink-0">
                             <Filter size={12} className="text-gray-400" />
                             <select
                                 value={selectedFileType}
                                 onChange={(e) => setSelectedFileType(e.target.value)}
-                                className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                className="w-32 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                             >
                                 <option value="all">All Files</option>
                                 {availableExtensions.map(ext => (
@@ -278,7 +279,7 @@ export default function UnifiedFileExplorer({
                 {isTreeVisible && (
                     <div
                         className="border-r border-gray-200 dark:border-gray-700 overflow-y-auto p-2 bg-gray-50/50 dark:bg-gray-900/50 shrink-0"
-                        style={{ width: `${treeWidth}px` }}
+                        style={{ width: `${treeWidth}px`, minWidth: `${treeWidth}px`, maxWidth: `${treeWidth}px` }}
                     >
                         {filteredTree ? (
                             <div className="space-y-1">
@@ -343,11 +344,9 @@ export default function UnifiedFileExplorer({
                                         <RefreshCw size={16} className="animate-spin" /> Loading content...
                                     </div>
                                 ) : (() => {
-                                    // Data/config files: wrap long lines to fit the panel
-                                    // Code files: keep horizontal scroll (no forced wrap)
-                                    const wrapLong = /\.(json|yaml|yml|xml|md|html|css|txt)$/i.test(selectedFile.name);
+                                    const wrapLong = true;
                                     return (
-                                        <div className={wrapLong ? "w-full" : "min-w-max"}>
+                                        <div className="w-full max-w-full">
                                             <SyntaxHighlighter
                                                 language={getLanguage(selectedFile.name)}
                                                 style={vscDarkPlus}
@@ -357,12 +356,16 @@ export default function UnifiedFileExplorer({
                                                     background: '#0a0a0a', 
                                                     fontSize: variant === 'compact' ? '12px' : '13px', 
                                                     lineHeight: '1.5',
-                                                    whiteSpace: wrapLong ? 'pre-wrap' : 'pre',
-                                                    wordBreak: wrapLong ? 'break-all' : undefined,
+                                                    width: '100%',
+                                                    maxWidth: '100%',
+                                                    whiteSpace: 'pre-wrap',
+                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'anywhere',
+                                                    overflowX: 'hidden',
                                                 }}
                                                 showLineNumbers={true}
-                                                wrapLines={wrapLong}
-                                                wrapLongLines={wrapLong}
+                                                wrapLines={true}
+                                                wrapLongLines={true}
                                             >
                                                 {fileContent}
                                             </SyntaxHighlighter>

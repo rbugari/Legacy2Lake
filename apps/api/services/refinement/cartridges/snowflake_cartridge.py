@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Dict, Any, List
 from .base_cartridge import Cartridge
@@ -13,13 +14,25 @@ class SnowflakeCartridge(Cartridge):
             return ".sql"
         return ".py"
 
+    def _schemas(self) -> tuple[str, str, str]:
+        naming = self.registry.get("naming", {})
+        return (
+            str(naming.get("bronze_schema", "BRONZE_RAW")).upper(),
+            str(naming.get("silver_schema", "SILVER_CURATED")).upper(),
+            str(naming.get("gold_schema", "GOLD_BUSINESS")).upper(),
+        )
+
+    def _identifier(self, value: str) -> str:
+        identifier = re.sub(r"[^A-Za-z0-9_]", "_", str(value or "UNKNOWN")).upper().strip("_")
+        if not identifier:
+            identifier = "UNKNOWN"
+        if not identifier[0].isalpha() and identifier[0] != "_":
+            identifier = f"T_{identifier}"
+        return identifier
+
     def generate_scaffolding(self) -> Dict[str, str]:
         """Generates config.py and utils.py tailored for Snowflake."""
-        naming = self.registry.get("naming", {})
-        
-        s_bronze = naming.get("bronze_schema", "BRONZE_RAW")
-        s_silver = naming.get("silver_schema", "SILVER_CURATED")
-        s_gold = naming.get("gold_schema", "GOLD_BUSINESS")
+        s_bronze, s_silver, s_gold = self._schemas()
         
         config_content = f"""# Snowflake Medallion Configuration
 import snowflake.snowpark as snowpark
@@ -194,7 +207,9 @@ def main(session: Session):
         format_map = {".csv": "CSV", ".json": "JSON", ".parquet": "PARQUET", ".avro": "AVRO", ".orc": "ORC"}
         file_format = format_map.get(ext, "CSV")
         
-        target_table = f"{{Config.SCHEMA_BRONZE}}.{source_path.stem.upper()}"
+        s_bronze, _, _ = self._schemas()
+        table_name = self._identifier(source_path.stem)
+        target_table = f"{s_bronze}.{table_name}"
         
         # Add CSV-specific options
         csv_opts = ""
@@ -218,8 +233,11 @@ FILE_FORMAT = (TYPE = '{file_format}'{csv_opts});
         pk_columns = table_metadata.get("pk_columns", ["ID"])
         if isinstance(pk_columns, str): pk_columns = [pk_columns]
         
-        target_bronze = f"{{Config.SCHEMA_BRONZE}}.{source_path.stem.upper()}"
-        target_silver = f"{{Config.SCHEMA_SILVER}}.{output_table_name.upper()}"
+        s_bronze, s_silver, _ = self._schemas()
+        source_table = self._identifier(source_path.stem)
+        target_name = self._identifier(output_table_name)
+        target_bronze = f"{s_bronze}.{source_table}"
+        target_silver = f"{s_silver}.{target_name}"
         
         join_cond = " AND ".join([f"s.{pk} = t.{pk}" for pk in pk_columns])
         
@@ -242,8 +260,11 @@ WHEN NOT MATCHED THEN INSERT
         source_path = Path(table_metadata.get("source_path", "unknown"))
         output_table_name = table_metadata.get("output_table_name") or source_path.stem
         
-        target_silver = f"{{Config.SCHEMA_SILVER}}.{source_path.stem.upper()}"
-        target_gold = f"{{Config.SCHEMA_GOLD}}.{output_table_name.upper()}"
+        _, s_silver, s_gold = self._schemas()
+        source_table = self._identifier(source_path.stem)
+        target_name = self._identifier(output_table_name)
+        target_silver = f"{s_silver}.{source_table}"
+        target_gold = f"{s_gold}.{target_name}"
         
         return f"""-- GOLD LAYER (SQL)
 -- Target: {target_gold}

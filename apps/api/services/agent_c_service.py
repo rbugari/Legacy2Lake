@@ -632,13 +632,20 @@ class AgentCService:
         
         # Generate cache key from node_data (deterministic hash)
         if self.cache_manager:
+            retry_feedback = node_data.get('agent_f_retry_feedback') or {}
+            retry_signature = None
+            if retry_feedback:
+                retry_signature = hashlib.sha256(
+                    json.dumps(retry_feedback, sort_keys=True, default=str).encode('utf-8')
+                ).hexdigest()[:16]
             cache_key_data = {
                 'asset_id': node_data.get('asset_id'),
                 'project_id': node_data.get('project_id'),
                 'tech_id': node_data.get('tech_id'),
                 'layer': node_data.get('layer'),
                 'source_tech': node_data.get('source_tech'),
-                'version': '12.0'  # Cache version (invalidate on major changes)
+                'retry_signature': retry_signature,
+                'version': '12.2_agent_f_retry_contracts'  # Cache version (invalidate on prompt/contract changes)
             }
             cache_key = self.cache_manager.generate_key("transpile", **cache_key_data)
             
@@ -874,7 +881,7 @@ class AgentCService:
                     )
                     
             except Exception as e:
-                logger.error(f"[AgentC Sprint8.5] Origin analysis failed: {e}", "AgentC")
+                logger.warning(f"[AgentC Sprint8.5] Origin analysis unavailable: {e}. Continuing without this enrichment.", "AgentC")
                 # Continue without origin analysis - not critical for code generation
         
         # ================================================================
@@ -1256,6 +1263,21 @@ class AgentCService:
             for n in set_context:
                 neighbor_context += f"- Task: {n.get('name')} | Engine: {n.get('type')}\n"
 
+        retry_code_lang = "sql" if target_engine not in {"pyspark", "spark", "databricks", "ms_fabric", "snowflake"} else "python"
+        retry_feedback_block = ""
+        if node_data.get('agent_f_retry_feedback'):
+            retry_feedback_block = f"""
+    ### AGENT F RETRY CONTRACT (MANDATORY REPAIR PASS) ###
+    This generation is a retry after Agent F rejected the previous implementation.
+    You MUST fix every item below before returning code.
+    {json.dumps(node_data.get('agent_f_retry_feedback'), indent=2, default=_json_serialize)}
+
+    ### PREVIOUS REJECTED IMPLEMENTATION ###
+    ```{retry_code_lang}
+    {node_data.get('previous_generated_code') or '(not available)'}
+    ```
+    """
+
         human_prompt = f"""
 {dialect_instruction}
 Project Context: {json.dumps(context or {}, indent=2, default=_json_serialize)}
@@ -1289,6 +1311,8 @@ IMPORTANT: Use the schema metadata and project parameters above to generate code
 
 ### FORENSIC GAPS & CONSTRAINTS ###
 {json.dumps(node_data.get('scout_assessment', {}).get('detected_gaps', []), indent=2, default=_json_serialize)}
+
+{retry_feedback_block}
 
 ### SOURCE SCRIPT (COMPLETE ORIGINAL CODE - TRANSPILE THIS FAITHFULLY) ###
 This is the full original source code you MUST transpile. Do NOT generate a generic stub.

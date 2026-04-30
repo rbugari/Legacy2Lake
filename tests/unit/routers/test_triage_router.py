@@ -13,6 +13,7 @@ from apps.api.routers.triage import (
     TriageParams,
     _infer_sql_column_mappings,
     _persist_column_mappings,
+    _resolve_triage_asset_category,
     _run_triage_background,
 )
 
@@ -219,6 +220,30 @@ def test_infer_sql_column_mappings_handles_insert_select_with_expressions():
     assert ("nombre", "nombre_normalizado") in mapping_pairs
     # constant-to-target mapping falls back to target as source for traceability
     assert ("estado", "estado") in mapping_pairs
+
+
+def test_resolve_triage_asset_category_promotes_procedural_sql_without_agent_node():
+    category = _resolve_triage_asset_category(
+        file_name="01_sp_load_dim_fecha.sql",
+        file_category="soporte",
+        file_preclassification=None,
+        agent_node={},
+        raw_content="CREATE PROCEDURE sp_load_dim_fecha() BEGIN SELECT 1; END",
+    )
+
+    assert category == "CORE"
+
+
+def test_resolve_triage_asset_category_keeps_ddl_sql_as_support_without_agent_node():
+    category = _resolve_triage_asset_category(
+        file_name="00_ddl_nalub_dw.sql",
+        file_category="soporte",
+        file_preclassification=None,
+        agent_node={},
+        raw_content="CREATE TABLE dim_fecha (fecha_key INT);",
+    )
+
+    assert category == "SUPPORT"
 
 
 def test_infer_sql_column_mappings_handles_update_set_assignments():

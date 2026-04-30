@@ -90,9 +90,10 @@ class PromptAssembler:
         result = template
         missing_variables = set()
         
-        # Find both {{variable}} and {variable} patterns
-        # We use a pattern that matches 1 or 2 braces, but captures the content inside
-        pattern = r'\{{1,2}\s*([a-zA-Z_][a-zA-Z0-9_\.\|\s]*)\s*\}{1,2}'
+        # Only {{variable}} is considered a prompt placeholder. Single-brace
+        # expressions are common in SQL examples and Python f-strings, and must
+        # remain untouched for the LLM to see valid code patterns.
+        pattern = r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_\.\|\s]*)\s*\}\}'
         matches = re.finditer(pattern, template)
         
         for match in matches:

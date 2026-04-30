@@ -109,3 +109,32 @@ def execute_task(spark, config):
     result = asyncio.run(validator.validate_code(code=code, tech_id="pyspark", layer="direct"))
 
     assert not any(issue.check_name == "direct_no_hardcode" for issue in result.issues)
+
+
+def test_pyspark_validation_allows_multiline_f_string_sql_placeholders():
+    code = '''
+from pyspark.sql import functions as F
+
+def execute_task(spark, config):
+    target_table = config["target_table_name"]
+    source_table = config["source_table_name"]
+
+    df = spark.read.table(source_table)
+    df = df.withColumn("_updated_at", F.current_timestamp())
+    df.write.mode("overwrite").saveAsTable(target_table)
+
+    spark.sql(f"""
+        MERGE INTO {target_table} target
+        USING staging_view source
+        ON target.id = source.id
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+
+    return {"status": "completed"}
+'''
+
+    validator = ValidationService()
+    result = asyncio.run(validator.validate_code(code=code, tech_id="pyspark", layer="silver"))
+
+    assert not any(issue.check_name == "unresolved_placeholders" for issue in result.issues)

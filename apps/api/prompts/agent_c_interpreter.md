@@ -16,7 +16,15 @@ When the task is a refinement or modernization layer (`bronze`, `silver`, `gold`
   3. **Transformation**: Heart of the logic (using SQL or idiomatic API for the target engine).
   4. **Load (Upsert/Merge)**: Execution of the merge into the target (Silver/Gold).
 
+- **Runtime Contract Is Mandatory**: For PySpark/Spark targets, every generated artifact MUST expose `execute_task(spark, config)` as the entry point. Do not emit top-level executable scripts, `main()` blocks, sample configs, or hardcoded deployment constants.
+- **Zero-Hardcode Means Config-Driven Names**: Do not hardcode catalogs, schemas, table names, prefixes (`raw_`, `stg_`), paths, mount points, or environment names. Resolve them from `config` (for example `config['source_table_name']`, `config['target_table_name']`, `config.get('catalog_name')`, `config.get('silver_schema')`). Never use the legacy package filename, such as `*.dtsx`, as a physical table name.
+- **PII Is Field-Level**: Do not hash or mask all business columns just because an asset is PII-bearing. Apply masking only to columns explicitly listed in metadata/config as PII or with a masking rule. Preserve unflagged business values.
+- **No Generic Vendor Operations**: For generic PySpark targets, do not emit unconditional Databricks-only `OPTIMIZE`, `VACUUM`, `ZORDER`, or `dbutils` operations unless the cartridge or config explicitly enables a Databricks-compatible runtime.
+
 - **Refinement Objective**: Use the full set of Drafting outputs and supporting knowledge to detect reusable entities, shared dimensions, and opportunities to move from legacy ETL choreography to target-native ELT patterns. Avoid one-file-in, three-files-out thinking.
+- **Morphology Preservation in Refinement**: When Drafting already produced explicit field-by-field logic, preserve that explicit morphology in refinement outputs whenever possible. Prefer named projections, one-column-at-a-time derivations, and traceable transform sections over compressed shorthand.
+- **Do Not Over-Abbreviate**: For `structured_refinement` and `intelligent_reengineering`, do not collapse detailed Drafting logic into terse `SELECT *`, broad passthrough CTEs, or heavily compacted expressions if that would hide business rules, mappings, or per-column intent.
+- **Modernize Around the Logic, Not By Erasing It**: Apply medallion structure, consolidation, or optimization without removing useful explicit mappings, joins, casts, filters, and column comments that make later maintenance easier.
 
 ### Direct Mode Override
 If the task or cartridge indicates `layer = direct`, the following rules OVERRIDE the architectural preferences above:
@@ -28,6 +36,7 @@ If the task or cartridge indicates `layer = direct`, the following rules OVERRID
 - Do not invent business defaults for required legacy parameters; if a source parameter is required, preserve it as an explicit runtime input.
 - Do not introduce source-discovery fallbacks such as Delta reads or table scans when the legacy package provides an explicit source query or source table.
 - If metadata provides an explicit column list, prefer explicit projection over `SELECT *`.
+- If Drafting output already expresses transformations column-by-column, preserve that shape unless a shorter form is semantically identical and still fully traceable.
 
 ### Intelligent Reengineering Mode (v4.4+)
 
@@ -118,7 +127,7 @@ Return a JSON object with:
 
 ## Guidelines
 - **Use Spark Sessions**: Assume `spark` is available.
-- **Optimization**: Use `OPTIMIZE` and `VACUUM` hints where appropriate.
+- **Optimization**: Use portable Spark/DataFrame optimizations by default. Emit platform-specific maintenance commands only when explicitly enabled by config/cartridge.
 - **Performance**: Prefer Spark SQL for joins to allow the optimizer to do its job.
 
 **CRITICAL**: You MUST return ONLY a raw JSON object. Do not include markdown code blocks (```json), do not include conversational text, and do not include any prefixes or suffixes. If your response is not a valid JSON object starting with `{` and ending with `}`, the system will fail.

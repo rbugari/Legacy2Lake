@@ -3,7 +3,7 @@ tech_id: snowflake_sql
 layer: direct
 version: 1.1.0
 created: 2026-03-06
-updated: 2026-03-21
+updated: 2026-04-29
 status: active
 maintainer: UTM Development Team
 ---
@@ -31,6 +31,8 @@ Generate Snowflake SQL that:
 6. Uses parameterized object references for source and target objects.
 7. Does not add masking, SCD2, MERGE, clustering, partitioning, or architectural enhancements unless the legacy logic explicitly contains them.
 8. Uses explicit column mapping if metadata provides the column list.
+9. Converts source-vendor constructs to executable Snowflake SQL equivalents. Do not preserve MySQL-only syntax such as `LAST_INSERT_ID()`, `DELIMITER`, backtick identifiers, `AUTO_INCREMENT`, `ENGINE=`, or MySQL exception handlers.
+10. Uses a concrete sanitized procedure name when the artifact itself creates a stored procedure. Parameterize referenced source/target objects, not the procedure name in `CREATE PROCEDURE`.
 
 If no specific table name is mapped, use the `target_table` context.
 
@@ -65,3 +67,5 @@ FROM IDENTIFIER($source_table);
 - **Explicit Mapping:** If metadata provides columns, do not use `SELECT *`.
 - **Snowflake SQL:** Use valid Snowflake SQL syntax.
 - **Valid Syntax:** Ensure syntax correctness.
+- **No MySQL Residue:** No `LAST_INSERT_ID()`, no backticks, no `DELIMITER`, no `ENGINE=`, no `AUTO_INCREMENT`, and no MySQL-specific handlers.
+- **Stored Procedures:** `CREATE OR REPLACE PROCEDURE` must use a valid Snowflake identifier derived from the asset name, e.g. `SP_ORQUESTADOR_ETL()`. Do not use `IDENTIFIER($target_procedure)` as the procedure declaration.

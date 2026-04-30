@@ -43,3 +43,15 @@ def test_build_with_filter_json_still_works():
 
     assert "payload=" in rendered
     assert '"table_name": "dim_customer"' in rendered
+
+
+def test_build_simple_preserves_single_brace_code_examples():
+    assembler = PromptAssembler()
+    template = 'table={{table_name}} code=f"{catalog}.{schema}.{table}" sql="MERGE INTO {target_table}"'
+    context = {"table_name": "dim_customer"}
+
+    rendered = assembler.build(template, context, format="simple")
+
+    assert "table=dim_customer" in rendered
+    assert 'f"{catalog}.{schema}.{table}"' in rendered
+    assert 'MERGE INTO {target_table}' in rendered

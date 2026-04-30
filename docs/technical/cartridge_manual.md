@@ -1,6 +1,6 @@
-# Cartridge Manual (v4.0 Stabilized)
+# Cartridge Manual (v4.5 Stabilized)
 
-> Last Updated: 2026-04-15
+> Last Updated: 2026-04-16
 > Status: Current cartridge model
 
 Cartridges are the Level 2 prompts of the platform. They specialize generation for a specific target technology and layer while the agent prompt stays comparatively neutral.
@@ -42,8 +42,8 @@ There are `40` active canonical cartridges:
 | `aws` | AWS / Glue-oriented patterns |
 | `dbt` | dbt SQL and project conventions |
 | `gcp` | BigQuery / GCP-oriented SQL |
-| `ms_fabric` | Fabric PySpark / Lakehouse |
-| `ms_fabric_sql` | Fabric Warehouse SQL |
+| `ms_fabric` | Fabric Lakehouse / PySpark notebooks (added in v4.4) |
+| `ms_fabric_sql` | Fabric Warehouse SQL (added in v4.4) |
 
 ## 4. Cartridge Resolution
 
