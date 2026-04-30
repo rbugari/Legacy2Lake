@@ -98,3 +98,12 @@ create_temp_batch.py
 list_batch_9.py
 split_batch.py
 validate_sql.py
+
+# Local one-off diagnostics (tenant/project specific)
+_audit_reason_diag.py
+_diag.py
+_drafting_diag.py
+_e2e_two_projects.py
+_inspect_outputs.py
+_run_one_project.py
+
